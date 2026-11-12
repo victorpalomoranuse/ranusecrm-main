@@ -2754,7 +2754,7 @@ export default function Visor3D({ cliente = false }) {
       else if (u.hueco) { const hh = u.hueco; valor = ac.huecos?.[hh.id || (hh.muroId + ':' + hh.p)]?.[u.zona === 'hoja' ? 'hoja' : u.zona === 'tapeta' ? 'tapeta' : 'marco']; }
       else {
         let eq = hit.object; while (eq && !eq.userData.equipo) eq = eq.parent;
-        if (eq) valor = ac.equipos?.[eq.userData.equipo.id];
+        if (eq) valor = hit.object === eq.userData.cuerpo ? ac.equipos?.[eq.userData.equipo.id] : null; // en las piezas del modelo se coge el material de esa pieza
         else {
           let ro = hit.object; while (ro && ro.userData.capa !== 'rodapie') ro = ro.parent;
           if (ro) valor = rodapieRef.current.color;
@@ -4791,7 +4791,10 @@ export default function Visor3D({ cliente = false }) {
   };
   // Tour del cliente: cada parada es una panorámica 360° guardada con su posición; el enlace público las une con flechas y minimapa
   const [generandoParada, setGenerandoParada] = useState(false);
+  // las paradas del tour guardan lo que se ve ahora: con el modo Ligero o la calidad baja salen peor
+  const avisaCalidadTour = () => (ligero || !realista || calidad !== 'alta') ? window.confirm('Ahora tienes ' + [ligero ? 'el modo Ligero' : '', !realista ? 'el modo Realista apagado' : '', calidad !== 'alta' ? 'la calidad en «' + calidad + '»' : ''].filter(Boolean).join(', ') + '. Las paradas del tour se guardan con lo que ves ahora, así que saldrían con menos calidad.\n\nPara un tour bueno: apaga Ligero, activa Realista y pon Calidad alta.\n\n¿Crear la parada igualmente?') : true;
   const paradaTour = () => {
+    if (!avisaCalidadTour()) return;
     const nombre = (window.prompt('Nombre de esta parada del tour (por ejemplo «Entrada» o «Zona de pesas»):', 'Parada ' + (renders.filter(r => r.tour).length + 1)) || '').trim();
     if (!nombre) return;
     const nota = (window.prompt('Nota para el cliente (opcional):', '') || '').trim();
@@ -4809,6 +4812,7 @@ export default function Visor3D({ cliente = false }) {
   // Tour automático: reparte las paradas por todas las salas visibles (cuadrícula, lejos de muros y máquinas) y las genera de una vez
   const tourAuto = async () => {
     const a = api3d.current, m = a.modelo; if (!m || generandoParada) return;
+    if (!avisaCalidadTour()) return;
     const pls = m.plantas || [m], offs = a.offsPl || [];
     const distSeg = (p, u, v) => { const dx = v[0] - u[0], dy = v[1] - u[1], l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((p[0] - u[0]) * dx + (p[1] - u[1]) * dy) / l2)); return Math.hypot(p[0] - u[0] - t * dx, p[1] - u[1] - t * dy); };
     const reparte = (paso) => {
