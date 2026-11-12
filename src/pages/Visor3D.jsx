@@ -7271,6 +7271,13 @@ export default function Visor3D({ cliente = false }) {
                   <button style={{ ...btn, ...(v3 === 'caja' ? { background: '#8c8076' } : {}) }} onClick={() => fijaV3({ v3: 'caja', mod3: undefined })} title="No usa el modelo: se ve como una caja con sus medidas">Solo caja</button>
                   <label style={{ ...btn, cursor: 'pointer', ...(v3 === 'otro' ? { background: '#8c8076' } : {}) }} title="Sube otro modelo solo para esta copia; el bloque y el plano no cambian">Otro modelo…<input type="file" accept=".glb,.gltf,.obj,.dae,.zip" style={{ display: 'none' }} onChange={e => { subirOtro(e.target.files?.[0]); e.target.value = ''; }} /></label>
                 </div>
+                {(() => {
+                  // las máquinas con el mismo nombre (aunque cada una sea su propio bloque) pueden tomar el mismo modelo de golpe
+                  const cur = v3 === 'otro' && modosEq[seleccion.id]?.mod3?.url ? modosEq[seleccion.id].mod3 : biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d;
+                  const otros = []; api3d.current.raiz?.traverse(g => { const e = g.userData.equipo; if (e && e.id !== seleccion.id && e.nombre && e.nombre === seleccion.nombre) otros.push(e); });
+                  if (!cur?.url || !otros.length) return null;
+                  return <button style={{ ...btn, width: '100%', marginBottom: 6, background: '#6b6159' }} title="Pone este mismo modelo (y su giro) en las demás máquinas con el mismo nombre. El bloque y el plano no cambian" onClick={() => { refrescarModelosEq(); setModosEq(m => { const n = { ...m }; for (const e of otros) n[e.id] = { modo: 'estirar', ...n[e.id], v3: 'otro', mod3: { url: cur.url, tipo: cur.tipo || 'glb', rot: cur.rot || 0 }, rotM: m[seleccion.id]?.rotM || 0 }; return n; }); setGuardado('Modelo puesto en ' + otros.length + ' máquinas «' + seleccion.nombre + '» ✓'); }}>🔁 Poner este modelo en las otras {otros.length} «{seleccion.nombre}»</button>;
+                })()}
                 <div style={{ fontSize: 11, opacity: 0.5, marginBottom: 8 }}>Esto solo cambia el 3D de esta copia. El bloque y el plano se quedan igual.</div>
               </div>
             );
