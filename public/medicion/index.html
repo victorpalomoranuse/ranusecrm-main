@@ -2426,20 +2426,22 @@ function polyOffset(pts,d){
   var n=pts.length,a=0,i,sg;if(n<3)return null;
   for(i=0;i<n;i++){var p0=pts[i],p1=pts[(i+1)%n];a+=p0.x*p1.y-p1.x*p0.y}
   sg=a>0?1:-1;
-  var L=pts.map(function(p,i){var q=pts[(i+1)%n],dx=q.x-p.x,dy=q.y-p.y,l=Math.hypot(dx,dy)||1,nx=sg*dy/l,ny=-sg*dx/l;return {x:p.x+nx*d,y:p.y+ny*d,ux:dx/l,uy:dy/l}});
-  var out=[];
+  var L=pts.map(function(p,i){var q=pts[(i+1)%n],dx=q.x-p.x,dy=q.y-p.y,l=Math.hypot(dx,dy)||1,nx=sg*dy/l,ny=-sg*dx/l;return {x:p.x+nx*d,y:p.y+ny*d,ex:q.x+nx*d,ey:q.y+ny*d,ux:dx/l,uy:dy/l}});
+  var out=[],lim=3*Math.abs(d)+1;
   for(i=0;i<n;i++){
-    var A=L[(i+n-1)%n],B=L[i],den=A.ux*B.uy-A.uy*B.ux;
-    if(Math.abs(den)<1e-6){out.push({x:B.x,y:B.y});continue}
-    var t=((B.x-A.x)*B.uy-(B.y-A.y)*B.ux)/den;
-    out.push({x:A.x+A.ux*t,y:A.y+A.uy*t});
+    var A=L[(i+n-1)%n],B=L[i],den=A.ux*B.uy-A.uy*B.ux,P=null;
+    if(Math.abs(den)>=1e-6){var t=((B.x-A.x)*B.uy-(B.y-A.y)*B.ux)/den;P={x:A.x+A.ux*t,y:A.y+A.uy*t}}
+    /* límite de pico: en una esquina muy aguda la intersección se dispara; entonces se corta la esquina en dos puntos */
+    if(P&&Math.hypot(P.x-pts[i].x,P.y-pts[i].y)<=lim*1.6)out.push(P);
+    else{out.push({x:A.ex,y:A.ey});out.push({x:B.x,y:B.y})}
   }
   return out;
 }
 function spOffset(sp,d){
   var pts=spPts(sp),n0=nd(sp.n);if(!pts||!n0)return null;
   var q=polyOffset(pts,d);if(!q)return null;
-  var a0=polyArea(pts),a1=polyArea(q);
+  var a0=polyArea(pts),a1=polyArea(q),bb0=polyBox(pts),mg=Math.abs(d)*4+50;
+  if(q.some(function(p){return !isFinite(p.x)||!isFinite(p.y)||p.x<bb0.x0-mg||p.x>bb0.x1+mg||p.y<bb0.y0-mg||p.y>bb0.y1+mg})){toast('El desplazamiento se sale de la forma: prueba con una distancia menor');return null}
   if(!(a1>0)||(d<0&&a1>=a0)||(d>0&&a1<=a0)){toast('Ese desplazamiento no cabe: la forma se invierte o desaparece');return null}
   var nsp={id:uid('q'),k:sp.k,n:sp.n,dx:0,dy:0,pts:q.map(function(p){return {x:f2(p.x-n0.x),y:f2(p.y-n0.y)}}),mat:sp.mat,sis:sp.sis,nm:(sp.nm?sp.nm+' · ':'')+'offset'};
   if(sp.h!=null)nsp.h=sp.h;if(sp.sm)nsp.sm=true;
