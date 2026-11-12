@@ -3347,6 +3347,8 @@ export default function Visor3D({ cliente = false }) {
   useEffect(() => {
     const a = api3d.current; if (!a.raiz) return;
     a.raiz.children.forEach((g, i) => { g.visible = !ocultas.includes('planta:' + i); });
+    // hojas de puertas, cristales y tapetas van aparte de cada planta: se ocultan con la suya
+    [a.hojaG, a.tapG].forEach(G => G && G.children.forEach(h => { h.visible = !ocultas.includes('planta:' + h.userData.ip); }));
   }, [ocultas, rev, estado]);
 
   // Medidas (cotas) y flechas de ejes del objeto seleccionado (también las máquinas del plano: solo medidas)
@@ -3502,7 +3504,7 @@ export default function Visor3D({ cliente = false }) {
     (modelo.plantas || [modelo]).forEach((pl, ipH) => (pl.muros || []).forEach(mu => (mu.ab || []).forEach(o => {
       const key = o.id || (mu.id + ':' + o.p), holder = new THREE.Group(), [oxH, oyH] = (a.offsPl || [])[ipH] || [0, 0];
       holder.position.set((mu.a[0] + oxH) * CM, (pl.z || 0) * CM, (mu.a[1] + oyH) * CM); holder.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]);
-      holder.add(construirHoja(o, mu, huecosCfg[key] || {}, acab.huecos?.[key]?.hoja, texturas)); g.add(holder);
+      holder.add(construirHoja(o, mu, huecosCfg[key] || {}, acab.huecos?.[key]?.hoja, texturas)); holder.userData.ip = ipH; holder.visible = !ocultas.includes('planta:' + ipH); g.add(holder);
     })));
     a.raiz.add(g); a.hojaG = g;
   }, [huecosCfg, rev, estado, acab.huecos, texturas]);
@@ -3533,7 +3535,7 @@ export default function Visor3D({ cliente = false }) {
         tabla(ancho, y1 - y0, x1 + ancho / 2, (y0 + y1) / 2, vuelo, z);               // jamba derecha
         if (c.alfeizar && (o.tipo || o.t) === 'win') tabla(w + 2 * ancho + 2 * vuelo, 0.022, (x0 + x1) / 2, y0 - 0.011, 0.04, s * (t / 2 + 0.02)); // alféizar
       });
-      g.add(holder);
+      holder.userData.ip = ipT; holder.visible = !ocultas.includes('planta:' + ipT); g.add(holder);
     })));
     a.raiz.add(g); a.tapG = g;
   }, [tapetas, rev, estado, acab.huecos, texturas]);
@@ -3590,8 +3592,8 @@ export default function Visor3D({ cliente = false }) {
     const mat = new THREE.MeshStandardMaterial({ color: color(/^#/.test(rodapie.color || '') ? rodapie.color : null, '#ffffff'), roughness: 0.6 });
     if (String(rodapie.color || '').startsWith('tex:')) { const tx = texturas.find(x => 'tex:' + x.id === rodapie.color); if (tx) { mat.map = texturaDe(tx, true); mat.color.setHex(0xffffff); } }
     const dentro = (pt, pts) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > pt.y) !== (yj > pt.y) && pt.x < ((xj - xi) * (pt.y - yi)) / (yj - yi) + xi) c = !c; } return c; };
-    (modelo.plantas || [modelo]).forEach(pl => {
-      const z0 = (pl.z || 0) * CM;
+    (modelo.plantas || [modelo]).forEach((pl, ipR) => {
+      const z0 = (pl.z || 0) * CM, [oxR, oyR] = (a.offsPl || [])[ipR] || [0, 0];
       (pl.salas || []).forEach(s => {
         const P = s.pts || [];
         for (let i = 0; i < P.length; i++) {
@@ -3623,7 +3625,7 @@ export default function Visor3D({ cliente = false }) {
             if (t1 - t0 < 2) return;
             const c = { x: A.x + u.x * (t0 + t1) / 2 + n.x * rodapie.grosor / 2, y: A.y + u.y * (t0 + t1) / 2 + n.y * rodapie.grosor / 2 };
             const b = new THREE.Mesh(new THREE.BoxGeometry((t1 - t0) * CM, rodapie.alto * CM, rodapie.grosor * CM), mat);
-            b.position.set(c.x * CM, z0 + rodapie.alto * CM / 2, c.y * CM); b.rotation.y = -Math.atan2(u.y, u.x); b.castShadow = b.receiveShadow = true; g.add(b);
+            b.position.set((c.x + oxR) * CM, z0 + rodapie.alto * CM / 2, (c.y + oyR) * CM); b.visible = !ocultas.includes('planta:' + ipR); b.rotation.y = -Math.atan2(u.y, u.x); b.castShadow = b.receiveShadow = true; g.add(b);
           });
         }
       });
