@@ -3248,7 +3248,8 @@ export default function Visor3D({ cliente = false }) {
           return;
         }
         const rotE = (mod.rot || 0) + (modosEq[e.id]?.rotM || 0) + (!mod.rot && !mod.alineado && !modosEq[e.id]?.rotM && !modosEq[e.id]?.alin ? giroAuto(raw, e.w || e.largo, e.d || e.fondo) : 0), giroE = (rotE % 180) !== 0;
-        const mm = ajustarModelo(raw, (giroE ? (e.d || e.fondo) : (e.w || e.largo)) * CM, (giroE ? (e.w || e.largo) : (e.d || e.fondo)) * CM, (e.alto || 110) * CM, modosEq[e.id]?.modo || 'estirar'); if (!mm) return;
+        const medM = modosEq[e.id]?.medidas, mW = medM?.w || e.w || e.largo, mD = medM?.d || e.d || e.fondo, mA = medM?.alto || e.alto || 110;
+        const mm = ajustarModelo(raw, (giroE ? mD : mW) * CM, (giroE ? mW : mD) * CM, mA * CM, modosEq[e.id]?.modo || 'estirar'); if (!mm) return;
         mm.userData.girado = giroE;
         // presupuesto de triángulos: si con este modelo se pasa del límite, la máquina se queda como caja (salvo la seleccionada)
         const triMm = triangulosDe(raw);
@@ -7326,6 +7327,20 @@ export default function Visor3D({ cliente = false }) {
               <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>Tamaño del modelo</div>
                 {nat ? <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6, lineHeight: 1.5 }}>El archivo mide <b>{fm(nat[0])} × {fm(nat[1])} × {fm(nat[2])} cm</b> (largo × fondo × alto).<br />En el plano pone {fm(seleccion.w || seleccion.largo)} × {fm(seleccion.d || seleccion.fondo)} × {fm(seleccion.alto || 110)} cm.<br />Ahora se ve a <b>{fm(mos[0])} × {fm(mos[1])} × {fm(mos[2])} cm</b>.</div> : <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 6 }}>Cargando el modelo…</div>}
+                {(() => {
+                  const me = modosEq[seleccion.id]?.medidas, v0 = { w: me?.w || seleccion.w || seleccion.largo, d: me?.d || seleccion.d || seleccion.fondo, alto: me?.alto || seleccion.alto || 110 };
+                  const poner = (k, txt) => { const n = parseFloat(String(txt).replace(',', '.')); if (!(n >= 5 && n <= 2000) || Math.abs(n - v0[k]) < 0.05) return; refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: 'estirar', ...m[seleccion.id], medidas: { ...v0, [k]: n } } })); };
+                  return (
+                    <div style={{ background: '#2a2a2a', borderRadius: 6, padding: 8, marginBottom: 6 }}>
+                      <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 2 }}>Medidas del modelo (solo en el 3D de esta copia)</div>
+                      <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 6 }}>Cambian el modelo sin tocar el bloque ni el plano. Con el modelo girado 90°, «largo» es el del propio modelo.</div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {[['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto']].map(([k, et]) => <label key={k + (me ? 'm' : 'p') + Math.round(v0[k])} style={{ flex: 1, fontSize: 11, opacity: 0.9 }}>{et}<input type="number" defaultValue={Math.round(v0[k] * 10) / 10} onBlur={e => poner(k, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} style={{ ...btn, width: '100%', boxSizing: 'border-box' }} /></label>)}
+                      </div>
+                      {me && <button style={{ ...btn, marginTop: 6, fontSize: 11 }} onClick={() => { refrescarModelosEq(); setModosEq(m => { const x = { ...m[seleccion.id] }; delete x.medidas; return { ...m, [seleccion.id]: x }; }); }}>Volver a las medidas del plano</button>}
+                    </div>
+                  );
+                })()}
                 <select value={modo} onChange={e => { refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { ...m[seleccion.id], modo: e.target.value } })); }} style={{ ...btn, width: '100%', marginBottom: 6 }}>
                   <option value="auto">Automático (tamaño del archivo si es razonable)</option>
                   <option value="nativo">Tamaño original del archivo</option>
