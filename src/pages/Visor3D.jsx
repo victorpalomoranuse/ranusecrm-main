@@ -112,6 +112,35 @@ const ESPEJOS = [
 // ── Suelos técnicos de gimnasio ──────────────────────────────────────────────
 // Losetas lisas de 1×1 m (negra, gris, camel) con junta fina y un tono algo distinto en cada una, y suelos Paviflex hechos con tu foto
 // pero SIN repetirse: cada metro cuadrado coge un trozo distinto de la foto (girado y volteado), así no se ve el mismo dibujo una y otra vez.
+// Un muro curvo es una cadena de muros pequeños: se agrupan en «tramos» continuos para tratarlos como una sola pared que sigue la línea
+function tramosDeMuros(muros) {
+  const key = p => Math.round(p[0] / 3) + ',' + Math.round(p[1] / 3), porNodo = new Map();
+  muros.forEach((m, i) => { for (const p of [m.a, m.b]) { const k = key(p); if (!porNodo.has(k)) porNodo.set(k, []); porNodo.get(k).push(i); } });
+  const dirDe = m => { const dx = m.b[0] - m.a[0], dy = m.b[1] - m.a[1], L = Math.hypot(dx, dy) || 1; return [dx / L, dy / L]; };
+  const usado = new Set(), out = [], COS = Math.cos(35 * Math.PI / 180);
+  // vecino continuo desde el punto p del extremo del muro i recorrido con la orientación inv
+  const vecino = (i, inv, finalDelTramo) => {
+    const m = muros[i], p = (finalDelTramo ? !inv : inv) ? m.b : m.a, lista = porNodo.get(key(p)) || [];
+    if (lista.length !== 2) return null; const j = lista.find(q => q !== i); if (j == null || usado.has(j)) return null;
+    const n = muros[j], empiezaAqui = key(n.a) === key(p), d1 = dirDe(m).map(v => (inv ? -v : v)), d2 = dirDe(n).map(v => (empiezaAqui ? v : -v));
+    const sentido = finalDelTramo ? 1 : -1, cos = (d1[0] * d2[0] + d1[1] * d2[1]);
+    if (cos < COS) return null;
+    return { j, inv: finalDelTramo ? !empiezaAqui : empiezaAqui, sentido };
+  };
+  for (let i = 0; i < muros.length; i++) {
+    if (usado.has(i)) continue; usado.add(i);
+    const cad = [{ i, inv: false }];
+    for (let fin = cad[0]; ;) { const r = vecino(fin.i, fin.inv, true); if (!r) break; usado.add(r.j); fin = { i: r.j, inv: r.inv }; cad.push(fin); }
+    for (let ini = cad[0]; ;) { const r = vecino(ini.i, ini.inv, false); if (!r) break; usado.add(r.j); ini = { i: r.j, inv: r.inv }; cad.unshift(ini); }
+    const longs = cad.map(c => Math.hypot(muros[c.i].b[0] - muros[c.i].a[0], muros[c.i].b[1] - muros[c.i].a[1])), L = longs.reduce((q, v) => q + v, 0) || 1;
+    let acc = 0, giro = 0; const segs = cad.map((c, k) => { const s0 = acc / L; acc += longs[k]; return { mu: muros[c.i], inv: c.inv, f0: s0, f1: acc / L }; });
+    for (let k = 1; k < cad.length; k++) { const a = dirDe(muros[cad[k - 1].i]).map(v => (cad[k - 1].inv ? -v : v)), b = dirDe(muros[cad[k].i]).map(v => (cad[k].inv ? -v : v)); giro = Math.max(giro, Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1])))); }
+    out.push({ segs, L, curvo: giro > 0.1 || cad.length > 4 && giro > 0.05 });
+  }
+  return out;
+}
+// Pintar una pared entera con un color: las zonas que se hubieran pintado a mano sobre sus caras (regiones) taparían el color nuevo y la pared quedaría a trozos; se quitan
+const quitaRegiones = (reg, prefijos) => { if (!reg) return reg; const ks = Object.keys(reg).filter(k => prefijos.some(p => k.startsWith(p))); if (!ks.length) return reg; const out = { ...reg }; ks.forEach(k => { delete out[k]; }); return out; };
 const libreModelo = (e) => { const M = MEDIDAS_DECO[e.libre] || [60, 60, 100]; return { libre: e.libre, nombre: e.nombre || KINDS_DECO[e.libre] || 'Decoración', categoria: e.libre === 'cuadro' ? 'Cuadros y espejos' : 'Decoración', w: e.ancho || M[0], d: M[1], alto: e.altoCm || M[2] }; };
 const SB_PUBLICO = 'https://guumqvvaalifyluxmidz.supabase.co/storage/v1/object/public/project-documents/';
 const GLSL_SUELO = `
@@ -6525,7 +6554,7 @@ export default function Visor3D({ cliente = false }) {
                 const candidatos = (ub, w, d) => {
                   const r = Math.hypot(w, d) / 2, out = [];
                   if (ub === 'esquina') pts.forEach((p, k) => { const a = pts[(k + n - 1) % n], b = pts[(k + 1) % n]; const v1 = [a[0] - p[0], a[1] - p[1]], v2 = [b[0] - p[0], b[1] - p[1]], l1 = Math.hypot(...v1) || 1, l2 = Math.hypot(...v2) || 1; let bx = v1[0] / l1 + v2[0] / l2, by = v1[1] / l1 + v2[1] / l2; const bl = Math.hypot(bx, by); if (bl < 0.2) return; bx /= bl; by /= bl; if (!dentro(p[0] + bx * 30, p[1] + by * 30)) return; for (const k2 of [0.75, 1, 1.3]) out.push({ x: p[0] + bx * (r * k2 + 14), y: p[1] + by * (r * k2 + 14), rot: rotHacia(-bx, -by) }); });
-                  else if (ub === 'pared') aristas.forEach(a => { for (const t of [0.5, 0.25, 0.75, 0.12, 0.88, 0.38, 0.62]) out.push({ x: a.p[0] + a.dx * t + a.nx * (d / 2 + 8), y: a.p[1] + a.dy * t + a.ny * (d / 2 + 8), rot: rotHacia(a.nx, a.ny), pared: true }); });
+                  else if (ub === 'pared') aristas.forEach(a => { for (const t of [0.5, 0.25, 0.75, 0.12, 0.88, 0.38, 0.62]) out.push({ x: a.p[0] + a.dx * t + a.nx * (d / 2 + 18), y: a.p[1] + a.dy * t + a.ny * (d / 2 + 18), rot: rotHacia(a.nx, a.ny), pared: true }); });
                   else if (ub === 'entrada') puertas.forEach(pu => { for (const lado of [1, -1]) for (const k2 of [0.8, 1.2]) out.push({ x: pu.px + pu.nx * (r + 40) + pu.ux * lado * (pu.w / 2 + r * k2 + 25), y: pu.py + pu.ny * (r + 40) + pu.uy * lado * (pu.w / 2 + r * k2 + 25), rot: rotHacia(pu.nx, pu.ny) }); });
                   else { for (let rad = 0; rad <= 600; rad += 40) for (let ang = 0; ang < 360; ang += 45) out.push({ x: centroide[0] + rad * Math.cos(ang * Math.PI / 180), y: centroide[1] + rad * Math.sin(ang * Math.PI / 180), rot: 0 }); }
                   return out;
@@ -6533,7 +6562,8 @@ export default function Visor3D({ cliente = false }) {
                 for (const e of x.elementos) {
                   const m = e.modelo; if (!m) continue;
                   for (let c = 0; c < e.cantidad; c++) {
-                    const w = Math.round(m.w * e.escala), d = Math.round(m.d * e.escala), alto = Math.round((m.alto || 100) * e.escala), r = Math.hypot(w, d) / 2;
+                    const altoSala = (api3d.current.modelo?.altura || 260) - 12, kEsc = (m.alto || 100) * e.escala > altoSala && !/cuadro|espejo/i.test(m.categoria || '') ? altoSala / ((m.alto || 100) * e.escala) : 1; // nada pasa del techo
+                    const w = Math.round(m.w * e.escala * kEsc), d = Math.round(m.d * e.escala * kEsc), alto = Math.round((m.alto || 100) * e.escala * kEsc), r = Math.hypot(w, d) / 2;
                     const cand = candidatos(e.ubicacion === 'entrada' && !puertas.length ? 'esquina' : e.ubicacion, w, d), sitio = cand.find(q => (q.pared ? dentro(q.x, q.y) && obst.every(o => Math.hypot(q.x - o.x, q.y - o.y) >= o.r + r * 0.6 + 8) : libre(q.x, q.y, r)));
                     if (!sitio) { sinSitio++; continue; }
                     const colgado = /cuadro|espejo/i.test(m.categoria || '');
@@ -6541,23 +6571,27 @@ export default function Visor3D({ cliente = false }) {
                     obst.push({ x: sitio.x, y: sitio.y, r: sitio.pared ? r * 0.6 : r });
                   }
                 }
-                if (nuevos.length) setObjs(prev => [...prev, ...nuevos]);
+                const tagD = 'd:' + (sel.sa.idS || ('s' + Math.max(0, (sel.pl.salas || []).indexOf(sel.sa))));
+                nuevos.forEach(o => { o.ia = tagD; });
+                if (nuevos.length) setObjs(prev => [...prev.filter(o => o.ia !== tagD), ...nuevos]);
                 setIdeasDecoAplic(a => ({ ...a, [i]: { n: nuevos.length, sin: sinSitio } }));
                 setAviso(nuevos.length ? '«' + x.titulo + '»: ' + nuevos.length + ' pieza' + (nuevos.length === 1 ? '' : 's') + ' colocada' + (nuevos.length === 1 ? '' : 's') + ' en la sala ✓' + (sinSitio ? ' (' + sinSitio + ' sin sitio libre)' : '') : 'No he encontrado sitio libre para esas piezas en esta sala.');
               };
               // ── Concepto completo de la sala: suelo + techo + cada pared con su papel + luces + decoración
               const murosDeSala = (sel) => {
-                const pts = sel.sa.pts, n = pts.length, cx = pts.reduce((q, p) => q + p[0], 0) / n, cy = pts.reduce((q, p) => q + p[1], 0) / n, out = [];
+                const pts = sel.sa.pts, n = pts.length, cx = pts.reduce((q, p) => q + p[0], 0) / n, cy = pts.reduce((q, p) => q + p[1], 0) / n, propios = [];
                 for (const mu of sel.pl.muros || []) {
-                  const mx = (mu.a[0] + mu.b[0]) / 2, my = (mu.a[1] + mu.b[1]) / 2, dx = mu.b[0] - mu.a[0], dy = mu.b[1] - mu.a[1], L = Math.hypot(dx, dy) || 1;
-                  let dmin = 1e9; for (let i = 0; i < n; i++) { const p = pts[i], q = pts[(i + 1) % n], ex = q[0] - p[0], ey = q[1] - p[1], l2 = ex * ex + ey * ey || 1, t = Math.max(0, Math.min(1, ((mx - p[0]) * ex + (my - p[1]) * ey) / l2)); dmin = Math.min(dmin, Math.hypot(mx - p[0] - t * ex, my - p[1] - t * ey)); }
-                  const paralela = pts.some((p, i) => { const q = pts[(i + 1) % n], ex = q[0] - p[0], ey = q[1] - p[1], le = Math.hypot(ex, ey) || 1; return Math.abs((dx * ey - dy * ex) / (L * le)) < 0.15; });
-                  if (dmin > (mu.t || 12) / 2 + 30 || !paralela || L < 80) continue;
-                  const ang = Math.atan2(my - cy, mx - cx), lado = Math.abs(Math.cos(ang)) > Math.abs(Math.sin(ang)) ? (Math.cos(ang) > 0 ? 'este' : 'oeste') : (Math.sin(ang) > 0 ? 'sur' : 'norte');
-                  const cerca = (sel.pl.equipos || []).filter(e => !e.cesped && Math.hypot(e.cx - mx, e.cy - my) < 260).slice(0, 3).map(e => e.nombre || e.nm || '').filter(Boolean);
-                  out.push({ id: mu.id, largo: Math.round(L), alto: Math.round(mu.h || api3d.current.modelo?.altura || 260), lado, aberturas: (mu.ab || []).length, cerca });
+                  const mx = (mu.a[0] + mu.b[0]) / 2, my = (mu.a[1] + mu.b[1]) / 2;
+                  let dmin = 1e9; for (let i2 = 0; i2 < n; i2++) { const p = pts[i2], q = pts[(i2 + 1) % n], ex = q[0] - p[0], ey = q[1] - p[1], l2 = ex * ex + ey * ey || 1, t = Math.max(0, Math.min(1, ((mx - p[0]) * ex + (my - p[1]) * ey) / l2)); dmin = Math.min(dmin, Math.hypot(mx - p[0] - t * ex, my - p[1] - t * ey)); }
+                  if (dmin <= (mu.t || 12) / 2 + 30) propios.push(mu);
                 }
-                return out.slice(0, 14);
+                const tramos = tramosDeMuros(propios).filter(t => t.L >= 80);
+                return { propios, tramos: tramos.slice(0, 14).map(tr => {
+                  const m1 = tr.segs[0].mu, mid = tr.segs[Math.floor(tr.segs.length / 2)].mu, mx = (mid.a[0] + mid.b[0]) / 2, my = (mid.a[1] + mid.b[1]) / 2, ang = Math.atan2(my - cy, mx - cx);
+                  const lado = Math.abs(Math.cos(ang)) > Math.abs(Math.sin(ang)) ? (Math.cos(ang) > 0 ? 'este' : 'oeste') : (Math.sin(ang) > 0 ? 'sur' : 'norte');
+                  const cerca = (sel.pl.equipos || []).filter(e => !e.cesped && Math.hypot(e.cx - mx, e.cy - my) < 260).slice(0, 3).map(e => e.nombre || e.nm || '').filter(Boolean);
+                  return { id: m1.id, largo: Math.round(tr.L), alto: Math.round(m1.h || api3d.current.modelo?.altura || 260), lado, aberturas: tr.segs.reduce((q, sg) => q + (sg.mu.ab || []).length, 0), cerca, curva: tr.curvo };
+                }) };
               };
               const cargaPiezas = async () => { const d = (await api.get('/biblioteca3d')).data || {}, todas = [...(d.modelos || []), ...(d.mios || [])]; return { piezas: todas.filter(m => m.url && m.w > 0 && m.d > 0 && !/^Camas$/i.test(m.categoria || '')).map(m => ({ id: m.id, nombre: m.nombre, categoria: m.categoria || '', w: m.w, d: m.d, alto: m.alto })), todas }; };
               const pideIdeasSala = async () => {
@@ -6566,7 +6600,7 @@ export default function Visor3D({ cliente = false }) {
                 try {
                   const pts = sel.sa.pts, xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
                   const area = Math.abs(pts.reduce((q, p, i) => { const r2 = pts[(i + 1) % pts.length]; return q + (p[0] * r2[1] - r2[0] * p[1]); }, 0)) / 2 / 1e4;
-                  const { piezas, todas } = await cargaPiezas(), ms = murosDeSala(sel), ctx = (await contextoModelo()).texto;
+                  const { piezas, todas } = await cargaPiezas(), ms = murosDeSala(sel).tramos, ctx = (await contextoModelo()).texto;
                   const nPuertas = (sel.pl.muros || []).reduce((q, mu) => q + (mu.ab || []).filter(o => /puerta/i.test((o.nm || '') + ' ' + (o.tip || ''))).length, 0);
                   const r = await api.post('/estudio-ideas/sala', { medicionId: id, objetivo: ideasAmbBrief, sala: { nombre: sel.sa.nombre || '', area: Math.round(area * 10) / 10, largo: Math.max(...xs) - Math.min(...xs), ancho: Math.max(...ys) - Math.min(...ys), maquinas: (sel.pl.equipos || []).length, puertas: nPuertas }, muros: ms, piezas, suelos: SUELOS_TEC.map(t => ({ id: 'tex:' + t.id, nombre: t.nombre })), contexto: ctx, previas: ideasSala.map(q => q.titulo) }, { timeout: 240000 });
                   const mapa = new Map(todas.map(m => [m.id, m]));
@@ -6581,19 +6615,12 @@ export default function Visor3D({ cliente = false }) {
                 if (q.techo) { setAcab(a => ({ ...a, techos: { ...a.techos, [claveT]: q.techo.color } })); hechas.push('techo'); }
                 const todasMuros = (api3d.current.modelo?.plantas || [api3d.current.modelo]).flatMap(p => p?.muros || []);
                 let nM = 0;
-                try {
-                  for (const m of q.muros || []) {
-                    const mu = todasMuros.find(w => w.id === m.id); if (!mu) continue;
-                    muroForzado = mu; let toco = false;
-                    if (m.pintura) { aplicaPintura(m); toco = true; }
-                    if (m.patron?.length && aplicaPatron(m)) toco = true;
-                    if (m.techo && aplicaTecho(m)) toco = true;
-                    if (m.luces?.length && aplicaLuces(m)) toco = true;
-                    if (m.revestimientos?.length && aplicaRevest(m)) toco = true;
-                    if (m.rotulo && await aplicaRotulo(m)) toco = true;
-                    if (toco) nM++;
-                  }
-                } finally { muroForzado = null; }
+                // color base: todas las paredes de la sala (curvas incluidas) antes de dar el gesto a cada una
+                if (q.paredes) { const { propios } = murosDeSala(sel); setAcab(a => ({ ...a, muros: { ...a.muros, ...Object.fromEntries(propios.map(mu => [mu.id, q.paredes])) }, regiones: quitaRegiones(a.regiones, propios.map(mu => 'm:' + mu.id + ':')) })); hechas.push('todas las paredes'); }
+                for (const m of q.muros || []) {
+                  const mu = todasMuros.find(w => w.id === m.id); if (!mu) continue;
+                  const h = await aplicaCapasTramo(m, mu, null); if (Object.keys(h).length) nM++;
+                }
                 if (nM) hechas.push(nM + ' pared' + (nM === 1 ? '' : 'es'));
                 if ((q.decoracion || []).length) { aplicaDeco({ titulo: q.titulo, elementos: q.decoracion }, 'sala' + i); hechas.push('decoración'); }
                 setIdeasSalaAplic(a => ({ ...a, [i]: hechas }));
@@ -6601,7 +6628,46 @@ export default function Visor3D({ cliente = false }) {
                 setIaTxt(t => ({ ...t, estancia: t.estancia || sel.sa.nombre || '', extra: ((t.extra ? t.extra + ' ' : '') + 'Idea de la sala «' + q.titulo + '»: ' + (q.idea || '') + ' ' + (q.descripcion || '') + ' Las plantas, esculturas, bancos y columnas de luz son piezas sencillas del modelo: dales detalle y materiales realistas.').slice(0, 900) }));
                 setAviso('«' + q.titulo + '» aplicado en esta sala: ' + hechas.join(', ') + ' ✓ (se guarda en el modelo)');
               };
-              const aplicaPintura = (x) => { const mu = muroSel(); if (mu && x.pintura) setAcab(a => ({ ...a, muros: { ...a.muros, [mu.id]: x.pintura } })); };
+              const aplicaPintura = (x) => { const mu = muroSel(); if (mu && x.pintura) setAcab(a => ({ ...a, muros: { ...a.muros, [mu.id]: x.pintura }, regiones: quitaRegiones(a.regiones, ['m:' + mu.id + ':']) })); };
+              // lo que crea la IA lleva una etiqueta: al volver a aplicar, sustituye lo anterior de la misma pared en vez de acumularse encima
+              const ponIA = (lista, tag) => { const arr = Array.isArray(lista) ? lista : [lista]; arr.forEach(o => { o.ia = tag; }); setObjs(prev => [...prev.filter(o => o.ia !== tag), ...arr]); };
+              // ── tramos: una pared curva (muchos muros pequeños) se trata como una sola
+              const tramoDe = (muId) => { const pl = (api3d.current.modelo?.plantas || [api3d.current.modelo]).find(p => (p?.muros || []).some(m => m.id === muId)); if (!pl) return null; return tramosDeMuros(pl.muros || []).find(t => t.segs.some(sg => sg.mu.id === muId)) || null; };
+              const ajustaSeg = (x, sg) => {
+                const rango = (d, h) => { const a = Math.max(d, sg.f0), b = Math.min(h, sg.f1); if (b - a < 0.02 * (sg.f1 - sg.f0)) return null; const l0 = (a - sg.f0) / (sg.f1 - sg.f0), l1 = (b - sg.f0) / (sg.f1 - sg.f0); return sg.inv ? [1 - l1, 1 - l0] : [l0, l1]; };
+                const mapea = (lista) => (lista || []).map(q => { const r = rango(q.desde ?? 0, q.hasta ?? 1); return r ? { ...q, desde: r[0], hasta: r[1] } : null; }).filter(Boolean);
+                return { ...x, patron: mapea(x.patron), revestimientos: mapea(x.revestimientos) };
+              };
+              const aplicaLucesTramo = (x, tr) => {
+                if (!x.luces?.length) return false;
+                const primero = tr.segs[0], lado = salaDelMuro(primero.mu).lado, pm = plantaDeMuro(primero.mu), H = primero.mu.h || api3d.current.modelo?.altura || 260;
+                const pts = [], normales = [];
+                tr.segs.forEach((sg, k) => { const a = sg.inv ? sg.mu.b : sg.mu.a, b = sg.inv ? sg.mu.a : sg.mu.b, dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, nx = -dy / L * lado * (sg.inv ? -1 : 1), ny = dx / L * lado * (sg.inv ? -1 : 1); if (k === 0) { pts.push(a); normales.push([nx, ny]); } pts.push(b); normales.push([nx, ny]); });
+                const off = (primero.mu.t || 12) / 2 + 6, ptsW = pts.map((p, k) => { const n0 = normales[k], n1 = normales[Math.min(k + 1, normales.length - 1)], nx = n0[0] + n1[0], ny = n0[1] + n1[1], nl = Math.hypot(nx, ny) || 1; return [p[0] + nx / nl * off + pm.ox, p[1] + ny / nl * off + pm.oy]; });
+                const cx = ptsW.reduce((q, p) => q + p[0], 0) / ptsW.length, cy = ptsW.reduce((q, p) => q + p[1], 0) / ptsW.length, xs = ptsW.map(p => p[0]), ys = ptsW.map(p => p[1]);
+                const nuevos = x.luces.map((l, k) => ({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + k, tipo: 'led', nombre: 'Tira LED ' + (l.donde === 'alta' ? 'alta' : 'baja'), etiqueta: 'Iluminación', cx: Math.round(cx * 10) / 10, cy: Math.round(cy * 10) / 10, rot: 0, w: Math.round(Math.max(...xs) - Math.min(...xs)), d: Math.round(Math.max(...ys) - Math.min(...ys)) + 4, alto: 2, z0: (l.donde === 'alta' ? Math.max(50, H - 10) : 12) + pm.z, pts: ptsW.map(p => [Math.round((p[0] - cx) * 10) / 10, Math.round((p[1] - cy) * 10) / 10]), led: { ancho: 1.5, k: l.k, lm: 800, dir: l.donde === 'alta' ? 'abajo' : 'arriba', cerrado: false }, ...(l.color ? { color: l.color } : {}), ia: 'm:' + primero.mu.id + ':luz:' + l.donde }));
+                setObjs(prev => [...prev.filter(o => !String(o.ia || '').startsWith('m:' + primero.mu.id + ':luz')), ...nuevos]); return true;
+              };
+              // Aplica las capas de una idea a TODA la pared (el tramo continuo, curva incluida): cada pequeño muro recibe su parte
+              const aplicaCapasTramo = async (x, mu0, partes) => {
+                const tr = tramoDe(mu0.id) || { segs: [{ mu: mu0, inv: false, f0: 0, f1: 1 }], L: Math.hypot(mu0.b[0] - mu0.a[0], mu0.b[1] - mu0.a[1]) || 1, curvo: false }, hechas = {};
+                const quiere = k => !partes || partes.includes(k);
+                try {
+                  for (const sg of tr.segs) {
+                    muroForzado = sg.mu; const xs = ajustaSeg(x, sg);
+                    if (quiere('pintura') && xs.pintura) { aplicaPintura(xs); hechas.pintura = 1; }
+                    if (quiere('patron') && xs.patron?.length && aplicaPatron(tr.curvo ? { ...xs, patron: xs.patron.filter(p => p.forma === 'franja' || p.forma === 'bloque') } : xs)) hechas.patron = 1;
+                    if (quiere('techo') && xs.techo && aplicaTecho(xs)) hechas.techo = 1;
+                    if (quiere('revest') && xs.revestimientos?.length && aplicaRevest(xs)) hechas.revest = 1;
+                  }
+                  if (quiere('rotulo') && x.rotulo) {
+                    const pos = x.rotulo.posicion, sg = tr.segs.find(q => pos >= q.f0 && pos <= q.f1) || tr.segs[Math.floor(tr.segs.length / 2)], Lseg = Math.hypot(sg.mu.b[0] - sg.mu.a[0], sg.mu.b[1] - sg.mu.a[1]);
+                    if (!tr.curvo || Lseg >= x.rotulo.ancho) { muroForzado = sg.mu; const lp = Math.max(0, Math.min(1, (pos - sg.f0) / (sg.f1 - sg.f0))); if (await aplicaRotulo({ ...x, rotulo: { ...x.rotulo, posicion: Math.max(0.15, Math.min(0.85, sg.inv ? 1 - lp : lp)) } })) hechas.rotulo = 1; }
+                  }
+                  if (quiere('luces') && x.luces?.length && aplicaLucesTramo(x, tr)) hechas.luces = 1;
+                } finally { muroForzado = null; }
+                return hechas;
+              };
               // Patrones pintados sobre la pared: se crean como zonas de pared (rectángulos, rayas, arcos) del color elegido
               const aplicaPatron = (x) => {
                 const mu = muroSel(); if (!mu || !x.patron?.length) return false;
@@ -6614,7 +6680,7 @@ export default function Visor3D({ cliente = false }) {
                   else if (p.forma === 'rayas') { const n = Math.max(2, p.n), w = (s1 - s0) / (n * 2 - 1); for (let k = 0; k < n; k++) zona([[s0 + 2 * k * w, y0], [s0 + (2 * k + 1) * w, y0], [s0 + (2 * k + 1) * w, y1], [s0 + 2 * k * w, y1]], p.color, 'Raya pintada'); }
                   else if (p.forma === 'arco') { const r = (s1 - s0) / 2, cxm = (s0 + s1) / 2, base = Math.max(y0, y1 - r); const pts = [[s0, y0], [s1, y0], [s1, base]]; for (let k = 1; k < 24; k++) { const th = (k / 24) * Math.PI; pts.push([cxm + r * Math.cos(th), base + Math.min(r, y1 - base) * Math.sin(th)]); } pts.push([s0, base]); zona(pts, p.color, 'Arco pintado'); }
                 }
-                setObjs(prev => [...prev, ...nuevos]); return nuevos.length > 0;
+                ponIA(nuevos, 'm:' + mu.id + ':pat'); return nuevos.length > 0;
               };
               // Tiras LED sobre el muro: «alta» lava la pared hacia abajo desde arriba; «baja» deja una luz flotante junto al suelo
               const aplicaLuces = (x) => {
@@ -6633,7 +6699,7 @@ export default function Visor3D({ cliente = false }) {
                 const P = [[mu.a[0] + nx * d0, mu.a[1] + ny * d0], [mu.b[0] + nx * d0, mu.b[1] + ny * d0], [mu.b[0] + nx * d1, mu.b[1] + ny * d1], [mu.a[0] + nx * d1, mu.a[1] + ny * d1]];
                 const cx = P.reduce((s, p) => s + p[0], 0) / 4, cy = P.reduce((s, p) => s + p[1], 0) / 4, xs = P.map(p => p[0]), ys = P.map(p => p[1]);
                 const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'zona', plano: 'techo', h: (mu.h || api3d.current.modelo?.altura || 260) + pmT.z, nombre: 'Franja de techo', etiqueta: 'Zonas', cx: Math.round((cx + pmT.ox) * 10) / 10, cy: Math.round((cy + pmT.oy) * 10) / 10, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 1, z0: 0, color: t.led ? t.color + '!' : t.color, pts: P.map(p => [Math.round((p[0] - cx) * 10) / 10, Math.round((p[1] - cy) * 10) / 10]) };
-                setObjs(prev => [...prev, nuevo]); return true;
+                ponIA(nuevo, 'm:' + mu.id + ':techo'); return true;
               };
               // Revestimientos creativos: cada uno ocupa un tramo del muro (desde/hasta) y una banda de altura, no tiene por qué ser la pared entera
               const aplicaRevest = (x) => {
@@ -6645,7 +6711,7 @@ export default function Visor3D({ cliente = false }) {
                   const c = colocaEnMuro(mu, lado, s0, s1), base = { w: c.w, alto, revest: { id: pr.id, tipo: pr.tipo } };
                   nuevos.push({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + nuevos.length, tipo: 'revest', nombre: pr.nombre, etiqueta: 'Revestimientos', cx: c.cx + pm.ox, cy: c.cy + pm.oy, rot: c.rot, w: c.w, d: espesorRevest(base), alto, z0: z0 + pm.z, color: rv.color || pr.color, revest: { id: pr.id, tipo: pr.tipo, muroId: mu.id, lado, s0, s1, p: { ...pr.p }, huecos: c.huecos } });
                 }
-                if (nuevos.length) setObjs(prev => [...prev, ...nuevos]); return nuevos.length > 0;
+                if (nuevos.length) ponIA(nuevos, 'm:' + mu.id + ':rev'); return nuevos.length > 0;
               };
               const aplicaRotulo = async (x) => {
                 const mu = muroSel(), ro = x.rotulo; if (!mu || !ro) return false;
@@ -6654,18 +6720,15 @@ export default function Visor3D({ cliente = false }) {
                 const px = mu.a[0] + (mu.b[0] - mu.a[0]) * t, py = mu.a[1] + (mu.b[1] - mu.a[1]) * t, nx = -(mu.b[1] - mu.a[1]) / L * lado, ny = (mu.b[0] - mu.a[0]) / L * lado;
                 const r = pegarCalc([mu], { d: 2 }, px + nx * 30, py + ny * 30); if (!r) return false; const pmR = plantaDeMuro(mu);
                 const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'logo', tv: 2, nombre: 'Rótulo «' + ro.texto.slice(0, 24) + '»', etiqueta: 'Textos', cx: r.cx + pmR.ox, cy: r.cy + pmR.oy, rot: r.rot, w: ancho, d: 2, alto, ratio: norm.alto / 100, z0: Math.max(0, Math.round(ro.alturaCentro - alto / 2)) + pmR.z, plano: 'vertical', color: ro.neon ? ro.color + '!' : ro.color, formas: norm.formas, texto: ro.texto, fuente: ro.fuente };
-                setObjs(prev => [...prev, nuevo]); return true;
+                ponIA(nuevo, 'm:' + mu.id + ':rot'); return true;
               };
               const aplicaIdea = async (x, i, partes) => {
-                const hechas = [];
-                if (partes.includes('pintura') && x.pintura) { aplicaPintura(x); hechas.push('pintura'); }
-                if (partes.includes('patron') && x.patron?.length && aplicaPatron(x)) hechas.push('patrón pintado');
-                if (partes.includes('techo') && x.techo && aplicaTecho(x)) hechas.push(x.techo.led ? 'franja de techo luminosa' : 'franja de techo');
-                if (partes.includes('luces') && x.luces?.length && aplicaLuces(x)) hechas.push(x.luces.length > 1 ? 'tiras LED' : 'tira LED');
-                if (partes.includes('revest') && x.revestimientos?.length && aplicaRevest(x)) hechas.push(x.revestimientos.length > 1 ? 'revestimientos' : 'revestimiento');
-                if (partes.includes('rotulo') && x.rotulo && await aplicaRotulo(x)) hechas.push('rótulo');
+                const mu0 = muroSel(); if (!mu0) return;
+                const h = await aplicaCapasTramo(x, mu0, partes), hechas = [];
+                if (h.pintura) hechas.push('pintura'); if (h.patron) hechas.push('patrón pintado'); if (h.techo) hechas.push(x.techo?.led ? 'franja de techo luminosa' : 'franja de techo');
+                if (h.luces) hechas.push(x.luces?.length > 1 ? 'tiras LED' : 'tira LED'); if (h.revest) hechas.push(x.revestimientos?.length > 1 ? 'revestimientos' : 'revestimiento'); if (h.rotulo) hechas.push('rótulo');
                 setIdeasMuroAplic(a => ({ ...a, [i]: [...(a[i] || []), ...hechas] }));
-                if (hechas.length) setAviso('«' + x.titulo + '»: ' + hechas.join(', ') + ' aplicado en el 3D ✓ (se guarda en el modelo)');
+                if (hechas.length) setAviso('«' + x.titulo + '»: ' + hechas.join(', ') + ' aplicado en el 3D ✓' + (tramoDe(mu0.id)?.segs.length > 1 ? ' (a toda la pared, siguiendo su línea)' : '') + ' · se guarda en el modelo');
               };
               const aplicaGlobal = (x) => setAcab(a => ({ ...a, muros: x.muros ? {} : a.muros, todosMuros: x.muros || a.todosMuros, salas: x.suelo ? {} : a.salas, todosSuelos: x.suelo || a.todosSuelos, techos: x.techo ? {} : a.techos, todosTechos: x.techo || a.todosTechos }));
               return (
@@ -6693,6 +6756,7 @@ export default function Visor3D({ cliente = false }) {
                       {q.referencia && <div style={{ fontSize: 11, opacity: 0.6, lineHeight: 1.35, marginBottom: 4 }}>📌 {q.referencia}</div>}
                       <div style={{ fontSize: 11.5, lineHeight: 1.5, marginBottom: 6 }}>
                         {q.suelo && <div>▦ Suelo: {q.suelo.id ? (SUELOS_TEC.find(t => 'tex:' + t.id === q.suelo.id)?.nombre || 'textura') : q.suelo.color}</div>}
+                        {q.paredes && <div>🎨 Todas las paredes: {q.paredes}</div>}
                         {q.techo && <div>⬜ Techo: {q.techo.color}</div>}
                         {(q.muros || []).map((m, k) => <div key={k}>🧱 Pared {m.rol === 'focal' ? '★ focal' : m.rol === 'neutro' ? 'neutra' : 'de apoyo'}: {[m.pintura && 'pintura ' + m.pintura, m.patron?.length && 'patrón', m.revestimientos?.length && m.revestimientos.map(r => r.nombre).join(' + '), m.rotulo && '«' + m.rotulo.texto + '»' + (m.rotulo.neon ? ' neón' : ''), m.techo && 'franja de techo' + (m.techo.led ? ' luminosa' : ''), m.luces?.length && 'luz LED'].filter(Boolean).join(' · ')}</div>)}
                         {(q.decoracion || []).length > 0 && <div>🪴 {q.decoracion.map(e => (e.cantidad > 1 ? e.cantidad + '× ' : '') + e.nombre).join(', ')}</div>}

@@ -36,6 +36,10 @@ export const PRESETS_REVEST = [
   { id: 'rel-cubos', cat: 'Paneles 3D', nombre: 'Cubos a distinta altura', desc: 'Cuadrados que sobresalen distinto', tipo: 'relieve', color: '#e8e4dc', p: { forma: 'cubos', celda: 10, altura: 5 } },
   { id: 'rel-tria', cat: 'Paneles 3D', nombre: 'Triángulos', desc: 'Prismas triangulares alternos', tipo: 'relieve', color: '#efece6', p: { forma: 'triangulo', celda: 14, altura: 4 } },
   { id: 'rel-onda', cat: 'Paneles 3D', nombre: 'Ondas', desc: 'Ondas verticales continuas', tipo: 'lamas', color: '#e9e5de', p: { dir: 'v', ancho: 6, grueso: 2.2, sep: 0, forma: 'redondo', fondo: 'ninguno' } },
+  { id: 'rej-fina', cat: 'Rejillas y celosías', nombre: 'Panel de rejilla fina', desc: 'Retícula de barras finas cada 12 cm', tipo: 'relieve', color: '#2a2a2c', p: { forma: 'rejilla', celda: 12, altura: 3, barra: 1.4 } },
+  { id: 'rej-grande', cat: 'Rejillas y celosías', nombre: 'Panel de rejilla grande', desc: 'Retícula de barras gruesas cada 30 cm', tipo: 'relieve', color: '#2a2a2c', p: { forma: 'rejilla', celda: 30, altura: 5, barra: 3 } },
+  { id: 'celosia', cat: 'Rejillas y celosías', nombre: 'Celosía en diagonal', desc: 'Barras cruzadas en aspa', tipo: 'relieve', color: '#b98b5e', p: { forma: 'celosia', celda: 22, altura: 3, barra: 2 } },
+  { id: 'perforado', cat: 'Rejillas y celosías', nombre: 'Panel perforado', desc: 'Discos en relieve tipo panel perforado', tipo: 'relieve', color: '#3a3a3c', p: { forma: 'perforado', celda: 8, altura: 1.5 } },
   { id: 'zocalo', cat: 'Molduras', nombre: 'Zócalo alto', desc: 'Rodapié biselado de 15 cm', tipo: 'moldura', color: '#f4f1ec', p: { perfil: 'Zócalo alto biselado 15', pos: 'suelo' } },
   { id: 'zocalo-cl', cat: 'Molduras', nombre: 'Zócalo clásico', desc: 'Rodapié moldurado de 12 cm', tipo: 'moldura', color: '#f4f1ec', p: { perfil: 'Zócalo clásico 12', pos: 'suelo' } },
   { id: 'cornisa', cat: 'Molduras', nombre: 'Cornisa clásica', desc: 'Moldura de techo de 10 cm', tipo: 'moldura', color: '#f4f1ec', p: { perfil: 'Cornisa clásica 10', pos: 'techo' } },
@@ -116,6 +120,23 @@ export function construirRevest(o) {
       for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
         const a = ox + i * c, b = a + c, c2 = oy + j * c, d = c2 + c; if (choca(a, b, c2, d)) continue;
         const hh = 1 + (h - 1) * (0.3 + 0.7 * (((i * 7 + j * 13) % 3) / 2)); const bg = new THREE.BoxGeometry((c - 0.6) * CM, (c - 0.6) * CM, hh * CM); bg.translate(0, 0, (1 + hh / 2) * CM); pon(bg, (a + b) / 2, (c2 + d) / 2);
+      }
+    } else if (P.forma === 'rejilla' || P.forma === 'celosia') {
+      const bw = Math.max(0.8, P.barra || 2), nx = Math.max(1, Math.floor(W / c)), ny = Math.max(1, Math.floor(H / c)), ox = (W - nx * c) / 2, oy = (H - ny * c) / 2;
+      for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
+        const a = ox + i * c, b = a + c, c2 = oy + j * c, d = c2 + c; if (choca(a, b, c2, d)) continue;
+        if (P.forma === 'rejilla') {
+          const v = new THREE.BoxGeometry(bw * CM, c * CM, h * CM); v.translate(0, 0, (1 + h / 2) * CM); pon(v, a, (c2 + d) / 2);
+          const hz = new THREE.BoxGeometry(c * CM, bw * CM, h * 0.8 * CM); hz.translate(0, 0, (1 + h * 0.4) * CM); pon(hz, (a + b) / 2, c2);
+        } else {
+          for (const sg of [1, -1]) { const g = new THREE.BoxGeometry(c * 1.414 * CM, bw * CM, h * (sg > 0 ? 1 : 0.8) * CM); g.rotateZ(sg * Math.PI / 4); g.translate(0, 0, (1 + h * (sg > 0 ? 0.5 : 0.4)) * CM); pon(g, (a + b) / 2, (c2 + d) / 2); }
+        }
+      }
+    } else if (P.forma === 'perforado') {
+      const nx = Math.max(1, Math.floor(W / c)), ny = Math.max(1, Math.floor(H / c)), ox = (W - nx * c) / 2, oy = (H - ny * c) / 2;
+      for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
+        const a = ox + i * c, b = a + c, c2 = oy + j * c, d = c2 + c; if (choca(a, b, c2, d)) continue;
+        const cg = new THREE.CylinderGeometry(c * 0.3 * CM, c * 0.3 * CM, h * CM, 14); cg.rotateX(Math.PI / 2); cg.translate(0, 0, (1 + h / 2) * CM); pon(cg, (a + b) / 2, (c2 + d) / 2);
       }
     } else if (P.forma === 'hexa') {
       const r = c / 2, dx = r * 1.5, dy = r * Math.sqrt(3), nx = Math.floor((W - r) / dx), ny = Math.floor((H - r) / dy);

@@ -683,6 +683,7 @@ router.put('/:id/escena3d', async (req, res) => {
           suelo: { sigAdm: Math.max(50, Math.min(600, num(su.sigAdm, 200))) }, precios,
         };
       })() : undefined,
+      ia: typeof o.ia === 'string' ? o.ia.slice(0, 60) : undefined,
       deco: o.tipo === 'deco' ? { kind: ['planta', 'planta_alta', 'arbusto', 'escultura_esfera', 'escultura_arco', 'escultura_monolito', 'banco', 'columna_luz', 'cuadro'].includes(o.deco?.kind) ? o.deco.kind : 'planta', ...(hex(o.deco?.color2) ? { color2: hex(o.deco.color2) } : {}) } : undefined,
       rack: o.tipo === 'rack' && o.rack && typeof o.rack === 'object' ? (() => {
         const r = o.rack, hx = (v, d) => (/^#[0-9a-fA-F]{6}$/.test(v || '') ? v : d), n = (v, d, mn, mx) => Math.max(mn, Math.min(mx, num(v, d)));
