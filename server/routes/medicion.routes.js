@@ -691,7 +691,7 @@ router.put('/:id/escena3d', async (req, res) => {
         const precios = {}; if (r.precios && typeof r.precios === 'object') Object.keys(r.precios).slice(0, 30).forEach(k => { if (/^[a-z]{2,20}$/.test(k)) precios[k] = n(r.precios[k], 0, 0, 1e6); });
         const TB = ['libre', 'dominadas', 'estanteria', 'smith', 'poleas', 'vacia'], AC = ['kb', 'mancuernas', 'wallballs', 'discos', 'balones', 'vacio'];
         return {
-          tipo: ['jaula', 'pared', 'estanteria'].includes(r.tipo) ? r.tipo : 'jaula', perfil: [50, 75, 100].includes(Number(r.perfil)) ? Number(r.perfil) : 75, color: hx(r.color, '#111111'), agujeros: Number(r.agujeros) === 2.5 ? 2.5 : 5,
+          tipo: ['jaula', 'pared', 'estanteria'].includes(r.tipo) ? r.tipo : 'jaula', perfil: [50, 75, 100].includes(Number(r.perfil)) ? Number(r.perfil) : 75, color: hx(r.color, '#111111'), colorAcc: hx(r.colorAcc, '#1c1c1e'), agujeros: Number(r.agujeros) === 2.5 ? 2.5 : 5,
           anchoBahia: n(r.anchoBahia, 125, 60, 250), fondo: n(r.fondo, 120, 25, 250), alto: n(r.alto, 230, 120, 320), precios,
           bahias: (Array.isArray(r.bahias) ? r.bahias : []).slice(0, 8).map(b => ({ tipo: TB.includes(b?.tipo) ? b.tipo : 'libre', niveles: Math.round(n(b?.niveles, 3, 2, 6)), altJ: n(b?.altJ, 130, 60, 200), altSeg: n(b?.altSeg, 75, 30, 160), barra: !!b?.barra, accesorios: (Array.isArray(b?.accesorios) ? b.accesorios : []).slice(0, 6).map(a => (AC.includes(a) ? a : 'kb')) })),
         };

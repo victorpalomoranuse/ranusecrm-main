@@ -8075,6 +8075,11 @@ export default function Visor3D({ cliente = false }) {
                   {Object.entries(COLORES_RACK).map(([h, n]) => <span key={h} title={n} onClick={() => cambiarRack(id, r => { r.color = h; return r; })} style={{ width: 24, height: 24, borderRadius: 12, background: h, cursor: 'pointer', border: R.color.toLowerCase() === h ? '2px solid #fff' : '1px solid #666' }} />)}
                   <input type="color" value={R.color} onChange={e => cambiarRack(id, r => { r.color = e.target.value; return r; })} title="Otro color" style={{ width: 30, height: 26, padding: 0, border: 'none', background: 'none' }} />
                 </div>
+                <div style={{ opacity: 0.7, marginBottom: 2 }}>Color de los accesorios (todos iguales)</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center', marginBottom: 6 }}>
+                  {[['#1c1c1e', 'Negro hierro'], ['#3a3a3e', 'Grafito'], ['#6e7075', 'Gris'], ['#7a1f1f', 'Granate'], ['#1f3a5c', 'Azul marino']].map(([h, n]) => <span key={h} title={n} onClick={() => cambiarRack(id, r => { r.colorAcc = h; return r; })} style={{ width: 24, height: 24, borderRadius: 12, background: h, cursor: 'pointer', border: R.colorAcc === h ? '2px solid #fff' : '2px solid #555' }} />)}
+                  <input type="color" value={R.colorAcc || '#1c1c1e'} onChange={e => cambiarRack(id, r => { r.colorAcc = e.target.value; return r; })} title="Otro color" style={{ width: 30, height: 26, padding: 0, border: 'none', background: 'none' }} />
+                </div>
                 {fila('Ancho bahía cm', numIn(Math.round(R.anchoBahia), v => cambiarRack(id, r => { r.anchoBahia = v; return r; }), 60, 250, 70))}
                 {fila('Fondo cm', numIn(Math.round(R.fondo), v => cambiarRack(id, r => { r.fondo = v; return r; }), 25, 250, 70))}
                 {fila('Alto cm', numIn(Math.round(R.alto), v => cambiarRack(id, r => { r.alto = v; return r; }), 120, 320, 70))}
