@@ -6590,6 +6590,8 @@ export default function Visor3D({ cliente = false }) {
                 if (nM) hechas.push(nM + ' pared' + (nM === 1 ? '' : 'es'));
                 if ((q.decoracion || []).length) { aplicaDeco({ titulo: q.titulo, elementos: q.decoracion }, 'sala' + i); hechas.push('decoración'); }
                 setIdeasSalaAplic(a => ({ ...a, [i]: hechas }));
+                // la idea queda anotada para el render con IA: ahí es donde las piezas sencillas (plantas, esculturas…) ganan todo su detalle
+                setIaTxt(t => ({ ...t, estancia: t.estancia || sel.sa.nombre || '', extra: ((t.extra ? t.extra + ' ' : '') + 'Idea de la sala «' + q.titulo + '»: ' + (q.idea || '') + ' ' + (q.descripcion || '') + ' Las plantas, esculturas, bancos y columnas de luz son piezas sencillas del modelo: dales detalle y materiales realistas.').slice(0, 900) }));
                 setAviso('«' + q.titulo + '» aplicado en esta sala: ' + hechas.join(', ') + ' ✓ (se guarda en el modelo)');
               };
               const aplicaPintura = (x) => { const mu = muroSel(); if (mu && x.pintura) setAcab(a => ({ ...a, muros: { ...a.muros, [mu.id]: x.pintura } })); };
