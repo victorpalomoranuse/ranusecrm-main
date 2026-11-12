@@ -3753,14 +3753,16 @@ export default function Visor3D({ cliente = false }) {
     setGenMaq(true); setEstadoMaq('Preparando las fotos…');
     try {
       const imagenes = await Promise.all(fotosMaq.map(fotoADataUrl));
-      const r = await api.post('/catalog/products/' + cid + '/modelo3d-ia', { imagenes, enlace: enlaceMaq.trim(), segundoPlano: true, reusar: true }, { timeout: 120000 }), job = r.data.job;
+      const r = await api.post('/catalog/products/' + cid + '/modelo3d-ia', { imagenes, enlace: enlaceMaq.trim(), segundoPlano: true, reusar: true }, { timeout: 120000 }); let job = r.data.job, reintento = false;
       setEstadoMaq('Modelando… (suele tardar de 2 a 5 minutos; puedes seguir trabajando)');
       const t0 = Date.now();
       for (;;) {
         await new Promise(ok => setTimeout(ok, 5000));
         const e = (await api.get('/catalog/modelo3d-ia/estado/' + job)).data;
         if (e.estado === 'error') { setEstadoMaq('No se pudo: ' + (e.error || 'error')); break; }
-        if (e.estado === 'perdido') { setEstadoMaq('Se perdió el trabajo (el servidor se reinició). Vuelve a intentarlo.'); break; }
+        if (e.estado === 'perdido') { // el servidor se reinició (por ejemplo al desplegar una actualización) y el trabajo se perdió: se vuelve a lanzar una vez solo
+          if (!reintento) { reintento = true; setEstadoMaq('El servidor se reinició; lanzo el trabajo otra vez…'); const r2 = await api.post('/catalog/products/' + cid + '/modelo3d-ia', { imagenes, enlace: enlaceMaq.trim(), segundoPlano: true, reusar: true }, { timeout: 120000 }); job = r2.data.job; continue; }
+          setEstadoMaq('Se perdió el trabajo otra vez (el servidor se reinició). Vuelve a intentarlo en un minuto.'); break; }
         if (e.estado === 'listo') {
           const m = e.modelo3d, mod2 = { url: m.url, tipo: m.tipo || 'glb', rot: m.rot || 0, bytes: m.bytes || 0 };
           setBiblioteca(prev => { const p0 = prev || []; return p0.map(x => (x.id === cid ? { ...x, modelo3d: mod2 } : x)); });

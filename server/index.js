@@ -63,6 +63,9 @@ import { enviarResumenDiario } from './utils/resumen-diario.js';
 import callSlotsRoutes, { enviarRecordatoriosLlamadas, generarSlotsDesdeReglas } from './routes/call-slots.routes.js';
 dotenv.config();
 
+// Un error suelto en un trabajo de segundo plano (por ejemplo un modelo 3D con IA) no debe tumbar el servidor: tumbarlo borra los trabajos en marcha
+process.on('unhandledRejection', (e) => { console.error('unhandledRejection:', e && e.stack ? e.stack : e); });
+process.on('uncaughtException', (e) => { console.error('uncaughtException:', e && e.stack ? e.stack : e); });
 const app = express();
 const PORT = process.env.PORT || 3001;
 app.set('trust proxy', 1);
