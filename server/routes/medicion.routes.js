@@ -557,6 +557,12 @@ router.put('/:id', async (req, res) => {
     const { data: previa } = await supabase.from('mediciones').select('id, project_id, data').eq('id', req.params.id).maybeSingle();
     if (previa?.data?.escena3d) data.escena3d = previa.data.escena3d; // el editor 2D no la toca: no se pierde al guardar
     else delete data.escena3d;
+    const cam3 = previa?.data?.cambios3d, baseSrv = Number(data.srvBase) || 0;
+    if (cam3 && typeof cam3 === 'object') {
+      for (const [eqId, c] of Object.entries(cam3)) if (c && c.t > baseSrv) aplicaCambioEquipo(data, eqId, c);
+      data.cambios3d = cam3;
+    } else delete data.cambios3d;
+    delete data.srvBase;
     const fila = {
       id: req.params.id, data, resumen: data.resumen || null,
       nombre: String(data.nombre || '').slice(0, 200) || null, cliente: String(data.cliente || '').slice(0, 200) || null,
@@ -1314,6 +1320,22 @@ router.delete('/:id/equipo/:eqId', async (req, res) => {
     res.status(500).json({ error: 'No se pudo eliminar la máquina' });
   }
 });
+// Cambios hechos desde la vista 3D en una máquina (medidas, giro, posición): se recuerdan para que un Planos abierto con una copia vieja del plano no los deshaga al guardar
+function aplicaCambioEquipo(data, eqId, c) {
+  let hecho = false;
+  for (const cc of contenedoresPlano(data)) for (const e of cc.eq || []) if (e.id === eqId) {
+    Object.assign(e, c.vals); hecho = true;
+    if (c.px != null) { const nodo = (cc.nodes || data.nodes || []).find(n => n.id === e.n); if (nodo) { e.dx = Math.round((c.px - nodo.x) * 10) / 10; e.dy = Math.round((c.py - nodo.y) * 10) / 10; } }
+  }
+  const m3 = data.modelo3d;
+  if (m3) for (const pl of (m3.plantas || [m3])) for (const e of pl.equipos || []) if (e.id === eqId) {
+    Object.assign(e, c.vals);
+    if (c.px != null) { e.cx = c.px; e.cy = c.py; }
+    if (c.vals.w !== undefined) e.largo = c.vals.w;
+    if (c.vals.d !== undefined) e.fondo = c.vals.d;
+  }
+  return hecho;
+}
 router.patch('/:id/equipo', async (req, res) => {
   try {
     const { eqId, cambios = {} } = req.body || {};
@@ -1343,6 +1365,7 @@ router.patch('/:id/equipo', async (req, res) => {
     }
     const ahora = new Date().toISOString();
     data.updated = Date.now();
+    data.cambios3d = Object.fromEntries(Object.entries({ ...(data.cambios3d || {}), [eqId]: { vals: { ...((data.cambios3d || {})[eqId]?.vals || {}), ...vals }, ...(muevo ? { px, py } : ((data.cambios3d || {})[eqId]?.px != null ? { px: data.cambios3d[eqId].px, py: data.cambios3d[eqId].py } : {})), t: Date.parse(ahora) } }).filter(([, c]) => c && c.t > Date.now() - 7 * 864e5).slice(-200));
     const { error } = await supabase.from('mediciones').update({ data, updated_at: ahora }).eq('id', req.params.id);
     if (error) throw error;
     res.json({ ok: true });

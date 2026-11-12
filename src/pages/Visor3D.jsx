@@ -3734,6 +3734,7 @@ export default function Visor3D({ cliente = false }) {
   const [foto3dEstado, setFoto3dEstado] = useState('');
   const [fotos3d, setFotos3d] = useState([]); // fotos del producto (elegidas o pegadas con Ctrl+V)
   // Generar el modelo 3D de la máquina seleccionada con fotos (como en los bloques de Planos): se guarda en el producto y se ve igual en todos los planos
+  useEffect(() => { const me = seleccion && modosEq[seleccion.id]?.medidas; if (me) setEqNuevo(q => (q ? { ...q, w: me.w, d: me.d, alto: me.alto } : q)); }, [seleccion?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [fotosMaq, setFotosMaq] = useState([]), [enlaceMaq, setEnlaceMaq] = useState(''), [estadoMaq, setEstadoMaq] = useState(''), [genMaq, setGenMaq] = useState(false), [abrirGenMaq, setAbrirGenMaq] = useState(false);
   const anadirFotosMaq = fs2 => setFotosMaq(a => [...a, ...Array.from(fs2 || []).filter(x => String(x.type).startsWith('image'))].slice(0, 6));
   const fotoADataUrl = (file) => new Promise((ok, ko) => { const img = new Image(), url = URL.createObjectURL(file); img.onload = () => { const k = Math.min(1, 1600 / Math.max(img.width, img.height)), cv = document.createElement('canvas'); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url); ok(cv.toDataURL('image/jpeg', 0.9)); }; img.onerror = () => { URL.revokeObjectURL(url); ko(new Error('No se pudo leer una foto')); }; img.src = url; });
@@ -4321,9 +4322,19 @@ export default function Visor3D({ cliente = false }) {
       setGuardado('Cambiado en el plano ✓ (si tienes Planos abierto, recárgalo)'); api3d.current.recargar?.();
     } catch (e) { setAviso(e.response?.data?.error || 'No se pudo cambiar el hueco'); }
   };
+  // Con modelo 3D, largo / fondo / alto del panel cambian SOLO el modelo de esta copia (el bloque y el plano no se tocan); posición, giro y elevación sí van al plano
+  const medidasModelo = () => { const me = modosEq[seleccion?.id]?.medidas; return { w: me?.w || seleccion?.w || seleccion?.largo, d: me?.d || seleccion?.d || seleccion?.fondo, alto: me?.alto || seleccion?.alto || 110 }; };
+  const separaMedidas = (cambios) => {
+    if (!seleccion || !biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d) return cambios;
+    const med = {}, resto = { ...cambios }, base = medidasModelo();
+    for (const k of ['w', 'd', 'alto']) if (cambios[k] != null) { const n = parseFloat(cambios[k]); if (Number.isFinite(n) && n >= 5 && Math.abs(n - base[k]) >= 0.05) med[k] = n; delete resto[k]; }
+    if (Object.keys(med).length) { refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: 'estirar', ...m[seleccion.id], medidas: { ...base, ...med } } })); setGuardado('Medidas del modelo cambiadas ✓ (el bloque del plano se queda como está)'); }
+    return resto;
+  };
   // Máquina del plano: se escribe en el plano al momento y la ficha sigue abierta
   const aplicarEquipoSuave = async (cambios) => {
     if (!seleccion) return;
+    cambios = separaMedidas(cambios); if (!Object.keys(cambios).length) return;
     try {
       if (estirarAlAplicar && (cambios.w != null || cambios.d != null || cambios.alto != null) && biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d) { refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { ...m[seleccion.id], modo: 'estirar' } })); }
       await api.patch('/medicion/' + id + '/equipo', { eqId: seleccion.id, cambios });
@@ -4341,7 +4352,8 @@ export default function Visor3D({ cliente = false }) {
   // Al escribir en la ficha de una máquina o de una puerta/ventana se aplica solo, sin pulsar «Aplicar al plano»
   useEffect(() => {
     if (!seleccion || !eqNuevo) return;
-    const act = { x: seleccion.cx, y: seleccion.cy, w: seleccion.w || seleccion.largo, d: seleccion.d || seleccion.fondo, alto: seleccion.alto || 110, rot: seleccion.rot || 0, z0: seleccion.z0 || 0 };
+    const mm0 = biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d ? medidasModelo() : null;
+    const act = { x: seleccion.cx, y: seleccion.cy, w: mm0 ? mm0.w : (seleccion.w || seleccion.largo), d: mm0 ? mm0.d : (seleccion.d || seleccion.fondo), alto: mm0 ? mm0.alto : (seleccion.alto || 110), rot: seleccion.rot || 0, z0: seleccion.z0 || 0 };
     const dif = {}; let hay = false;
     for (const k of Object.keys(act)) { const v = parseFloat(eqNuevo[k]); if (Number.isFinite(v) && Math.abs(v - (Number(act[k]) || 0)) >= 0.9) { dif[k] = v; hay = true; } }
     if (!hay) return;
@@ -4359,9 +4371,10 @@ export default function Visor3D({ cliente = false }) {
   }, [selHueco?.nuevo]); // eslint-disable-line react-hooks/exhaustive-deps
   const aplicarEquipo = async () => {
     if (!seleccion || !eqNuevo) return;
+    const resto = separaMedidas({ w: eqNuevo.w, d: eqNuevo.d, alto: eqNuevo.alto, x: eqNuevo.x, y: eqNuevo.y, rot: eqNuevo.rot, z0: eqNuevo.z0 });
     try {
       if (estirarAlAplicar && biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d) { refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { ...m[seleccion.id], modo: 'estirar' } })); }
-      await api.patch('/medicion/' + id + '/equipo', { eqId: seleccion.id, cambios: eqNuevo });
+      await api.patch('/medicion/' + id + '/equipo', { eqId: seleccion.id, cambios: resto });
       setSeleccion(null); setAviso(AVISO_PLANO); api3d.current.recargar?.();
     } catch (e) { setAviso(e.response?.data?.error || 'No se pudo cambiar el equipo'); }
   };
@@ -7333,7 +7346,7 @@ export default function Visor3D({ cliente = false }) {
                   return (
                     <div style={{ background: '#2a2a2a', borderRadius: 6, padding: 8, marginBottom: 6 }}>
                       <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 2 }}>Medidas del modelo (solo en el 3D de esta copia)</div>
-                      <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 6 }}>Cambian el modelo sin tocar el bloque ni el plano. Con el modelo girado 90°, «largo» es el del propio modelo.</div>
+                      <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 6 }}>Cambian el modelo sin tocar el bloque ni el plano.</div>
                       <div style={{ display: 'flex', gap: 6 }}>
                         {[['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto']].map(([k, et]) => <label key={k + (me ? 'm' : 'p') + Math.round(v0[k])} style={{ flex: 1, fontSize: 11, opacity: 0.9 }}>{et}<input type="number" defaultValue={Math.round(v0[k] * 10) / 10} onBlur={e => poner(k, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} style={{ ...btn, width: '100%', boxSizing: 'border-box' }} /></label>)}
                       </div>

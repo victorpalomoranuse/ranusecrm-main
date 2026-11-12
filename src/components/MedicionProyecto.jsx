@@ -240,7 +240,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
       <iframe
         ref={frameRef}
         title="Planos"
-        src="/medicion/index.html?v=cesped17"
+        src="/medicion/index.html?v=cesped18"
         style={fullscreen ? { width: '100%', height: '100%', border: 0, display: 'block', background: '#07090c' } : { width: '100%', height: altura, minHeight: 620, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, background: '#151311' }}
       />
     </div>

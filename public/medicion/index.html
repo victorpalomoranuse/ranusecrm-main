@@ -11790,7 +11790,7 @@ function crmSaveNow(force,abrirListados){
   clearTimeout(crmT);
   var v=st.v;
   if(!force&&!(v.walls.length||v.eq.length||v.pts.length||pisosOn(v)))return;
-  v.updated=Date.now();
+  v.updated=Date.now();v.srvBase=v.srvBase||0; /* versión del servidor que este Planos cargó: el 3D puede haber cambiado piezas después */
   try{v.resumen=buildResumen()}catch(e){}
   try{v.modelo3d=buildModelo3d()}catch(e){delete v.modelo3d;try{toast('No se ha podido preparar el modelo 3D para SketchUp ('+e.message+'). Avísame para revisarlo.')}catch(e2){}}
   crmPost({type:'save',visita:JSON.parse(JSON.stringify(v)),abrirListados:!!abrirListados});
@@ -11837,7 +11837,7 @@ if(CRM){
       $('saved').textContent='Conectado al CRM: se guarda solo en este proyecto.';
     }else if(m.type==='saved'){
       if(st.v.id===m.id){
-        var copia=JSON.parse(JSON.stringify(st.v));copia.updated=m.updated||copia.updated;
+        if(m.updated)st.v.srvBase=m.updated;var copia=JSON.parse(JSON.stringify(st.v));copia.updated=m.updated||copia.updated;
         cloud=[copia].concat(cloud.filter(function(c){return c.id!==m.id}));drawCloud();
         $('saved').textContent='Guardado en el CRM a las '+hhmm()+'.';
       }
