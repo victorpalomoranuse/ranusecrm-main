@@ -3,6 +3,7 @@ import multer from 'multer';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { callClaude } from '../utils/anthropic.js';
+import { leerJson, guardarJson } from '../utils/asistente-personal.js';
 
 // «Estudio de ideas»: un agente creativo con ChatGPT (API de OpenAI, Responses). Se le comparte una imagen (una pared, un local, una vista 3D),
 // se le pide una idea (un mural, un rótulo, un ambiente) y genera la imagen; se sigue hablando para retocarla y, al final, se le pide solo la imagen.
@@ -150,6 +151,61 @@ const PIDE_FICHA = `Eres director de arte. Te paso el texto de un brandbook. Esc
 6. EVITAR: lo que la marca prohíbe o desaconseja.
 Devuelve solo la ficha.`;
 
+// ── Tendencias de interiorismo: un resumen que se renueva cada semana buscando en la web (si la búsqueda no está disponible, la IA usa lo que sabe)
+const RUTA_TENDENCIAS = 'crm/estudio-ideas/tendencias.json';
+let refrescandoTend = null;
+async function refrescaTendencias() {
+  const pedido = 'Resume en español, con datos concretos y sin relleno, QUÉ ESTÁ PASANDO AHORA en interiorismo y diseño de espacios, con foco en gimnasios, boxes de crossfit, estudios boutique, wellness y hospitality: 1) materiales y revestimientos de moda (maderas, lamas, microcemento, piedra, metales, paneles acústicos, texturas), 2) paletas de color y combinaciones que se llevan, 3) rotulación, neones, tipografías, murales y cómo se usa el logo en pared, 4) iluminación y ambientes, 5) ideas atrevidas o poco vistas que hacen destacar un gimnasio. Menciona referencias reales (marcas, cadenas o estudios) cuando las encuentres. Máximo 900 palabras.';
+  const sistema = 'Eres analista de tendencias de interiorismo. Fecha de hoy: ' + new Date().toISOString().slice(0, 10) + '. Prioriza lo más reciente.';
+  let texto = '';
+  try {
+    const r = await callClaude({ system: sistema, messages: [{ role: 'user', content: pedido }], tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }], maxTokens: 3500 });
+    texto = (r.content || []).filter(b => b.type === 'text').map(b => b.text || '').join('').trim();
+  } catch (e) { console.error('tendencias con búsqueda web:', String(e.message).slice(0, 160)); }
+  let fuente = 'web';
+  if (texto.length < 400) { fuente = 'conocimiento'; const r2 = await callClaude({ system: sistema, messages: [{ role: 'user', content: pedido }], maxTokens: 2500 }); texto = (r2.content || []).map(b => b.text || '').join('').trim(); }
+  const out = { fecha: new Date().toISOString(), fuente, texto: texto.slice(0, 7000) };
+  await guardarJson(RUTA_TENDENCIAS, out); return out;
+}
+async function tendenciasActuales() {
+  let t = null; try { t = await leerJson(RUTA_TENDENCIAS, null); } catch { /* sin guardar */ }
+  const vieja = !t || !t.texto || Date.now() - new Date(t.fecha || 0).getTime() > 7 * 86400000;
+  if (vieja) {
+    if (!refrescandoTend) refrescandoTend = refrescaTendencias().catch(e => { console.error('tendencias:', e.message); return null; }).finally(() => { refrescandoTend = null; });
+    if (!t || !t.texto) { const n = await refrescandoTend; return n?.texto || ''; } // la primera vez se espera; después se sirve lo guardado mientras se renueva
+  }
+  return t?.texto || '';
+}
+router.get('/tendencias', async (req, res) => { try { res.json(await leerJson(RUTA_TENDENCIAS, null) || { texto: '' }); } catch { res.status(500).json({ error: 'No se pudo leer' }); } });
+router.post('/tendencias/renovar', async (req, res) => { try { res.json(await refrescaTendencias()); } catch (e) { res.status(500).json({ error: String(e.message).slice(0, 160) }); } });
+
+const PRESETS_VALIDOS = { 'pal-vert': 'Palillería vertical (lamas de madera)', 'pal-fina': 'Palillería fina', 'pal-horiz': 'Palillería horizontal', 'estriado': 'Estriado semicircular', 'acustico': 'Lamas acústicas con fieltro', 'boiserie': 'Boiserie (panelado de cuadros)', 'boiserie-2': 'Boiserie en dos filas', 'boiserie-zoc': 'Boiserie con zócalo', 'paneles': 'Paneles con juntas', 'paneles-g': 'Paneles grandes', 'rel-pira': 'Panel 3D pirámides', 'rel-hexa': 'Panel 3D hexágonos', 'rel-cubos': 'Panel 3D cubos', 'rel-tria': 'Panel 3D triángulos', 'rel-onda': 'Panel 3D ondas', 'zocalo': 'Zócalo alto', 'zocalo-cl': 'Zócalo clásico', 'cornisa': 'Cornisa clásica', 'cornisa-luz': 'Cornisa para luz indirecta', 'guardasilla': 'Guardasillas', 'plana': 'Moldura plana' };
+const FUENTES_VALIDAS = { 'Anton-Regular': 'Anton (condensada, potente)', 'BebasNeue-Regular': 'Bebas Neue (condensada, deportiva)', 'ArchivoBlack-Regular': 'Archivo Black (gruesa)', 'Bungee-Regular': 'Bungee (urbana, rotulación)', 'Oswald': 'Oswald (condensada)', 'Staatliches-Regular': 'Staatliches (condensada, cartelería)', 'RussoOne-Regular': 'Russo One (tecnológica)', 'Orbitron': 'Orbitron (futurista)', 'Righteous-Regular': 'Righteous (redondeada, retro)', 'Montserrat-Bold': 'Montserrat Bold (limpia, premium)', 'Montserrat-Regular': 'Montserrat Regular (limpia, fina)', 'Cinzel': 'Cinzel (clásica, elegante)', 'PlayfairDisplay': 'Playfair Display (serif editorial)', 'AbrilFatface-Regular': 'Abril Fatface (serif de impacto)', 'Bangers-Regular': 'Bangers (cómic)', 'Caveat': 'Caveat (manuscrita informal)', 'DancingScript': 'Dancing Script (cursiva)', 'Lobster-Regular': 'Lobster (cursiva gruesa)', 'Pacifico-Regular': 'Pacifico (surf, retro)', 'PinyonScript-Regular': 'Pinyon Script (caligrafía elegante)' };
+// Ideas completas para UNA pared: pintura + revestimiento + rotulación, con tendencias reales y sin depender de lo que pida el usuario
+router.post('/interiorismo', async (req, res) => {
+  try {
+    const b = req.body || {}, objetivo = String(b.objetivo || '').slice(0, 400), contexto = String(b.contexto || '').slice(0, 3500), otras = String(b.otras || '').slice(0, 400), actual = String(b.actual || '').slice(0, 200);
+    const previas = (Array.isArray(b.previas) ? b.previas : []).map(x => String(x || '').slice(0, 80)).slice(0, 24);
+    const mu = { largo: Math.max(50, Math.min(5000, Number(b.muro?.largo) || 400)), alto: Math.max(150, Math.min(600, Number(b.muro?.alto) || 260)), sala: String(b.muro?.sala || '').slice(0, 60) };
+    let marca = ''; if (b.marcaId) { try { const m = (await leerMarcas()).find(x => x.id === b.marcaId); if (m) marca = 'MARCA DEL CLIENTE (úsala: colores, lemas y tono):\n' + String(m.ficha || '').slice(0, 2200); } catch { /* sin marca */ } }
+    let tend = ''; try { tend = await tendenciasActuales(); } catch (e) { console.error('tendencias:', e.message); }
+    const system = 'Eres directora creativa de interiorismo de Ranuse Design (gimnasios, boxes de crossfit, estudios boutique). Tu trabajo es DAR INSPIRACIÓN: quien te consulta muchas veces no sabe qué hacer, así que no te limites a lo que pida: sorprende con ideas que no se le habrían ocurrido, apoyadas en las TENDENCIAS ACTUALES, y que se puedan construir. Cada idea es un concepto completo para UNA pared (y su techo), con capas que el programa aplica al modelo 3D: (1) pintura base (hex), (1b) PATRONES pintados sobre la pared (franjas, bloques de color, rayas verticales, arcos…) que dan carácter y estilo, (1c) una FRANJA PINTADA EN EL TECHO paralela a la pared (por ejemplo una banda oscura que baja la altura percibida o una banda de color de marca), (2) revestimiento opcional elegido SOLO de esta lista de ids: ' + Object.entries(PRESETS_VALIDOS).map(([k, v]) => k + '=' + v).join('; ') + ', y (3) rotulación opcional: una frase o palabra que quede bonita (mayúsculas, corta, con gancho, en el idioma que encaje con el negocio; no inventes datos del cliente) con una fuente elegida SOLO de esta lista de ids: ' + Object.entries(FUENTES_VALIDAS).map(([k, v]) => k + '=' + v).join('; ') + '. Las 4 ideas deben ser MUY distintas entre sí (estilo, color y atmósfera) y al menos UNA debe ser atrevida e inesperada. No repitas las ideas ya mostradas. Para cada idea explica en "referencia" de qué tendencia o referencia real sale. Responde SOLO JSON: {"ideas":[{"titulo":"","descripcion":"2 frases con la sensación y por qué funciona","referencia":"tendencia o referencia real en una frase","pintura":"#RRGGBB","acento":"#RRGGBB","patron":[{"forma":"franja|bloque|rayas|arco","desde":0.0,"hasta":1.0,"alturaDesde":0,"alturaHasta":110,"n":5,"color":"#RRGGBB"}] o [],"techo":{"color":"#RRGGBB","distancia":0,"ancho":60} o null,"revestimiento":{"id":"id de la lista","color":"#RRGGBB","porque":"una frase"} o null,"rotulo":{"texto":"FRASE","fuente":"id de la lista","color":"#RRGGBB","alturaCentro":150,"posicion":0.5,"ancho":200} o null}]}. Exactamente 4 ideas. Los números en cm; "patron": hasta 3 piezas pintadas sobre la pared: franja = banda horizontal (alturaDesde/alturaHasta en cm, desde/hasta como fracción 0-1 del largo del muro), bloque = rectángulo de color (desde/hasta y alturas), rayas = n rayas verticales alternas entre desde y hasta, arco = arco decorativo entre desde y hasta que sube hasta alturaHasta; usa patrones solo cuando aporten estilo (no en todas las ideas) y que combinen con el rótulo y el revestimiento sin taparse entre sí; "techo": franja pintada en el techo paralela al muro, "distancia" en cm desde la pared (0 = pegada) y "ancho" entre 30 y 200 cm; "posicion" entre 0.15 y 0.85 a lo largo del muro; "ancho" no mayor que el 70 % del largo del muro; la altura del centro del rótulo entre 80 y alto-40.';
+    const user = 'Pared: ' + mu.largo + ' cm de largo × ' + mu.alto + ' cm de alto' + (mu.sala ? ', en «' + mu.sala + '»' : '') + '. Color actual: ' + (actual || 'sin definir') + '. Demás superficies: ' + (otras || 'sin definir') + '.\n' + (objetivo ? 'Lo que me gustaría (solo una pista, sorpréndeme): ' + objetivo + '\n' : 'No tengo ninguna pista: sorpréndeme.\n') + (previas.length ? 'Ideas que ya me has enseñado y NO quiero repetir: ' + previas.join(' | ') + '\n' : '') + (marca ? marca + '\n' : '') + 'PROYECTO:\n' + contexto + (tend ? '\n\nTENDENCIAS ACTUALES (' + 'resumen reciente' + '):\n' + tend.slice(0, 5500) : '');
+    const r = await callClaude({ system, messages: [{ role: 'user', content: user }], maxTokens: 3500 });
+    const txt = (r.content || []).map(x => x.text || '').join(''), j = JSON.parse(/\{[\s\S]*\}/.exec(txt)[0]);
+    const hex = v => (/^#[0-9a-fA-F]{6}$/.test(String(v || '').trim()) ? String(v).trim().toLowerCase() : null), cl = (v, a, c, d) => { const n = Number(v); return Number.isFinite(n) ? Math.max(a, Math.min(c, n)) : d; };
+    const ideas = (Array.isArray(j.ideas) ? j.ideas : []).slice(0, 4).map(x => {
+      const rv = x?.revestimiento && PRESETS_VALIDOS[x.revestimiento.id] ? { id: x.revestimiento.id, nombre: PRESETS_VALIDOS[x.revestimiento.id], color: hex(x.revestimiento.color), porque: String(x.revestimiento.porque || '').slice(0, 160) } : null;
+      const ro = x?.rotulo && String(x.rotulo.texto || '').trim() && FUENTES_VALIDAS[x.rotulo.fuente] ? { texto: String(x.rotulo.texto).trim().slice(0, 60), fuente: x.rotulo.fuente, color: hex(x.rotulo.color) || '#ffffff', alturaCentro: cl(x.rotulo.alturaCentro, 60, mu.alto - 30, Math.round(mu.alto * 0.6)), posicion: cl(x.rotulo.posicion, 0.15, 0.85, 0.5), ancho: cl(x.rotulo.ancho, 30, mu.largo * 0.7, Math.min(250, mu.largo * 0.6)) } : null;
+      const patron = (Array.isArray(x?.patron) ? x.patron : []).slice(0, 3).map(p => { const forma = ['franja', 'bloque', 'rayas', 'arco'].includes(p?.forma) ? p.forma : null, color = hex(p?.color); if (!forma || !color) return null; const d = cl(p.desde, 0, 0.95, 0), h = cl(p.hasta, 0.05, 1, 1), a0 = cl(p.alturaDesde, 0, mu.alto - 10, 0); return { forma, color, desde: Math.min(d, h - 0.05), hasta: Math.max(h, d + 0.05), alturaDesde: a0, alturaHasta: Math.max(a0 + 10, cl(p.alturaHasta, 10, mu.alto, 110)), n: Math.round(cl(p.n, 2, 16, 5)) }; }).filter(Boolean);
+      const te = x?.techo && hex(x.techo.color) ? { color: hex(x.techo.color), distancia: cl(x.techo.distancia, 0, 600, 0), ancho: cl(x.techo.ancho, 30, 300, 60) } : null;
+      return { titulo: String(x?.titulo || 'Idea').slice(0, 60), descripcion: String(x?.descripcion || '').slice(0, 400), referencia: String(x?.referencia || '').slice(0, 220), pintura: hex(x?.pintura), acento: hex(x?.acento), patron, techo: te, revestimiento: rv, rotulo: ro };
+    }).filter(x => x.pintura || x.revestimiento || x.rotulo || x.patron.length || x.techo);
+    if (!ideas.length) return res.status(502).json({ error: 'La IA no devolvió ideas válidas. Inténtalo otra vez.' });
+    res.json({ ideas, tendencias: !!tend });
+  } catch (e) { console.error('estudio-ideas interiorismo:', e.message); res.status(500).json({ error: 'No se pudieron generar las ideas: ' + String(e.message).slice(0, 150) }); }
+});
+
 // Ideas de ambiente para el modelo 3D: la IA propone colores concretos para una pared, un suelo o todo el espacio, y el visor los aplica al modelo con un clic
 router.post('/ambiente', async (req, res) => {
   try {
@@ -160,7 +216,7 @@ router.post('/ambiente', async (req, res) => {
       : '{"ideas":[{"titulo":"nombre corto","descripcion":"2 frases: cómo queda, por qué funciona y con qué se combina","principal":"#RRGGBB","acento":"#RRGGBB"}]}';
     const r = await callClaude({
       system: 'Eres interiorista de Ranuse Design, especialista en gimnasios, boxes de crossfit y espacios deportivos. Propones ideas de ambiente CONCRETAS y realizables para un modelo 3D: colores exactos (hex) para pintar o revestir. Piensa en iluminación, suelo oscuro de caucho, máquinas negras o grises, y en que el espacio se vea premium y con carácter; evita colores sosos o todos iguales y haz que las 4 ideas sean claramente distintas entre sí (por ejemplo una oscura e industrial, una cálida de madera y tierra, una limpia y luminosa, una atrevida con un color de marca). Responde SOLO JSON con esta forma: ' + forma + '. Exactamente 4 ideas. Los hex deben ser válidos de 6 dígitos.',
-      messages: [{ role: 'user', content: 'Qué quiero decorar: ' + (tipo === 'muro' ? 'UNA pared' : tipo === 'suelo' ? 'UN suelo' : 'TODO el espacio (muros, suelo y techo)') + '.\n' + (objetivo ? 'Lo que busco: ' + objetivo + '\n' : '') + (actual ? 'Color actual: ' + actual + '\n' : '') + (otras ? 'Cómo están las demás superficies: ' + otras + '\n' : '') + 'Datos del proyecto:\n' + contexto }],
+      messages: [{ role: 'user', content: 'Qué quiero decorar: ' + (tipo === 'muro' ? 'UNA pared' : tipo === 'suelo' ? 'UN suelo' : 'TODO el espacio (muros, suelo y techo)') + '.\n' + (objetivo ? 'Lo que busco: ' + objetivo + '\n' : '') + (actual ? 'Color actual: ' + actual + '\n' : '') + (otras ? 'Cómo están las demás superficies: ' + otras + '\n' : '') + 'Datos del proyecto:\n' + contexto + (await tendenciasActuales().then(t => t ? '\n\nTENDENCIAS ACTUALES:\n' + t.slice(0, 5000) : '').catch(() => '')) }],
       maxTokens: 1800,
     });
     const txt = (r.content || []).map(b => b.text || '').join(''), j = JSON.parse(/\{[\s\S]*\}/.exec(txt)[0]);

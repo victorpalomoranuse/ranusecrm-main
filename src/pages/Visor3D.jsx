@@ -1997,6 +1997,7 @@ export default function Visor3D({ cliente = false }) {
   const matSelRef = useRef(null);
   useEffect(() => { matSelRef.current = matSel; }, [matSel]);
   const [selAcab, setSelAcab] = useState(null);  // { tipo: 'muro' | 'suelo', id }
+  const [ideasMuro, setIdeasMuro] = useState([]), [ideasMuroCarga, setIdeasMuroCarga] = useState(false), [ideasMuroErr, setIdeasMuroErr] = useState(''), [ideasMuroAplic, setIdeasMuroAplic] = useState({});
   const [ideasAmb, setIdeasAmb] = useState(null), [ideasAmbBrief, setIdeasAmbBrief] = useState(''), [ideasAmbCarga, setIdeasAmbCarga] = useState(false), [ideasAmbErr, setIdeasAmbErr] = useState(''), [ideasAmbTipo, setIdeasAmbTipo] = useState('');
   const [rev, setRev] = useState(0);             // sube cada vez que se rehace el plano 3D
   const [capasAbierto, setCapasAbierto] = useState(false);
@@ -6390,15 +6391,106 @@ export default function Visor3D({ cliente = false }) {
                 } catch (e) { setIdeasAmbErr(e.response?.data?.error || 'No se pudieron generar las ideas'); }
                 setIdeasAmbCarga(false);
               };
+              // Ideas completas de pared: pintura + revestimiento + rótulo. Cada capa se puede aplicar sola o todas juntas.
+              const salaDelMuro = (mu) => { const pls = api3d.current.modelo?.plantas || [api3d.current.modelo]; const dx = mu.b[0] - mu.a[0], dy = mu.b[1] - mu.a[1], L = Math.hypot(dx, dy) || 1, mx = (mu.a[0] + mu.b[0]) / 2, my = (mu.a[1] + mu.b[1]) / 2; for (const sg of [1, -1]) { const p = [mx - dy / L * 30 * sg, my + dx / L * 30 * sg]; for (const pl of pls) for (const sa of (pl?.salas || [])) if (sa.pts?.length >= 3 && puntoEnPoligono(p, sa.pts)) return { lado: sg, nombre: sa.nombre || '' }; } return { lado: 1, nombre: '' }; };
+              const muroSel = () => (api3d.current.modelo?.plantas || [api3d.current.modelo]).flatMap(p => p?.muros || []).find(m => m.id === selAcab.id);
+              const pideIdeasMuro = async (_) => {
+                const mu = muroSel(); if (!mu) return;
+                setIdeasMuroCarga(true); setIdeasMuroErr(''); setIdeasMuroAplic({});
+                try {
+                  const ctx = (await contextoModelo()).texto, nom = h => (h ? h : 'sin color definido'), L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]);
+                  let marcaId = ''; try { marcaId = localStorage.getItem('ideasMarca') || ''; } catch { /* sin marca */ }
+                  const r = await api.post('/estudio-ideas/interiorismo', { objetivo: ideasAmbBrief, muro: { largo: Math.round(L), alto: Math.round(mu.h || api3d.current.modelo?.altura || 260), sala: salaDelMuro(mu).nombre }, actual: nom(actual), otras: 'muros ' + nom(acab.todosMuros) + ', suelos ' + nom(acab.todosSuelos) + ', techos ' + nom(acab.todosTechos), contexto: ctx, previas: ideasMuro.map(x => x.titulo), marcaId }, { timeout: 180000 });
+                  setIdeasMuro(r.data.ideas || []);
+                } catch (e) { setIdeasMuroErr(e.response?.data?.error || 'No se pudieron generar las ideas'); }
+                setIdeasMuroCarga(false);
+              };
+              const aplicaPintura = (x) => { if (x.pintura) poner(x.pintura); };
+              // Patrones pintados sobre la pared: se crean como zonas de pared (rectángulos, rayas, arcos) del color elegido
+              const aplicaPatron = (x) => {
+                const mu = muroSel(); if (!mu || !x.patron?.length) return false;
+                const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, lado = salaDelMuro(mu).lado, nuevos = [];
+                const zona = (pts, color, nombre) => nuevos.push({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + nuevos.length, tipo: 'zona', plano: 'pared', muroId: mu.id, lado, nombre, etiqueta: 'Zonas', cx: 0, cy: 0, rot: 0, w: 1, d: 1, alto: 1, z0: 0, color, pts: pts.map(p => [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10]) });
+                for (const p of x.patron) {
+                  const s0 = p.desde * L, s1 = p.hasta * L, y0 = p.alturaDesde, y1 = p.alturaHasta;
+                  if (p.forma === 'franja') zona([[0, y0], [L, y0], [L, y1], [0, y1]], p.color, 'Franja pintada');
+                  else if (p.forma === 'bloque') zona([[s0, y0], [s1, y0], [s1, y1], [s0, y1]], p.color, 'Bloque de color');
+                  else if (p.forma === 'rayas') { const n = Math.max(2, p.n), w = (s1 - s0) / (n * 2 - 1); for (let k = 0; k < n; k++) zona([[s0 + 2 * k * w, y0], [s0 + (2 * k + 1) * w, y0], [s0 + (2 * k + 1) * w, y1], [s0 + 2 * k * w, y1]], p.color, 'Raya pintada'); }
+                  else if (p.forma === 'arco') { const r = (s1 - s0) / 2, cxm = (s0 + s1) / 2, base = Math.max(y0, y1 - r); const pts = [[s0, y0], [s1, y0], [s1, base]]; for (let k = 1; k < 24; k++) { const th = (k / 24) * Math.PI; pts.push([cxm + r * Math.cos(th), base + Math.min(r, y1 - base) * Math.sin(th)]); } pts.push([s0, base]); zona(pts, p.color, 'Arco pintado'); }
+                }
+                setObjs(prev => [...prev, ...nuevos]); return nuevos.length > 0;
+              };
+              // Franja pintada en el techo, paralela a la pared
+              const aplicaTecho = (x) => {
+                const mu = muroSel(), t = x.techo; if (!mu || !t) return false;
+                const dx = mu.b[0] - mu.a[0], dy = mu.b[1] - mu.a[1], L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, lado = salaDelMuro(mu).lado, nx = -uy * lado, ny = ux * lado, d0 = (mu.t || 12) / 2 + t.distancia, d1 = d0 + t.ancho;
+                const P = [[mu.a[0] + nx * d0, mu.a[1] + ny * d0], [mu.b[0] + nx * d0, mu.b[1] + ny * d0], [mu.b[0] + nx * d1, mu.b[1] + ny * d1], [mu.a[0] + nx * d1, mu.a[1] + ny * d1]];
+                const cx = P.reduce((s, p) => s + p[0], 0) / 4, cy = P.reduce((s, p) => s + p[1], 0) / 4, xs = P.map(p => p[0]), ys = P.map(p => p[1]);
+                const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'zona', plano: 'techo', h: mu.h || api3d.current.modelo?.altura || 260, nombre: 'Franja de techo', etiqueta: 'Zonas', cx: Math.round(cx * 10) / 10, cy: Math.round(cy * 10) / 10, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 1, z0: 0, color: t.color, pts: P.map(p => [Math.round((p[0] - cx) * 10) / 10, Math.round((p[1] - cy) * 10) / 10]) };
+                setObjs(prev => [...prev, nuevo]); return true;
+              };
+              const aplicaRevest = (x) => {
+                const mu = muroSel(), rv = x.revestimiento, pr = rv && presetRevest(rv.id); if (!mu || !pr) return false;
+                const mod = api3d.current.modelo, L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, H = mu.h || mod?.altura || 260, lado = salaDelMuro(mu).lado, c = colocaEnMuro(mu, lado, 0, L), base = { w: c.w, alto: H, revest: { id: pr.id, tipo: pr.tipo } };
+                const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'revest', nombre: pr.nombre, etiqueta: 'Revestimientos', cx: c.cx, cy: c.cy, rot: c.rot, w: c.w, d: espesorRevest(base), alto: H, z0: 0, color: rv.color || pr.color, revest: { id: pr.id, tipo: pr.tipo, muroId: mu.id, lado, s0: 0, s1: L, p: { ...pr.p }, huecos: c.huecos } };
+                setObjs(prev => [...prev, nuevo]); return true;
+              };
+              const aplicaRotulo = async (x) => {
+                const mu = muroSel(), ro = x.rotulo; if (!mu || !ro) return false;
+                const norm = await formasDeTexto(ro.texto, ro.fuente, 'horizontal'); if (!norm) { setAviso('No he podido dibujar «' + ro.texto + '» con esa fuente.'); return false; }
+                const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, ancho = Math.max(30, Math.min(L * 0.8, ro.ancho)), alto = Math.round(norm.alto * ancho / 100), lado = salaDelMuro(mu).lado, t = Math.max(0.1, Math.min(0.9, ro.posicion));
+                const px = mu.a[0] + (mu.b[0] - mu.a[0]) * t, py = mu.a[1] + (mu.b[1] - mu.a[1]) * t, nx = -(mu.b[1] - mu.a[1]) / L * lado, ny = (mu.b[0] - mu.a[0]) / L * lado;
+                const r = pegarCalc([mu], { d: 2 }, px + nx * 30, py + ny * 30); if (!r) return false;
+                const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'logo', tv: 2, nombre: 'Rótulo «' + ro.texto.slice(0, 24) + '»', etiqueta: 'Textos', cx: r.cx, cy: r.cy, rot: r.rot, w: ancho, d: 2, alto, ratio: norm.alto / 100, z0: Math.max(0, Math.round(ro.alturaCentro - alto / 2)), plano: 'vertical', color: ro.color, formas: norm.formas, texto: ro.texto, fuente: ro.fuente };
+                setObjs(prev => [...prev, nuevo]); return true;
+              };
+              const aplicaIdea = async (x, i, partes) => {
+                const hechas = [];
+                if (partes.includes('pintura') && x.pintura) { aplicaPintura(x); hechas.push('pintura'); }
+                if (partes.includes('patron') && x.patron?.length && aplicaPatron(x)) hechas.push('patrón pintado');
+                if (partes.includes('techo') && x.techo && aplicaTecho(x)) hechas.push('franja de techo');
+                if (partes.includes('revest') && x.revestimiento && aplicaRevest(x)) hechas.push('revestimiento');
+                if (partes.includes('rotulo') && x.rotulo && await aplicaRotulo(x)) hechas.push('rótulo');
+                setIdeasMuroAplic(a => ({ ...a, [i]: [...(a[i] || []), ...hechas] }));
+                if (hechas.length) setAviso('«' + x.titulo + '»: ' + hechas.join(', ') + ' aplicado en el 3D ✓ (se guarda en el modelo)');
+              };
               const aplicaGlobal = (x) => setAcab(a => ({ ...a, muros: x.muros ? {} : a.muros, todosMuros: x.muros || a.todosMuros, salas: x.suelo ? {} : a.salas, todosSuelos: x.suelo || a.todosSuelos, techos: x.techo ? {} : a.techos, todosTechos: x.techo || a.todosTechos }));
               return (
                 <div style={{ borderBottom: '1px solid #333', marginBottom: 8, paddingBottom: 8 }}>
                   <div style={{ fontWeight: 700, marginBottom: 4 }}>✨ Ideas de la IA</div>
                   <input value={ideasAmbBrief} onChange={e => setIdeasAmbBrief(e.target.value)} placeholder="Qué busco: industrial, cálido, premium…" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 4 }} />
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    <button style={{ ...btn, background: '#6b6159' }} disabled={ideasAmbCarga} onClick={() => pideIdeas(esMuro ? 'muro' : 'suelo')}>{ideasAmbCarga && ideasAmbTipo !== 'global' ? 'Pensando…' : 'Ideas para ' + (esMuro ? 'este muro' : 'este suelo')}</button>
+                    {esMuro && <button style={{ ...btn, background: '#8c8076', fontWeight: 700 }} disabled={ideasMuroCarga} onClick={() => pideIdeasMuro(false)} title="Pintura + revestimiento + rótulo, con las tendencias de ahora. Si lo dejas en blanco, la IA te sorprende">{ideasMuroCarga ? 'Pensando… (puede tardar un poco)' : '✨ Ideas completas para este muro'}</button>}
+                    {!esMuro && <button style={{ ...btn, background: '#6b6159' }} disabled={ideasAmbCarga} onClick={() => pideIdeas('suelo')}>{ideasAmbCarga && ideasAmbTipo !== 'global' ? 'Pensando…' : 'Ideas para este suelo'}</button>}
                     <button style={{ ...btn, background: '#6b6159' }} disabled={ideasAmbCarga} onClick={() => pideIdeas('global')}>{ideasAmbCarga && ideasAmbTipo === 'global' ? 'Pensando…' : 'Ambiente de todo el espacio'}</button>
                   </div>
+                  {esMuro && ideasMuroErr && <div style={{ color: '#ff9b9b', fontSize: 11, marginTop: 4 }}>{ideasMuroErr}</div>}
+                  {esMuro && !ideasMuroCarga && ideasMuro.map((x, i) => (
+                    <div key={'m' + i} style={{ background: '#2a2a2a', borderRadius: 6, padding: 8, marginTop: 6 }}>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }}>
+                        {[x.pintura, x.acento, ...(x.patron || []).map(p => p.color), x.techo?.color, x.revestimiento?.color, x.rotulo?.color].filter(Boolean).map((c, k) => <span key={k} title={c} style={{ width: 20, height: 20, background: c, border: '1px solid #666', borderRadius: 4 }} />)}
+                        <b style={{ marginLeft: 4, fontSize: 12.5 }}>{x.titulo}</b>
+                      </div>
+                      <div style={{ fontSize: 11.5, opacity: 0.88, lineHeight: 1.4, marginBottom: 4 }}>{x.descripcion}</div>
+                      {x.referencia && <div style={{ fontSize: 11, opacity: 0.6, lineHeight: 1.35, marginBottom: 4 }}>📌 {x.referencia}</div>}
+                      <div style={{ fontSize: 11.5, lineHeight: 1.5, marginBottom: 6 }}>
+                        {x.pintura && <div>🎨 Pintura <b>{x.pintura}</b></div>}
+                        {x.patron?.length > 0 && <div>🖌️ Patrón: {x.patron.map(p => ({ franja: 'franja', bloque: 'bloque de color', rayas: 'rayas', arco: 'arco' }[p.forma])).join(' + ')}</div>}
+                        {x.techo && <div>⬜ Franja en el techo ({x.techo.ancho} cm)</div>}
+                        {x.revestimiento && <div>🧱 {x.revestimiento.nombre}{x.revestimiento.porque ? ' · ' + x.revestimiento.porque : ''}</div>}
+                        {x.rotulo && <div>✍️ «{x.rotulo.texto}» · {x.rotulo.fuente}</div>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        <button style={{ ...btn, background: '#8c8076' }} onClick={() => aplicaIdea(x, i, ['pintura', 'patron', 'techo', 'revest', 'rotulo'])}>Aplicar idea completa</button>
+                        {x.pintura && <button style={btn} onClick={() => aplicaIdea(x, i, ['pintura'])}>Solo color</button>}
+                        {x.patron?.length > 0 && <button style={btn} onClick={() => aplicaIdea(x, i, ['patron'])}>Solo patrón</button>}
+                        {x.techo && <button style={btn} onClick={() => aplicaIdea(x, i, ['techo'])}>Solo techo</button>}
+                        {x.revestimiento && <button style={btn} onClick={() => aplicaIdea(x, i, ['revest'])}>Solo revestimiento</button>}
+                        {x.rotulo && <button style={btn} onClick={() => aplicaIdea(x, i, ['rotulo'])}>Solo rótulo</button>}
+                      </div>
+                      {(ideasMuroAplic[i] || []).length > 0 && <div style={{ fontSize: 11, color: '#8fdba0', marginTop: 4 }}>Aplicado: {[...new Set(ideasMuroAplic[i])].join(', ')}. Se puede deshacer con Ctrl+Z o borrando el objeto.</div>}
+                    </div>
+                  ))}
                   {ideasAmbErr && <div style={{ color: '#ff9b9b', fontSize: 11, marginTop: 4 }}>{ideasAmbErr}</div>}
                   {!ideasAmbCarga && ideasAmb && ideasAmb.map((x, i) => {
                     const global = ideasAmbTipo === 'global';
