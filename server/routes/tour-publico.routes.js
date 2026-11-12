@@ -1,6 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
+import { leerModelosBib } from '../utils/modelos-bib.js';
 
 // Tour 360° para el cliente: enlace de solo lectura con las paradas (panorámicas guardadas en la galería del plano y marcadas como «tour»).
 // La firma es un HMAC del id del plano con el secreto del servidor: no se guarda nada y solo sirve para ese plano.
@@ -52,6 +53,36 @@ router.get('/:id/:firma/plano', async (req, res) => {
   } catch (err) {
     console.error('tour-publico plano:', err);
     res.status(500).json({ error: 'No se pudo cargar el espacio' });
+  }
+});
+
+// Modelos 3D de las máquinas que usa ese plano (y los genéricos de la biblioteca): sin esto el recorrido del cliente solo veía cajas.
+// Solo se envía lo necesario para dibujarlas: id, medidas y modelo; nada de precios, enlaces ni fotos.
+router.get('/:id/:firma/catalogo', async (req, res) => {
+  try {
+    const { id, firma } = req.params, esperada = firmaTour(id);
+    if (firma.length !== esperada.length || !crypto.timingSafeEqual(Buffer.from(firma), Buffer.from(esperada))) return res.status(403).json({ error: 'Enlace no válido' });
+    const { data, error } = await supabase.from('mediciones').select('data').eq('id', id).maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Plano no encontrado' });
+    const cids = new Set(); for (const m of JSON.stringify(data.data || {}).matchAll(/"cid":"([^"]{1,80})"/g)) cids.add(m[1]);
+    const uuids = [...cids].filter(c => /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(c)).slice(0, 400);
+    const maquinas = [];
+    if (uuids.length) {
+      const { data: ps } = await supabase.from('catalog_products').select('id, name, longitud, ancho, altura, bloques').in('id', uuids);
+      for (const p of ps || []) { const m = p.bloques?.modelo3d; if (!m?.url) continue; maquinas.push({ id: p.id, nombre: p.name, w: Number(p.longitud) > 0 ? Number(p.longitud) : 100, d: Number(p.ancho) > 0 ? Number(p.ancho) : 80, alto: Number(p.altura) > 0 ? Number(p.altura) : null, modelo3d: { url: m.url, tipo: m.tipo || 'glb', rot: Number(m.rot) || 0, alineado: !!m.alineado, bytes: Number(m.bytes) || 0 } }); }
+    }
+    const mb = await leerModelosBib().catch(() => ({})), modelosGen = {};
+    for (const [k, v] of Object.entries(mb)) {
+      if (!v?.url) continue;
+      if (k.startsWith('lib-')) modelosGen[k] = { url: v.url, tipo: v.tipo || 'glb', rot: Number(v.rot) || 0 };
+      else if (k.startsWith('bib-') && cids.has(k)) maquinas.push({ id: k, nombre: v.nombre || k, w: 100, d: 80, alto: null, modelo3d: { url: v.url, tipo: v.tipo || 'glb', rot: Number(v.rot) || 0, alineado: !!v.alineado, bytes: Number(v.bytes) || 0 } });
+    }
+    res.set('Cache-Control', 'no-store');
+    res.json({ maquinas, modelosGen, luminarias: [], materiales: [] });
+  } catch (err) {
+    console.error('tour-publico catalogo:', err);
+    res.status(500).json({ error: 'No se pudo cargar el catálogo' });
   }
 });
 

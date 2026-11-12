@@ -33,7 +33,7 @@ import apiReal from '../services/api';
 let api = apiReal;
 const crearApiCliente = (id, firma) => {
   const no = () => Promise.reject(new Error('Modo cliente: solo lectura'));
-  return { get: u => (u === '/medicion/' + id ? apiReal.get('/tour-publico/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma) + '/plano') : no()), post: no, put: no, patch: no, delete: no };
+  return { get: u => (u === '/medicion/' + id ? apiReal.get('/tour-publico/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma) + '/plano') : u === '/medicion/catalogos' ? apiReal.get('/tour-publico/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma) + '/catalogo') : no()), post: no, put: no, patch: no, delete: no };
 };
 const esMovil = () => { try { return window.matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent); } catch { return false; } };
 // Recorrido a pie: los muros frenan al visitante (se desliza por ellos), se pasa por los huecos de suelo a techo (puertas) y no se sale del interior:
@@ -72,8 +72,9 @@ function plantaDeCamara(modelo, offs, ocultas, x, z, y) {
 function frenaMuros(modelo, pos, mov, offs) {
   if (!modelo) return mov;
   const plantas = modelo.plantas || [modelo], ip = plantaDeCamara(modelo, offs, [], pos.x, pos.z, pos.y), [ox, oy] = (offs || [])[ip] || [0, 0];
+  const estabaDentro = dentroDelEspacio(modelo, pos.x, pos.z, offs, ip); // si ya está fuera de toda sala (por ejemplo al empezar) no se le bloquea: solo se impide SALIR
   const choca = (x, z) => {
-    if (!dentroDelEspacio(modelo, x, z, offs, ip)) return true;
+    if (estabaDentro && !dentroDelEspacio(modelo, x, z, offs, ip)) return true;
     for (const mu of (plantas[ip]?.muros || [])) {
       const ax = (mu.a[0] + ox) * CM, az = (mu.a[1] + oy) * CM, dx = (mu.b[0] + ox) * CM - ax, dz = (mu.b[1] + oy) * CM - az, l2 = dx * dx + dz * dz; if (l2 < 1e-9) continue;
       const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), d = Math.hypot(x - (ax + t * dx), z - (az + t * dz));
