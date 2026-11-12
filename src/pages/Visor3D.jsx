@@ -4812,17 +4812,25 @@ export default function Visor3D({ cliente = false }) {
     }, 60);
   };
   // Tour automático: reparte las paradas por todas las salas visibles (cuadrícula, lejos de muros y máquinas) y las genera de una vez
-  const tourAuto = async () => {
+  // Tour automático: se eligen las salas que se quieren (se pueden quitar las demás) y, si se desea, cada parada pasa por la IA solo para dar realismo (modo fiel)
+  const [tourCfg, setTourCfg] = useState(null);
+  const abreTourAuto = () => {
+    const m = api3d.current.modelo; if (!m || generandoParada) return;
+    const lista = []; (m.plantas || [m]).forEach((pl, ip) => (pl.salas || []).forEach((sa, i) => { if (sa.pts && sa.pts.length >= 3) lista.push({ key: ip + ':' + i, nombre: (sa.nombre || 'Sala ' + (i + 1)), planta: (m.plantas || [m]).length > 1 ? (pl.nombre || 'Planta ' + (ip + 1)) : '', sel: !(ocultas || []).includes('planta:' + ip) }); }));
+    if (!lista.length) { setAviso('No hay salas en el modelo para repartir paradas.'); return; }
+    setTourCfg({ salas: lista, ia: false });
+  };
+  const tourAuto = async (elegidas, usarIA) => {
     const a = api3d.current, m = a.modelo; if (!m || generandoParada) return;
-    if (!avisaCalidadTour()) return;
+    if (!usarIA && !avisaCalidadTour()) return;
     const pls = m.plantas || [m], offs = a.offsPl || [];
     const distSeg = (p, u, v) => { const dx = v[0] - u[0], dy = v[1] - u[1], l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((p[0] - u[0]) * dx + (p[1] - u[1]) * dy) / l2)); return Math.hypot(p[0] - u[0] - t * dx, p[1] - u[1] - t * dy); };
     const reparte = (paso) => {
       const out = [];
       pls.forEach((pl, ip) => {
-        if ((ocultas || []).includes('planta:' + ip)) return;
         const [ox, oy] = offs[ip] || [0, 0], eqs = (pl.equipos || []).filter(e => !e.cesped).map(e => ({ x: e.cx, y: e.cy, r: Math.hypot(e.w || 60, e.d || 60) / 2 + 35 }));
-        (pl.salas || []).forEach(sa => {
+        (pl.salas || []).forEach((sa, isa) => {
+          if (elegidas && !elegidas.has(ip + ':' + isa)) return;
           const pts = sa.pts; if (!pts || pts.length < 3) return;
           const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
           const nx = Math.max(1, Math.round((x1 - x0) / paso)), ny = Math.max(1, Math.round((y1 - y0) / paso)), cand = [];
@@ -4841,14 +4849,21 @@ export default function Visor3D({ cliente = false }) {
     };
     let paso = 380, pts = reparte(paso); while (pts.length > 30 && paso < 1200) { paso = Math.round(paso * 1.2); pts = reparte(paso); }
     if (!pts.length) { setAviso('No he encontrado salas donde colocar paradas.'); return; }
-    if (!window.confirm('Voy a generar ' + pts.length + ' paradas repartidas por las salas (una cada ' + (paso / 100).toFixed(1).replace('.', ',') + ' m, lejos de paredes y máquinas). Tarda un par de minutos y no hay que tocar nada. ¿Seguimos?')) return;
+    if (!window.confirm('Voy a generar ' + pts.length + ' paradas en las salas que has elegido (una cada ' + (paso / 100).toFixed(1).replace('.', ',') + ' m, lejos de paredes y máquinas).' + (usarIA ? '\n\nCada parada pasa por la IA en modo fiel: solo da realismo a materiales y luz, sin inventar nada. Tarda 1-3 minutos POR PARADA (unos ' + Math.round(pts.length * 2) + ' min en total) y gasta crédito de ChatGPT en cada una. No cierres esta pestaña.' : ' Tarda un par de minutos y no hay que tocar nada.') + '\n\n¿Seguimos?')) return;
     setGenerandoParada(true);
     let hechas = 0;
     for (const p of pts) {
-      setAviso('Tour automático: parada ' + (hechas + 1) + ' de ' + pts.length + ' («' + p.nombre + '»)…');
+      setAviso('Tour automático' + (usarIA ? ' con IA fiel' : '') + ': parada ' + (hechas + 1) + ' de ' + pts.length + ' («' + p.nombre + '»)…' + (usarIA ? ' (1–3 min por parada)' : ''));
       await new Promise(r => setTimeout(r, 120));
       try {
-        const url = capturarEquirect(a.renderer, a.scene, new THREE.Vector3(p.x, p.y, p.z), 0, 2048, [a.gizmoG, a.cotasG, a.nodoG, a.guiaG]);
+        let url;
+        if (usarIA) {
+          const base = capturarEquirect(a.renderer, a.scene, new THREE.Vector3(p.x, p.y, p.z), 0, 768, [a.gizmoG, a.cotasG, a.nodoG, a.guiaG]);
+          const carga = u => new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = u; });
+          const redim = (img, w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); return c.toDataURL('image/png'); };
+          const rIA = await api.post('/render-ia', { imagen: redim(await carga(base), 1536, 1024), modo: 'panorama', proveedor: 'openai', fiel: true }, { timeout: 300000 });
+          const sal = await carga(rIA.data.imagen); url = redim(sal, sal.naturalHeight * 2, sal.naturalHeight);
+        } else url = capturarEquirect(a.renderer, a.scene, new THREE.Vector3(p.x, p.y, p.z), 0, 2048, [a.gizmoG, a.cotasG, a.nodoG, a.guiaG]);
         const meta = { camara: { px: p.x, py: p.y, pz: p.z, tx: p.x, ty: p.y, tz: p.z + 1, fov: 75 }, shift: 0, hora, exposicion: ambiente.exposicion, luces: ambiente.luces, auto: true };
         const r = await api.post('/medicion/' + id + '/render', { imagen: url, tipo: '360', nombre: p.nombre, nota: '', tour: true, meta }, { timeout: 120000 });
         setRenders(x => [r.data.render, ...x]); hechas++;
@@ -5804,7 +5819,7 @@ export default function Visor3D({ cliente = false }) {
           ['Render con IA', abrirFormIA, false, estado !== 'listo' || ia?.estado === 'trabajando', 'La IA convierte esta vista en una foto realista'],
           [generando360 ? 'Generando 360°…' : 'Panorama 360°', hacer360, false, generando360 || estado !== 'listo', 'Panorama 360° desde la cámara'],
           [generandoParada ? 'Creando parada…' : 'Parada del tour (360°)', paradaTour, false, generandoParada || generando360 || estado !== 'listo', 'Guarda una panorámica 360° de aquí como parada del tour del cliente'],
-          [generandoParada ? 'Creando paradas…' : 'Tour automático (todas las salas)', tourAuto, false, generandoParada || generando360 || estado !== 'listo', 'Reparte paradas 360° por todas las salas, lejos de paredes y máquinas, y las genera de una vez'],
+          [generandoParada ? 'Creando paradas…' : 'Tour automático (elegir salas, con IA opcional)', abreTourAuto, false, generandoParada || generando360 || estado !== 'listo', 'Reparte paradas 360° por todas las salas, lejos de paredes y máquinas, y las genera de una vez'],
           [generandoTour ? 'Generando el tour…' : '⭐ Generar tour fijo (enlace que no cambia)', generaTourFijo, false, generandoTour || estado !== 'listo', 'Congela el modelo y las paradas de ahora en una copia con su propio enlace: si luego cambias el modelo, ese tour no se toca hasta que generes otro'],
           ['Mis tours generados' + (toursV?.length ? ' (' + toursV.length + ')' : ''), () => { setToursAbierto(v => !v); cargaToursV(); }, toursAbierto, false, 'Enlaces de los tours ya generados: copiar o borrar'],
           ['Copiar enlace del recorrido libre', () => copiarEnlaceTour(true), false, false, 'Enlace público (solo lectura): el cliente anda por el espacio; si su equipo es flojo se le ofrece el tour de panorámicas'],
@@ -6168,6 +6183,28 @@ export default function Visor3D({ cliente = false }) {
           </div>
         );
       })()}
+      {tourCfg && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 30, display: 'grid', placeItems: 'center' }} onClick={() => setTourCfg(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 380, maxWidth: '92vw', maxHeight: '80vh', overflowY: 'auto', background: '#1c1c1c', color: '#fff', borderRadius: 12, padding: 16, fontSize: 13, boxShadow: '0 10px 40px rgba(0,0,0,0.6)' }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Tour automático</div>
+            <div style={{ opacity: 0.65, marginBottom: 8, lineHeight: 1.4 }}>Elige las salas donde quieres paradas. Quita las que no interesen.</div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+              <button style={btn} onClick={() => setTourCfg(c => ({ ...c, salas: c.salas.map(s => ({ ...s, sel: true })) }))}>Todas</button>
+              <button style={btn} onClick={() => setTourCfg(c => ({ ...c, salas: c.salas.map(s => ({ ...s, sel: false })) }))}>Ninguna</button>
+            </div>
+            {tourCfg.salas.map(s => (
+              <label key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', cursor: 'pointer' }}><input type="checkbox" checked={s.sel} onChange={e => setTourCfg(c => ({ ...c, salas: c.salas.map(q => (q.key === s.key ? { ...q, sel: e.target.checked } : q)) }))} />{s.nombre}{s.planta && <span style={{ opacity: 0.5, fontSize: 11 }}> · {s.planta}</span>}</label>
+            ))}
+            <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}><input type="checkbox" checked={tourCfg.ia} onChange={e => setTourCfg(c => ({ ...c, ia: e.target.checked }))} style={{ marginTop: 3 }} /><span><b>Dar realismo con IA (modo fiel)</b><br /><span style={{ opacity: 0.65, fontSize: 12 }}>La IA solo mejora materiales, texturas y luz de lo que ya hay: no añade, quita ni cambia objetos. Tarda 1–3 min por parada y gasta crédito de ChatGPT.</span></span></label>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button style={{ ...btn, flex: 1, background: '#3f7d3a' }} disabled={!tourCfg.salas.some(s => s.sel)} onClick={() => { const cfg = tourCfg; setTourCfg(null); tourAuto(new Set(cfg.salas.filter(s => s.sel).map(s => s.key)), cfg.ia); }}>Generar paradas</button>
+              <button style={btn} onClick={() => setTourCfg(null)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
       {toursAbierto && (
         <div style={{ position: 'absolute', right: 12, top: 56, width: 330, maxHeight: '70vh', overflowY: 'auto', background: 'rgba(24,24,24,0.97)', color: '#fff', borderRadius: 12, padding: 12, zIndex: 12, fontSize: 12, boxShadow: '0 6px 24px rgba(0,0,0,0.45)' }}>
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}><b style={{ flex: 1, fontSize: 13 }}>Tours generados</b><span onClick={() => setToursAbierto(false)} style={{ cursor: 'pointer', opacity: 0.7 }}>✕</span></div>
