@@ -70,23 +70,29 @@ export const nAccesorios = (tipo, bw) => Math.max(0, tipo === 'kb' ? Math.floor(
 
 function accesorios(g, tipo, xc, yTab, zc, bw, prof) {
   const n = nAccesorios(tipo, bw); if (!n) return;
-  const COL = ['#1a1a1a', '#c8102e', '#1b6dd6', '#f2c200'];
+  // colores apagados, de material real (hierro fundido, cuero, goma): los colores vivos hacían que parecieran de juguete
+  const NEG = ['#1b1b1d', '#222224', '#19191a'], BAL = ['#2a2a2c', '#6a4430', '#3b3b3f', '#5e2a28'];
+  const costuras = (rad, x, y, z, col) => { const mc = mat(col, { roughness: 0.9, metalness: 0 }); for (const rot of [0, Math.PI / 2]) { const t = new THREE.Mesh(new THREE.TorusGeometry(rad * CM * 1.003, rad * CM * 0.035, 6, 32), mc); t.position.set(x * CM, y * CM, z * CM); t.rotation.y = rot; g.add(t); } };
   const paso = tipo === 'discos' ? 5 : (bw - 4) / n, x0 = xc - ((n - 1) * paso) / 2;
   for (let i = 0; i < n; i++) {
     const x = x0 + i * paso;
     if (tipo === 'kb') {
-      const r = 8.5 + (i % 3) * 1.6, m = mat(COL[i % 3 === 0 ? 0 : i % 3], { roughness: 0.6, metalness: 0.2 });
-      g.add(esfera(r, m, x, yTab + r, zc));
-      const asa = new THREE.Mesh(new THREE.TorusGeometry(r * 0.55 * CM, r * 0.13 * CM, 8, 16), m); asa.position.set(x * CM, (yTab + r * 2.05) * CM, zc * CM); asa.castShadow = true; g.add(asa);
+      // pesa rusa de hierro fundido: cuerpo negro mate algo achatado, base plana y asa gruesa
+      const r = 8.5 + (i % 3) * 1.6, m = mat(NEG[i % 3], { roughness: 0.62, metalness: 0.3 });
+      const cuerpo = esfera(r, m, x, yTab + r * 0.93, zc); cuerpo.scale.set(1, 0.9, 1); g.add(cuerpo);
+      const base = cil(r * 0.62, 1.2, m, x, yTab + 0.6, zc, 'y'); g.add(base);
+      const asa = new THREE.Mesh(new THREE.TorusGeometry(r * 0.5 * CM, r * 0.17 * CM, 10, 20), m); asa.scale.set(1, 1.12, 1); asa.position.set(x * CM, (yTab + r * 1.95) * CM, zc * CM); asa.castShadow = true; g.add(asa);
+      // marca de peso: una banda fina de color en el cuello (las de competición llevan su color)
+      if (i % 3 !== 0) { const banda = new THREE.Mesh(new THREE.TorusGeometry(r * 0.9 * CM, r * 0.06 * CM, 6, 24), mat(i % 3 === 1 ? '#7a1f1f' : '#2c4a73', { roughness: 0.7, metalness: 0 })); banda.rotation.x = Math.PI / 2; banda.position.set(x * CM, (yTab + r * 1.0) * CM, zc * CM); g.add(banda); }
     } else if (tipo === 'mancuernas') {
       const m = mat('#2a2a2a', { roughness: 0.5, metalness: 0.5 });
       g.add(cil(1.3, 15, m, x, yTab + 4.5, zc, 'x')); g.add(cil(4.5, 6, m, x - 8, yTab + 4.5, zc, 'x')); g.add(cil(4.5, 6, m, x + 8, yTab + 4.5, zc, 'x'));
     } else if (tipo === 'wallballs') {
-      g.add(esfera(16, mat(COL[i % 4], { roughness: 0.85, metalness: 0 }), x, yTab + 16, zc));
+      g.add(esfera(16, mat(BAL[i % 4], { roughness: 0.92, metalness: 0 }), x, yTab + 16, zc)); costuras(16, x, yTab + 16, zc, '#141414');
     } else if (tipo === 'discos') {
       g.add(cil(22.5, 3.5, mat('#1d1d1d', { roughness: 0.6, metalness: 0.3 }), x, yTab + 22.5, zc, 'z'));
     } else if (tipo === 'balones') {
-      g.add(esfera(11, mat(COL[(i + 1) % 4], { roughness: 0.85, metalness: 0 }), x, yTab + 11, zc));
+      g.add(esfera(11, mat(BAL[(i + 1) % 4], { roughness: 0.92, metalness: 0 }), x, yTab + 11, zc)); costuras(11, x, yTab + 11, zc, '#141414');
     }
   }
 }
