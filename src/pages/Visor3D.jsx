@@ -2493,7 +2493,8 @@ export default function Visor3D({ cliente = false }) {
         return;
       }
       if (herrRef.current === 'pincel' || herrRef.current === 'gotero') {
-        const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(x => x.object.isMesh && !x.object.userData.hit && visible(x.object));
+        // la caja azul que se dibuja mientras llega el modelo de la máquina se oculta con material.visible=false (el rayo la sigue tocando): se salta para coger el material de la máquina de verdad
+        const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(x => x.object.isMesh && !x.object.userData.hit && visible(x.object) && (Array.isArray(x.object.material) ? x.object.material.some(q => q.visible !== false) : x.object.material?.visible !== false));
         if (h) { if (herrRef.current === 'gotero' || e.altKey) tomarMaterial(h); else aplicarPincel(h, e.shiftKey || modoPincelRef.current === 'todo'); }
         return;
       }
