@@ -1998,6 +1998,18 @@ export default function Visor3D({ cliente = false }) {
   useEffect(() => { matSelRef.current = matSel; }, [matSel]);
   const [selAcab, setSelAcab] = useState(null);  // { tipo: 'muro' | 'suelo', id }
   const [plantasPlegado, setPlantasPlegado] = useState(() => { try { return localStorage.getItem('visor3dPlantasPlegado') === '1'; } catch { return false; } });
+  // Dictado por voz (Chrome, Edge y Safari): se pulsa el micro y se habla; el texto se añade al cuadro
+  const [escuchando, setEscuchando] = useState(false); const vozRef = useRef(null);
+  const dictar = (alTexto) => {
+    const SR = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+    if (!SR) { setAviso('Tu navegador no tiene dictado por voz. Usa Chrome o Edge.'); return; }
+    if (vozRef.current) { try { vozRef.current.stop(); } catch { /* ya parado */ } return; }
+    const r = new SR(); r.lang = 'es-ES'; r.interimResults = false; r.continuous = true; vozRef.current = r;
+    r.onresult = e => { let t = ''; for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) t += e.results[i][0].transcript + ' '; if (t.trim()) alTexto(t.trim()); };
+    r.onerror = e => { setAviso(e.error === 'not-allowed' ? 'Permite el micrófono en el candado de la barra de direcciones para dictar.' : 'No he podido escuchar (' + (e.error || 'error') + ').'); };
+    r.onend = () => { vozRef.current = null; setEscuchando(false); };
+    try { r.start(); setEscuchando(true); } catch { vozRef.current = null; setEscuchando(false); }
+  };
   const [ideasDeco, setIdeasDeco] = useState([]), [ideasDecoCarga, setIdeasDecoCarga] = useState(false), [ideasDecoErr, setIdeasDecoErr] = useState(''), [ideasDecoAplic, setIdeasDecoAplic] = useState({});
   const [ideasMuro, setIdeasMuro] = useState([]), [ideasMuroCarga, setIdeasMuroCarga] = useState(false), [ideasMuroErr, setIdeasMuroErr] = useState(''), [ideasMuroAplic, setIdeasMuroAplic] = useState({});
   const [ideasAmb, setIdeasAmb] = useState(null), [ideasAmbBrief, setIdeasAmbBrief] = useState(''), [ideasAmbCarga, setIdeasAmbCarga] = useState(false), [ideasAmbErr, setIdeasAmbErr] = useState(''), [ideasAmbTipo, setIdeasAmbTipo] = useState('');
@@ -6388,7 +6400,7 @@ export default function Visor3D({ cliente = false }) {
                 try {
                   const ctx = (await contextoModelo()).texto, nom = h => (h ? h : 'sin color definido');
                   const otras = 'muros ' + nom(acab.todosMuros) + ', suelos ' + nom(acab.todosSuelos) + ', techos ' + nom(acab.todosTechos);
-                  const r = await api.post('/estudio-ideas/ambiente', { tipo, objetivo: ideasAmbBrief, actual: nom(actual), otras, contexto: ctx }, { timeout: 90000 });
+                  const r = await api.post('/estudio-ideas/ambiente', { medicionId: id, tipo, objetivo: ideasAmbBrief, actual: nom(actual), otras, contexto: ctx }, { timeout: 90000 });
                   setIdeasAmb(r.data.ideas || []);
                 } catch (e) { setIdeasAmbErr(e.response?.data?.error || 'No se pudieron generar las ideas'); }
                 setIdeasAmbCarga(false);
@@ -6402,7 +6414,7 @@ export default function Visor3D({ cliente = false }) {
                 try {
                   const ctx = (await contextoModelo()).texto, nom = h => (h ? h : 'sin color definido'), L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]);
                   let marcaId = ''; try { marcaId = localStorage.getItem('ideasMarca') || ''; } catch { /* sin marca */ }
-                  const r = await api.post('/estudio-ideas/interiorismo', { objetivo: ideasAmbBrief, muro: { largo: Math.round(L), alto: Math.round(mu.h || api3d.current.modelo?.altura || 260), sala: salaDelMuro(mu).nombre }, actual: nom(actual), otras: 'muros ' + nom(acab.todosMuros) + ', suelos ' + nom(acab.todosSuelos) + ', techos ' + nom(acab.todosTechos), contexto: ctx, previas: ideasMuro.map(x => x.titulo), marcaId }, { timeout: 180000 });
+                  const r = await api.post('/estudio-ideas/interiorismo', { medicionId: id, objetivo: ideasAmbBrief, muro: { largo: Math.round(L), alto: Math.round(mu.h || api3d.current.modelo?.altura || 260), sala: salaDelMuro(mu).nombre }, actual: nom(actual), otras: 'muros ' + nom(acab.todosMuros) + ', suelos ' + nom(acab.todosSuelos) + ', techos ' + nom(acab.todosTechos), contexto: ctx, previas: ideasMuro.map(x => x.titulo), marcaId }, { timeout: 180000 });
                   setIdeasMuro((r.data.ideas || []).map(q => ({ ...q, revestimientos: q.revestimientos || [] })));
                 } catch (e) { setIdeasMuroErr(e.response?.data?.error || 'No se pudieron generar las ideas'); }
                 setIdeasMuroCarga(false);
@@ -6424,7 +6436,7 @@ export default function Visor3D({ cliente = false }) {
                   const d = (await api.get('/biblioteca3d')).data || {};
                   const piezas = [...(d.modelos || []), ...(d.mios || [])].filter(m => m.url && m.w > 0 && m.d > 0 && !/^Camas$/i.test(m.categoria || '')).map(m => ({ id: m.id, nombre: m.nombre, categoria: m.categoria || '', w: m.w, d: m.d, alto: m.alto }));
                   const ctx = (await contextoModelo()).texto;
-                  const r = await api.post('/estudio-ideas/decoracion', { objetivo: ideasAmbBrief, sala: { nombre: sel.sa.nombre || '', area: Math.round(area * 10) / 10, largo: Math.max(...xs) - Math.min(...xs), ancho: Math.max(...ys) - Math.min(...ys), esquinas: pts.length, puertas: nPuertas, maquinas: (sel.pl.equipos || []).length }, piezas, contexto: ctx, previas: ideasDeco.map(x => x.titulo) }, { timeout: 180000 });
+                  const r = await api.post('/estudio-ideas/decoracion', { medicionId: id, objetivo: ideasAmbBrief, sala: { nombre: sel.sa.nombre || '', area: Math.round(area * 10) / 10, largo: Math.max(...xs) - Math.min(...xs), ancho: Math.max(...ys) - Math.min(...ys), esquinas: pts.length, puertas: nPuertas, maquinas: (sel.pl.equipos || []).length }, piezas, contexto: ctx, previas: ideasDeco.map(x => x.titulo) }, { timeout: 180000 });
                   const mapa = new Map(piezas.map(p => [p.id, [...(d.modelos || []), ...(d.mios || [])].find(m => m.id === p.id)]));
                   setIdeasDeco((r.data.ideas || []).map(x => ({ ...x, elementos: x.elementos.map(e => ({ ...e, modelo: mapa.get(e.id) })).filter(e => e.modelo) })));
                 } catch (e) { setIdeasDecoErr(e.response?.data?.error || 'No se pudieron generar las ideas'); }
@@ -6523,7 +6535,10 @@ export default function Visor3D({ cliente = false }) {
               return (
                 <div style={{ borderBottom: '1px solid #333', marginBottom: 8, paddingBottom: 8 }}>
                   <div style={{ fontWeight: 700, marginBottom: 4 }}>✨ Ideas de la IA</div>
-                  <input value={ideasAmbBrief} onChange={e => setIdeasAmbBrief(e.target.value)} placeholder="Qué busco: industrial, cálido, premium…" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 4 }} />
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                    <input value={ideasAmbBrief} onChange={e => setIdeasAmbBrief(e.target.value)} placeholder="Qué busco (escribe o pulsa 🎤 y habla)" style={{ ...btn, flex: 1, minWidth: 0, boxSizing: 'border-box' }} />
+                    <button type="button" title={escuchando ? 'Parar el dictado' : 'Hablar: el texto se escribe solo'} onClick={() => dictar(t => setIdeasAmbBrief(b => (b ? b + ' ' : '') + t))} style={{ ...btn, background: escuchando ? '#a33' : '#6b6159', padding: '0 10px' }}>{escuchando ? '■' : '🎤'}</button>
+                  </div>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {esMuro && <button style={{ ...btn, background: '#8c8076', fontWeight: 700 }} disabled={ideasMuroCarga} onClick={() => pideIdeasMuro(false)} title="Pintura + revestimiento + rótulo, con las tendencias de ahora. Si lo dejas en blanco, la IA te sorprende">{ideasMuroCarga ? 'Pensando… (puede tardar un poco)' : '✨ Ideas completas para este muro'}</button>}
                     <button style={{ ...btn, background: '#8c8076', fontWeight: 700 }} disabled={ideasDecoCarga} onClick={pideIdeasDeco} title="Plantas, esculturas, cuadros, lámparas… elegidos de tu biblioteca 3D y colocados donde caben, sin chocar con las máquinas">{ideasDecoCarga ? 'Pensando… (puede tardar un poco)' : '🪴 Decorar esta sala'}</button>

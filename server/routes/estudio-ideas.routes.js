@@ -5,6 +5,19 @@ import { authenticateToken, requirePermission } from '../middleware/auth.middlew
 import { callClaude } from '../utils/anthropic.js';
 import { leerJson, guardarJson } from '../utils/asistente-personal.js';
 
+// Lo que el CRM sabe del proyecto al que pertenece el plano (nombre y fase), para que las ideas encajen con el momento del proyecto. No se envía el nombre del cliente.
+const FASES_CRM = ['Diseño previo (todavía se está definiendo la idea)', 'Arquitectura (planos)', 'Instalaciones', 'Interiorismo y materialidad (aquí se eligen acabados y ambiente)', 'Maquinaria y equipamiento', 'Documentación de apoyo'];
+async function contextoCrm(medicionId) {
+  try {
+    if (!medicionId) return '';
+    const { data: m } = await supabase.from('mediciones').select('project_id, nombre').eq('id', String(medicionId).slice(0, 60)).maybeSingle();
+    if (!m?.project_id) return m?.nombre ? 'PLANO: ' + String(m.nombre).slice(0, 80) + '.\n' : '';
+    const { data: p } = await supabase.from('client_projects').select('project_name, phase').eq('id', m.project_id).maybeSingle();
+    if (!p) return '';
+    return 'PROYECTO EN EL CRM: «' + String(p.project_name || m.nombre || '').slice(0, 80) + '», fase ' + (Number(p.phase) || 0) + ' → ' + (FASES_CRM[Number(p.phase) || 0] || '') + '. Adapta el nivel de detalle y de atrevimiento a esa fase.\n';
+  } catch { return ''; }
+}
+
 // «Estudio de ideas»: un agente creativo con ChatGPT (API de OpenAI, Responses). Se le comparte una imagen (una pared, un local, una vista 3D),
 // se le pide una idea (un mural, un rótulo, un ambiente) y genera la imagen; se sigue hablando para retocarla y, al final, se le pide solo la imagen.
 // Dos modos de trabajo con un render:
@@ -184,7 +197,7 @@ const FUENTES_VALIDAS = { 'Anton-Regular': 'Anton (condensada, potente)', 'Bebas
 // Ideas completas para UNA pared: pintura + revestimiento + rotulación, con tendencias reales y sin depender de lo que pida el usuario
 router.post('/interiorismo', async (req, res) => {
   try {
-    const b = req.body || {}, objetivo = String(b.objetivo || '').slice(0, 400), contexto = String(b.contexto || '').slice(0, 3500), otras = String(b.otras || '').slice(0, 400), actual = String(b.actual || '').slice(0, 200);
+    const b = req.body || {}, objetivo = String(b.objetivo || '').slice(0, 400), contexto = (await contextoCrm(b.medicionId)) + String(b.contexto || '').slice(0, 3500), otras = String(b.otras || '').slice(0, 400), actual = String(b.actual || '').slice(0, 200);
     const previas = (Array.isArray(b.previas) ? b.previas : []).map(x => String(x || '').slice(0, 80)).slice(0, 24);
     const mu = { largo: Math.max(50, Math.min(5000, Number(b.muro?.largo) || 400)), alto: Math.max(150, Math.min(600, Number(b.muro?.alto) || 260)), sala: String(b.muro?.sala || '').slice(0, 60) };
     let marca = ''; if (b.marcaId) { try { const m = (await leerMarcas()).find(x => x.id === b.marcaId); if (m) marca = 'MARCA DEL CLIENTE (úsala: colores, lemas y tono):\n' + String(m.ficha || '').slice(0, 2200); } catch { /* sin marca */ } }
@@ -209,7 +222,7 @@ router.post('/interiorismo', async (req, res) => {
 // Decoración de una sala: la IA elige piezas de la biblioteca 3D (plantas, esculturas, cuadros, lámparas…) y DÓNDE van (esquina, pared, entrada, centro); el visor calcula el sitio exacto sin chocar con las máquinas
 router.post('/decoracion', async (req, res) => {
   try {
-    const b = req.body || {}, objetivo = String(b.objetivo || '').slice(0, 400), contexto = String(b.contexto || '').slice(0, 3000), previas = (Array.isArray(b.previas) ? b.previas : []).map(x => String(x || '').slice(0, 80)).slice(0, 24);
+    const b = req.body || {}, objetivo = String(b.objetivo || '').slice(0, 400), contexto = (await contextoCrm(b.medicionId)) + String(b.contexto || '').slice(0, 3000), previas = (Array.isArray(b.previas) ? b.previas : []).map(x => String(x || '').slice(0, 80)).slice(0, 24);
     const sala = { nombre: String(b.sala?.nombre || '').slice(0, 60), area: Math.max(1, Math.min(5000, Number(b.sala?.area) || 50)), largo: Math.round(Number(b.sala?.largo) || 0), ancho: Math.round(Number(b.sala?.ancho) || 0), esquinas: Math.max(0, Math.min(40, Number(b.sala?.esquinas) || 0)), puertas: Math.max(0, Math.min(20, Number(b.sala?.puertas) || 0)), maquinas: Math.max(0, Math.min(500, Number(b.sala?.maquinas) || 0)) };
     const piezas = (Array.isArray(b.piezas) ? b.piezas : []).slice(0, 110).map(p => ({ id: String(p?.id || '').slice(0, 60), nombre: String(p?.nombre || '').slice(0, 60), categoria: String(p?.categoria || '').slice(0, 30), w: Math.round(Number(p?.w) || 0), d: Math.round(Number(p?.d) || 0), alto: Math.round(Number(p?.alto) || 0) })).filter(p => p.id && p.nombre);
     if (!piezas.length) return res.status(400).json({ error: 'No hay piezas en la biblioteca 3D para decorar' });
@@ -233,7 +246,7 @@ router.post('/decoracion', async (req, res) => {
 router.post('/ambiente', async (req, res) => {
   try {
     const tipo = ['muro', 'suelo', 'global'].includes(req.body?.tipo) ? req.body.tipo : 'global';
-    const objetivo = String(req.body?.objetivo || '').slice(0, 400), contexto = String(req.body?.contexto || '').slice(0, 4500), actual = String(req.body?.actual || '').slice(0, 300), otras = String(req.body?.otras || '').slice(0, 400);
+    const objetivo = String(req.body?.objetivo || '').slice(0, 400), contexto = (await contextoCrm(req.body?.medicionId)) + String(req.body?.contexto || '').slice(0, 4500), actual = String(req.body?.actual || '').slice(0, 300), otras = String(req.body?.otras || '').slice(0, 400);
     const forma = tipo === 'global'
       ? '{"ideas":[{"titulo":"nombre corto","descripcion":"2 frases: el ambiente, por qué funciona en un gimnasio y qué sensación da","muros":"#RRGGBB","suelo":"#RRGGBB","techo":"#RRGGBB","acento":"#RRGGBB"}]}'
       : '{"ideas":[{"titulo":"nombre corto","descripcion":"2 frases: cómo queda, por qué funciona y con qué se combina","principal":"#RRGGBB","acento":"#RRGGBB"}]}';
