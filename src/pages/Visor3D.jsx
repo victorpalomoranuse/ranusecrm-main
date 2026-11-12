@@ -6585,7 +6585,7 @@ export default function Visor3D({ cliente = false }) {
                 setIdeasAmbCarga(false);
               };
               // Ideas completas de pared: pintura + revestimiento + rótulo. Cada capa se puede aplicar sola o todas juntas.
-              const salaDelMuro = (mu) => { const pls = api3d.current.modelo?.plantas || [api3d.current.modelo]; const dx = mu.b[0] - mu.a[0], dy = mu.b[1] - mu.a[1], L = Math.hypot(dx, dy) || 1, mx = (mu.a[0] + mu.b[0]) / 2, my = (mu.a[1] + mu.b[1]) / 2; for (const sg of [1, -1]) { const p = [mx - dy / L * 30 * sg, my + dx / L * 30 * sg]; for (const pl of pls) for (const sa of (pl?.salas || [])) if (sa.pts?.length >= 3 && puntoEnPoligono(p, sa.pts)) return { lado: sg, nombre: sa.nombre || '' }; } return { lado: 1, nombre: '' }; };
+              const salaDelMuro = (mu) => { const pls = api3d.current.modelo?.plantas || [api3d.current.modelo]; const dx = mu.b[0] - mu.a[0], dy = mu.b[1] - mu.a[1], L = Math.hypot(dx, dy) || 1, mx = (mu.a[0] + mu.b[0]) / 2, my = (mu.a[1] + mu.b[1]) / 2; for (const sg of [1, -1]) { const p = [mx - dy / L * 30 * sg, my + dx / L * 30 * sg]; for (const pl of (pls.filter(q => (q?.muros || []).some(m => m.id === mu.id)).length ? pls.filter(q => (q?.muros || []).some(m => m.id === mu.id)) : pls)) for (const sa of (pl?.salas || [])) if (sa.pts?.length >= 3 && puntoEnPoligono(p, sa.pts)) return { lado: sg, nombre: sa.nombre || '' }; } return { lado: 1, nombre: '' }; };
               let muroForzado = null;
               const muroSel = () => muroForzado || (api3d.current.modelo?.plantas || [api3d.current.modelo]).flatMap(p => p?.muros || []).find(m => m.id === selAcab.id);
               // la planta del muro puede estar desplazada y a otra altura (como la de arriba): todo lo que se coloque va con ese desplazamiento y esa altura
@@ -6605,7 +6605,7 @@ export default function Visor3D({ cliente = false }) {
               // ── Decoración de la sala: la IA elige piezas de la biblioteca 3D y dónde van; aquí se calcula el sitio exacto sin chocar con máquinas ni muros
               const salaSel = () => {
                 const pls = api3d.current.modelo?.plantas || [api3d.current.modelo];
-                if (esMuro) { const mu = muroSel(); if (!mu) return null; const dx = mu.b[0] - mu.a[0], dy = mu.b[1] - mu.a[1], L = Math.hypot(dx, dy) || 1, mx = (mu.a[0] + mu.b[0]) / 2, my = (mu.a[1] + mu.b[1]) / 2; for (const sg of [1, -1]) { const p = [mx - dy / L * 30 * sg, my + dx / L * 30 * sg]; for (const pl of pls) for (const sa of (pl?.salas || [])) if (sa.pts?.length >= 3 && puntoEnPoligono(p, sa.pts)) return { sa, pl }; } return null; }
+                if (esMuro) { const mu = muroSel(); if (!mu) return null; const dx = mu.b[0] - mu.a[0], dy = mu.b[1] - mu.a[1], L = Math.hypot(dx, dy) || 1, mx = (mu.a[0] + mu.b[0]) / 2, my = (mu.a[1] + mu.b[1]) / 2; for (const sg of [1, -1]) { const p = [mx - dy / L * 30 * sg, my + dx / L * 30 * sg]; for (const pl of (pls.filter(q => (q?.muros || []).some(m => m.id === mu.id)).length ? pls.filter(q => (q?.muros || []).some(m => m.id === mu.id)) : pls)) for (const sa of (pl?.salas || [])) if (sa.pts?.length >= 3 && puntoEnPoligono(p, sa.pts)) return { sa, pl }; } return null; }
                 for (const pl of pls) for (let i = 0; i < (pl?.salas || []).length; i++) { const sa = pl.salas[i]; if ((sa.idS || ('s' + i)) === selAcab.id && sa.pts?.length >= 3) return { sa, pl }; }
                 return null;
               };
