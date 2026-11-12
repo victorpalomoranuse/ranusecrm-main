@@ -999,7 +999,7 @@ function luzLedObjeto(g, o, presup, amb) {
 // Tira LED: cinta luminosa que sigue un recorrido y alumbra de verdad hacia donde se le indique
 function construirLed(o, presup, amb, seleccionado) {
   const g = new THREE.Group(), pts = o.pts || [], L = o.led || { ancho: 1.2, k: 3000, lm: 800, dir: 'abajo' }; if (pts.length < 2) return g;
-  const n = pts.length, m = L.cerrado ? n : n - 1, y = (o.z0 || 250) * CM, ancho = Math.max(0.3, L.ancho) * CM, hex = kelvinHex(L.k), col = new THREE.Color(hex);
+  const n = pts.length, m = L.cerrado ? n : n - 1, y = (o.z0 || 250) * CM, ancho = Math.max(0.3, L.ancho) * CM, hex = /^#[0-9a-fA-F]{6}$/.test(o.color || '') ? o.color : kelvinHex(L.k), col = new THREE.Color(hex); // si la tira tiene un color elegido, manda sobre la temperatura
   const mat = new THREE.MeshBasicMaterial({ color: seleccionado ? 0x9cc8ff : col });
   for (let i = 0; i < m; i++) {
     const a = pts[i], b = pts[(i + 1) % n], largo = Math.hypot(b[0] - a[0], b[1] - a[1]) * CM; if (largo < 0.01) continue;
