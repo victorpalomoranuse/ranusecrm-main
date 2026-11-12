@@ -2388,6 +2388,8 @@ export default function Visor3D({ cliente = false }) {
       sel = null; setSeleccion(null);
       while (raiz.children.length) { const o = raiz.children[0]; raiz.remove(o); o.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); }
       const plantas = modelo.plantas || [modelo];
+      // las salas sin identificador se numeraban s0, s1… dentro de cada planta: el suelo/techo de «s0» de una planta se repetía en las demás. Las de las plantas 2.ª en adelante reciben un identificador propio
+      plantas.forEach((p, ipI) => { if (ipI > 0) (p.salas || []).forEach((sa, i) => { if (!sa.idS) sa.idS = 'p' + ipI + 's' + i; if (!sa.idT) sa.idT = 'p' + ipI + 's' + i; }); });
       const offsPl = alinearPlantas(plantas); api3d.current.offsPl = offsPl;
       // césped dibujado en el plano 2D: el plano manda en la posición y las medidas; el 3D, en el aspecto (líneas, colores, carriles)
       const ces2d = []; plantas.forEach((p, i) => (p.equipos || []).filter(e => e.cesped && e.estado !== 'dem').forEach(e => ces2d.push({ ...e, ox: offsPl[i][0], oy: offsPl[i][1] })));
