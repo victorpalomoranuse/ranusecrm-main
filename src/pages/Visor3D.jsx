@@ -11,6 +11,7 @@ import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import opentype from 'opentype.js';
 import EstudioIdeas from '../components/EstudioIdeas';
 import { PRESETS_REVEST, PERFILES_MOLDURA, construirRevest, colocaEnMuro, normalizaRevest, preset as presetRevest, cajaRevest, espesorRevest } from '../components/revestimientos';
+import { construirDeco, KINDS_DECO, MEDIDAS_DECO } from '../components/deco3d';
 import { construirRack, rackPorDefecto, normalizaRack, calculosRack, textoRack, dimRack, TIPOS_RACK, TIPOS_BAHIA, ACCESORIOS, PERFILES_RACK, COLORES_RACK, bahiaPorDefecto } from '../components/rack3d';
 import { construirCesped, cespedPorDefecto, normalizaCesped, calculosCesped, textoCesped, PRESETS_CESPED, PRESETS_MARCAJE, aplicaPresetMarcaje, COLORES_CESPED, COLORES_LINEA } from '../components/cesped3d';
 import { construirCubierta, cubiertaPorDefecto, normalizaCubierta, calculosCubierta, textoCubierta, altoCubierta, TIPOS_CUBIERTA, PANELES, COLORES_PANEL } from '../components/cubierta3d';
@@ -111,6 +112,7 @@ const ESPEJOS = [
 // ── Suelos técnicos de gimnasio ──────────────────────────────────────────────
 // Losetas lisas de 1×1 m (negra, gris, camel) con junta fina y un tono algo distinto en cada una, y suelos Paviflex hechos con tu foto
 // pero SIN repetirse: cada metro cuadrado coge un trozo distinto de la foto (girado y volteado), así no se ve el mismo dibujo una y otra vez.
+const libreModelo = (e) => { const M = MEDIDAS_DECO[e.libre] || [60, 60, 100]; return { libre: e.libre, nombre: e.nombre || KINDS_DECO[e.libre] || 'Decoración', categoria: e.libre === 'cuadro' ? 'Cuadros y espejos' : 'Decoración', w: e.ancho || M[0], d: M[1], alto: e.altoCm || M[2] }; };
 const SB_PUBLICO = 'https://guumqvvaalifyluxmidz.supabase.co/storage/v1/object/public/project-documents/';
 const GLSL_SUELO = `
 vec4 sueloCelda(vec2 c) { return fract(sin(vec4(dot(c, vec2(127.1, 311.7)), dot(c, vec2(269.5, 183.3)), dot(c, vec2(419.2, 371.9)), dot(c, vec2(57.3, 91.7)))) * 43758.5453); }
@@ -2052,6 +2054,7 @@ export default function Visor3D({ cliente = false }) {
     r.onend = () => { vozRef.current = null; setEscuchando(false); };
     try { r.start(); setEscuchando(true); } catch { vozRef.current = null; setEscuchando(false); }
   };
+  const [ideasSala, setIdeasSala] = useState([]), [ideasSalaCarga, setIdeasSalaCarga] = useState(false), [ideasSalaErr, setIdeasSalaErr] = useState(''), [ideasSalaAplic, setIdeasSalaAplic] = useState({});
   const [ideasDeco, setIdeasDeco] = useState([]), [ideasDecoCarga, setIdeasDecoCarga] = useState(false), [ideasDecoErr, setIdeasDecoErr] = useState(''), [ideasDecoAplic, setIdeasDecoAplic] = useState({});
   const [ideasMuro, setIdeasMuro] = useState([]), [ideasMuroCarga, setIdeasMuroCarga] = useState(false), [ideasMuroErr, setIdeasMuroErr] = useState(''), [ideasMuroAplic, setIdeasMuroAplic] = useState({});
   const [ideasAmb, setIdeasAmb] = useState(null), [ideasAmbBrief, setIdeasAmbBrief] = useState(''), [ideasAmbCarga, setIdeasAmbCarga] = useState(false), [ideasAmbErr, setIdeasAmbErr] = useState(''), [ideasAmbTipo, setIdeasAmbTipo] = useState('');
@@ -3662,6 +3665,16 @@ export default function Visor3D({ cliente = false }) {
         gk.position.set(o.cx * CM, 0, o.cy * CM); gk.rotation.y = -(o.rot || 0) * Math.PI / 180;
         gk.userData.oid = o.id; gk.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
         a.esc.add(gk);
+        return;
+      }
+      if (o.tipo === 'deco') {
+        const gd = new THREE.Group(), cont = construirDeco(o); cont.position.y = (o.z0 || 0) * CM; gd.add(cont);
+        const hit = new THREE.Mesh(new THREE.BoxGeometry(Math.max(0.1, (o.w || 50) * CM), Math.max(0.1, (o.alto || 100) * CM), Math.max(0.05, (o.d || 50) * CM)), new THREE.MeshBasicMaterial({ visible: false }));
+        hit.position.y = ((o.alto || 100) * CM) / 2 + (o.z0 || 0) * CM; hit.userData.hit = true; gd.add(hit);
+        if (selIdsRef.current.has(o.id)) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(hit.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(hit.position); gd.add(l); }
+        gd.position.set(o.cx * CM, 0, o.cy * CM); gd.rotation.y = -(o.rot || 0) * Math.PI / 180;
+        gd.userData.oid = o.id; gd.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
+        a.esc.add(gd);
         return;
       }
       if (o.tipo === 'sauna') {
@@ -6452,7 +6465,8 @@ export default function Visor3D({ cliente = false }) {
               };
               // Ideas completas de pared: pintura + revestimiento + rótulo. Cada capa se puede aplicar sola o todas juntas.
               const salaDelMuro = (mu) => { const pls = api3d.current.modelo?.plantas || [api3d.current.modelo]; const dx = mu.b[0] - mu.a[0], dy = mu.b[1] - mu.a[1], L = Math.hypot(dx, dy) || 1, mx = (mu.a[0] + mu.b[0]) / 2, my = (mu.a[1] + mu.b[1]) / 2; for (const sg of [1, -1]) { const p = [mx - dy / L * 30 * sg, my + dx / L * 30 * sg]; for (const pl of pls) for (const sa of (pl?.salas || [])) if (sa.pts?.length >= 3 && puntoEnPoligono(p, sa.pts)) return { lado: sg, nombre: sa.nombre || '' }; } return { lado: 1, nombre: '' }; };
-              const muroSel = () => (api3d.current.modelo?.plantas || [api3d.current.modelo]).flatMap(p => p?.muros || []).find(m => m.id === selAcab.id);
+              let muroForzado = null;
+              const muroSel = () => muroForzado || (api3d.current.modelo?.plantas || [api3d.current.modelo]).flatMap(p => p?.muros || []).find(m => m.id === selAcab.id);
               // la planta del muro puede estar desplazada y a otra altura (como la de arriba): todo lo que se coloque va con ese desplazamiento y esa altura
               const plantaDeMuro = (mu) => { const a0 = api3d.current, pls = a0.modelo?.plantas || [a0.modelo], ip = Math.max(0, pls.findIndex(p => (p?.muros || []).some(m => m.id === mu.id))); const [ox, oy] = (a0.offsPl || [])[ip] || [0, 0]; return { ox, oy, z: pls[ip]?.z || 0 }; };
               const pideIdeasMuro = async (_) => {
@@ -6485,7 +6499,7 @@ export default function Visor3D({ cliente = false }) {
                   const ctx = (await contextoModelo()).texto;
                   const r = await api.post('/estudio-ideas/decoracion', { medicionId: id, objetivo: ideasAmbBrief, sala: { nombre: sel.sa.nombre || '', area: Math.round(area * 10) / 10, largo: Math.max(...xs) - Math.min(...xs), ancho: Math.max(...ys) - Math.min(...ys), esquinas: pts.length, puertas: nPuertas, maquinas: (sel.pl.equipos || []).length }, piezas, contexto: ctx, previas: ideasDeco.map(x => x.titulo) }, { timeout: 180000 });
                   const mapa = new Map(piezas.map(p => [p.id, [...(d.modelos || []), ...(d.mios || [])].find(m => m.id === p.id)]));
-                  setIdeasDeco((r.data.ideas || []).map(x => ({ ...x, elementos: x.elementos.map(e => ({ ...e, modelo: mapa.get(e.id) })).filter(e => e.modelo) })));
+                  setIdeasDeco((r.data.ideas || []).map(x => ({ ...x, elementos: x.elementos.map(e => ({ ...e, modelo: e.libre ? libreModelo(e) : mapa.get(e.id) })).filter(e => e.modelo) })));
                 } catch (e) { setIdeasDecoErr(e.response?.data?.error || 'No se pudieron generar las ideas'); }
                 setIdeasDecoCarga(false);
               };
@@ -6516,7 +6530,7 @@ export default function Visor3D({ cliente = false }) {
                     const cand = candidatos(e.ubicacion === 'entrada' && !puertas.length ? 'esquina' : e.ubicacion, w, d), sitio = cand.find(q => (q.pared ? dentro(q.x, q.y) && obst.every(o => Math.hypot(q.x - o.x, q.y - o.y) >= o.r + r * 0.6 + 8) : libre(q.x, q.y, r)));
                     if (!sitio) { sinSitio++; continue; }
                     const colgado = /cuadro|espejo/i.test(m.categoria || '');
-                    nuevos.push({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + nuevos.length, tipo: 'bloque', cid: null, nombre: m.nombre, etiqueta: m.categoria || 'Decoración', cx: Math.round((sitio.x + pmD.ox) * 10) / 10, cy: Math.round((sitio.y + pmD.oy) * 10) / 10, rot: sitio.rot, w, d, alto, z0: (colgado ? 110 : 0) + pmD.z, color: null, mod: { url: m.url, tipo: m.tipo || 'gltf', rot: 0 } });
+                    nuevos.push({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + nuevos.length, tipo: 'bloque', cid: null, nombre: m.nombre, etiqueta: m.categoria || 'Decoración', cx: Math.round((sitio.x + pmD.ox) * 10) / 10, cy: Math.round((sitio.y + pmD.oy) * 10) / 10, rot: sitio.rot, w, d, alto, z0: (colgado ? 110 : 0) + pmD.z, color: null, ...(m.libre ? { tipo: 'deco', deco: { kind: m.libre, ...(e.color2 ? { color2: e.color2 } : {}) }, color: e.color || null, cid: undefined } : { mod: { url: m.url, tipo: m.tipo || 'gltf', rot: 0 } }) });
                     obst.push({ x: sitio.x, y: sitio.y, r: sitio.pared ? r * 0.6 : r });
                   }
                 }
@@ -6524,7 +6538,61 @@ export default function Visor3D({ cliente = false }) {
                 setIdeasDecoAplic(a => ({ ...a, [i]: { n: nuevos.length, sin: sinSitio } }));
                 setAviso(nuevos.length ? '«' + x.titulo + '»: ' + nuevos.length + ' pieza' + (nuevos.length === 1 ? '' : 's') + ' colocada' + (nuevos.length === 1 ? '' : 's') + ' en la sala ✓' + (sinSitio ? ' (' + sinSitio + ' sin sitio libre)' : '') : 'No he encontrado sitio libre para esas piezas en esta sala.');
               };
-              const aplicaPintura = (x) => { if (x.pintura) poner(x.pintura); };
+              // ── Concepto completo de la sala: suelo + techo + cada pared con su papel + luces + decoración
+              const murosDeSala = (sel) => {
+                const pts = sel.sa.pts, n = pts.length, cx = pts.reduce((q, p) => q + p[0], 0) / n, cy = pts.reduce((q, p) => q + p[1], 0) / n, out = [];
+                for (const mu of sel.pl.muros || []) {
+                  const mx = (mu.a[0] + mu.b[0]) / 2, my = (mu.a[1] + mu.b[1]) / 2, dx = mu.b[0] - mu.a[0], dy = mu.b[1] - mu.a[1], L = Math.hypot(dx, dy) || 1;
+                  let dmin = 1e9; for (let i = 0; i < n; i++) { const p = pts[i], q = pts[(i + 1) % n], ex = q[0] - p[0], ey = q[1] - p[1], l2 = ex * ex + ey * ey || 1, t = Math.max(0, Math.min(1, ((mx - p[0]) * ex + (my - p[1]) * ey) / l2)); dmin = Math.min(dmin, Math.hypot(mx - p[0] - t * ex, my - p[1] - t * ey)); }
+                  const paralela = pts.some((p, i) => { const q = pts[(i + 1) % n], ex = q[0] - p[0], ey = q[1] - p[1], le = Math.hypot(ex, ey) || 1; return Math.abs((dx * ey - dy * ex) / (L * le)) < 0.15; });
+                  if (dmin > (mu.t || 12) / 2 + 30 || !paralela || L < 80) continue;
+                  const ang = Math.atan2(my - cy, mx - cx), lado = Math.abs(Math.cos(ang)) > Math.abs(Math.sin(ang)) ? (Math.cos(ang) > 0 ? 'este' : 'oeste') : (Math.sin(ang) > 0 ? 'sur' : 'norte');
+                  const cerca = (sel.pl.equipos || []).filter(e => !e.cesped && Math.hypot(e.cx - mx, e.cy - my) < 260).slice(0, 3).map(e => e.nombre || e.nm || '').filter(Boolean);
+                  out.push({ id: mu.id, largo: Math.round(L), alto: Math.round(mu.h || api3d.current.modelo?.altura || 260), lado, aberturas: (mu.ab || []).length, cerca });
+                }
+                return out.slice(0, 14);
+              };
+              const cargaPiezas = async () => { const d = (await api.get('/biblioteca3d')).data || {}, todas = [...(d.modelos || []), ...(d.mios || [])]; return { piezas: todas.filter(m => m.url && m.w > 0 && m.d > 0 && !/^Camas$/i.test(m.categoria || '')).map(m => ({ id: m.id, nombre: m.nombre, categoria: m.categoria || '', w: m.w, d: m.d, alto: m.alto })), todas }; };
+              const pideIdeasSala = async () => {
+                const sel = salaSel(); if (!sel) { setIdeasSalaErr('No encuentro la sala de esta superficie.'); return; }
+                setIdeasSalaCarga(true); setIdeasSalaErr(''); setIdeasSalaAplic({});
+                try {
+                  const pts = sel.sa.pts, xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+                  const area = Math.abs(pts.reduce((q, p, i) => { const r2 = pts[(i + 1) % pts.length]; return q + (p[0] * r2[1] - r2[0] * p[1]); }, 0)) / 2 / 1e4;
+                  const { piezas, todas } = await cargaPiezas(), ms = murosDeSala(sel), ctx = (await contextoModelo()).texto;
+                  const nPuertas = (sel.pl.muros || []).reduce((q, mu) => q + (mu.ab || []).filter(o => /puerta/i.test((o.nm || '') + ' ' + (o.tip || ''))).length, 0);
+                  const r = await api.post('/estudio-ideas/sala', { medicionId: id, objetivo: ideasAmbBrief, sala: { nombre: sel.sa.nombre || '', area: Math.round(area * 10) / 10, largo: Math.max(...xs) - Math.min(...xs), ancho: Math.max(...ys) - Math.min(...ys), maquinas: (sel.pl.equipos || []).length, puertas: nPuertas }, muros: ms, piezas, suelos: SUELOS_TEC.map(t => ({ id: 'tex:' + t.id, nombre: t.nombre })), contexto: ctx, previas: ideasSala.map(q => q.titulo) }, { timeout: 240000 });
+                  const mapa = new Map(todas.map(m => [m.id, m]));
+                  setIdeasSala((r.data.ideas || []).map(q => ({ ...q, decoracion: (q.decoracion || []).map(e => ({ ...e, modelo: e.libre ? libreModelo(e) : mapa.get(e.id) })).filter(e => e.modelo) })));
+                } catch (e) { setIdeasSalaErr(e.response?.data?.error || 'No se pudieron generar las ideas'); }
+                setIdeasSalaCarga(false);
+              };
+              const aplicaSala = async (q, i) => {
+                const sel = salaSel(); if (!sel) return;
+                const hechas = []; const ipS = Math.max(0, (sel.pl.salas || []).indexOf(sel.sa)), claveS = sel.sa.idS || ('s' + ipS), claveT = sel.sa.idT || ('s' + ipS);
+                if (q.suelo) { const v = q.suelo.id || q.suelo.color; if (v) { setAcab(a => ({ ...a, salas: { ...a.salas, [claveS]: v } })); hechas.push('suelo'); } }
+                if (q.techo) { setAcab(a => ({ ...a, techos: { ...a.techos, [claveT]: q.techo.color } })); hechas.push('techo'); }
+                const todasMuros = (api3d.current.modelo?.plantas || [api3d.current.modelo]).flatMap(p => p?.muros || []);
+                let nM = 0;
+                try {
+                  for (const m of q.muros || []) {
+                    const mu = todasMuros.find(w => w.id === m.id); if (!mu) continue;
+                    muroForzado = mu; let toco = false;
+                    if (m.pintura) { aplicaPintura(m); toco = true; }
+                    if (m.patron?.length && aplicaPatron(m)) toco = true;
+                    if (m.techo && aplicaTecho(m)) toco = true;
+                    if (m.luces?.length && aplicaLuces(m)) toco = true;
+                    if (m.revestimientos?.length && aplicaRevest(m)) toco = true;
+                    if (m.rotulo && await aplicaRotulo(m)) toco = true;
+                    if (toco) nM++;
+                  }
+                } finally { muroForzado = null; }
+                if (nM) hechas.push(nM + ' pared' + (nM === 1 ? '' : 'es'));
+                if ((q.decoracion || []).length) { aplicaDeco({ titulo: q.titulo, elementos: q.decoracion }, 'sala' + i); hechas.push('decoración'); }
+                setIdeasSalaAplic(a => ({ ...a, [i]: hechas }));
+                setAviso('«' + q.titulo + '» aplicado en esta sala: ' + hechas.join(', ') + ' ✓ (se guarda en el modelo)');
+              };
+              const aplicaPintura = (x) => { const mu = muroSel(); if (mu && x.pintura) setAcab(a => ({ ...a, muros: { ...a.muros, [mu.id]: x.pintura } })); };
               // Patrones pintados sobre la pared: se crean como zonas de pared (rectángulos, rayas, arcos) del color elegido
               const aplicaPatron = (x) => {
                 const mu = muroSel(); if (!mu || !x.patron?.length) return false;
@@ -6602,8 +6670,28 @@ export default function Visor3D({ cliente = false }) {
                     {esMuro && <button style={{ ...btn, background: '#8c8076', fontWeight: 700 }} disabled={ideasMuroCarga} onClick={() => pideIdeasMuro(false)} title="Pintura + revestimiento + rótulo, con las tendencias de ahora. Si lo dejas en blanco, la IA te sorprende">{ideasMuroCarga ? 'Pensando… (puede tardar un poco)' : '✨ Ideas completas para este muro'}</button>}
                     <button style={{ ...btn, background: '#8c8076', fontWeight: 700 }} disabled={ideasDecoCarga} onClick={pideIdeasDeco} title="Plantas, esculturas, cuadros, lámparas… elegidos de tu biblioteca 3D y colocados donde caben, sin chocar con las máquinas">{ideasDecoCarga ? 'Pensando… (puede tardar un poco)' : '🪴 Decorar esta sala'}</button>
                     {!esMuro && <button style={{ ...btn, background: '#6b6159' }} disabled={ideasAmbCarga} onClick={() => pideIdeas('suelo')}>{ideasAmbCarga && ideasAmbTipo !== 'global' ? 'Pensando…' : 'Ideas para este suelo'}</button>}
-                    <button style={{ ...btn, background: '#6b6159' }} disabled={ideasAmbCarga} onClick={() => pideIdeas('global')}>{ideasAmbCarga && ideasAmbTipo === 'global' ? 'Pensando…' : 'Ambiente de todo el espacio'}</button>
+                    <button style={{ ...btn, background: '#8c8076', fontWeight: 700 }} disabled={ideasSalaCarga} onClick={pideIdeasSala} title="Un concepto completo SOLO para esta sala: suelo, techo, cada pared con su papel (una focal), luces y decoración, con una idea diferencial">{ideasSalaCarga ? 'Pensando… (puede tardar un minuto)' : '🎯 Concepto completo de esta sala'}</button>
                   </div>
+                  {ideasSalaErr && <div style={{ color: '#ff9b9b', fontSize: 11, marginTop: 4 }}>{ideasSalaErr}</div>}
+                  {!ideasSalaCarga && ideasSala.map((q, i) => (
+                    <div key={'s' + i} style={{ background: '#2a2a2a', borderRadius: 6, padding: 8, marginTop: 6, border: '1px solid #6b6159' }}>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }}>
+                        {[q.suelo?.color, q.techo?.color, ...(q.muros || []).map(m => m.pintura)].filter(Boolean).slice(0, 7).map((c, k) => <span key={k} title={c} style={{ width: 18, height: 18, background: c, border: '1px solid #666', borderRadius: 4 }} />)}
+                        <b style={{ marginLeft: 4, fontSize: 12.5 }}>🎯 {q.titulo}</b>
+                      </div>
+                      {q.idea && <div style={{ fontSize: 12, color: '#f2c46d', lineHeight: 1.35, marginBottom: 4 }}>«{q.idea}»</div>}
+                      <div style={{ fontSize: 11.5, opacity: 0.88, lineHeight: 1.4, marginBottom: 4 }}>{q.descripcion}</div>
+                      {q.referencia && <div style={{ fontSize: 11, opacity: 0.6, lineHeight: 1.35, marginBottom: 4 }}>📌 {q.referencia}</div>}
+                      <div style={{ fontSize: 11.5, lineHeight: 1.5, marginBottom: 6 }}>
+                        {q.suelo && <div>▦ Suelo: {q.suelo.id ? (SUELOS_TEC.find(t => 'tex:' + t.id === q.suelo.id)?.nombre || 'textura') : q.suelo.color}</div>}
+                        {q.techo && <div>⬜ Techo: {q.techo.color}</div>}
+                        {(q.muros || []).map((m, k) => <div key={k}>🧱 Pared {m.rol === 'focal' ? '★ focal' : m.rol === 'neutro' ? 'neutra' : 'de apoyo'}: {[m.pintura && 'pintura ' + m.pintura, m.patron?.length && 'patrón', m.revestimientos?.length && m.revestimientos.map(r => r.nombre).join(' + '), m.rotulo && '«' + m.rotulo.texto + '»' + (m.rotulo.neon ? ' neón' : ''), m.techo && 'franja de techo' + (m.techo.led ? ' luminosa' : ''), m.luces?.length && 'luz LED'].filter(Boolean).join(' · ')}</div>)}
+                        {(q.decoracion || []).length > 0 && <div>🪴 {q.decoracion.map(e => (e.cantidad > 1 ? e.cantidad + '× ' : '') + e.nombre).join(', ')}</div>}
+                      </div>
+                      <button style={{ ...btn, background: '#8c8076' }} onClick={() => aplicaSala(q, i)}>Aplicar concepto a la sala</button>
+                      {(ideasSalaAplic[i] || []).length > 0 && <div style={{ fontSize: 11, color: '#8fdba0', marginTop: 4 }}>Aplicado: {ideasSalaAplic[i].join(', ')}. Ctrl+Z deshace los objetos; los colores se quitan con «Quitar color».</div>}
+                    </div>
+                  ))}
                   {ideasDecoErr && <div style={{ color: '#ff9b9b', fontSize: 11, marginTop: 4 }}>{ideasDecoErr}</div>}
                   {!ideasDecoCarga && ideasDeco.map((x, i) => (
                     <div key={'d' + i} style={{ background: '#2a2a2a', borderRadius: 6, padding: 8, marginTop: 6 }}>
@@ -6802,6 +6890,25 @@ export default function Visor3D({ cliente = false }) {
               ))}
               {(b3dTab === 'texturas' || b3dTab === 'mistex') && (
                 <>
+            {b3dTab === 'texturas' && (
+              <div style={{ border: '1px solid #4f4842', borderRadius: 6, padding: 8, marginBottom: 10, background: '#26221f' }}>
+                <div style={{ fontWeight: 700, marginBottom: 2 }}>▦ Suelos de gimnasio</div>
+                <div style={{ fontSize: 11, opacity: 0.65, marginBottom: 6 }}>Pulsa uno y luego haz clic en el suelo. Losetas lisas de 1×1 con junta y Paviflex moteados que no se repiten.</div>
+                {['Losetas lisas', 'Paviflex (moteados)'].map(g => (
+                  <div key={g} style={{ marginBottom: 6 }}>
+                    <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 3 }}>{g}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
+                      {SUELOS_TEC.filter(t => t.grupo === g).map(t => (
+                        <div key={t.id} onClick={() => { setMatSel({ id: t.id }); setHerr('pincel'); setGuardado('«' + t.nombre + '» listo: haz clic en el suelo'); }} title={t.nombre} style={{ cursor: 'pointer', border: matSel?.id === t.id ? '2px solid #d4af37' : '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
+                          <img src={t.url} alt={t.nombre} loading="lazy" style={{ width: '100%', height: 44, objectFit: 'cover', display: 'block' }} />
+                          <div style={{ fontSize: 9.5, padding: '1px 3px', background: '#111', lineHeight: 1.2, minHeight: 22 }}>{t.nombre.replace('Paviflex · ', '').replace('Loseta 1×1 ', '')}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             {b3dTab === 'texturas' && matsRanuse?.length > 0 && <>
               <div style={{ opacity: 0.7, marginBottom: 4 }}>Materiales de Ranuse <span style={{ opacity: 0.55, fontSize: 11 }}>(PBR: normales, rugosidad y AO)</span></div>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>

@@ -582,7 +582,7 @@ router.put('/:id', async (req, res) => {
 
 // Escena 3D de un plano: objetos que se colocan y modelan en el visor 3D (bloques de la biblioteca y cajas).
 // Se guarda aparte del dibujo 2D para que ninguno de los dos editores pise al otro.
-const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen', 'sauna', 'revest', 'cubierta', 'cesped', 'rack'];
+const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen', 'sauna', 'revest', 'cubierta', 'cesped', 'rack', 'deco'];
 const BUCKET_TEX = 'project-documents';
 // Las luminarias que se ponen solo en el 3D (focos y colgantes de un carril, y objetos con nombre de lámpara) también se escriben en el plano,
 // en su capa de iluminación. Llevan un id que empieza por «l3_»: cada vez que se guarda la escena 3D se vuelven a calcular.
@@ -683,6 +683,7 @@ router.put('/:id/escena3d', async (req, res) => {
           suelo: { sigAdm: Math.max(50, Math.min(600, num(su.sigAdm, 200))) }, precios,
         };
       })() : undefined,
+      deco: o.tipo === 'deco' ? { kind: ['planta', 'planta_alta', 'arbusto', 'escultura_esfera', 'escultura_arco', 'escultura_monolito', 'banco', 'columna_luz', 'cuadro'].includes(o.deco?.kind) ? o.deco.kind : 'planta', ...(hex(o.deco?.color2) ? { color2: hex(o.deco.color2) } : {}) } : undefined,
       rack: o.tipo === 'rack' && o.rack && typeof o.rack === 'object' ? (() => {
         const r = o.rack, hx = (v, d) => (/^#[0-9a-fA-F]{6}$/.test(v || '') ? v : d), n = (v, d, mn, mx) => Math.max(mn, Math.min(mx, num(v, d)));
         const precios = {}; if (r.precios && typeof r.precios === 'object') Object.keys(r.precios).slice(0, 30).forEach(k => { if (/^[a-z]{2,20}$/.test(k)) precios[k] = n(r.precios[k], 0, 0, 1e6); });
