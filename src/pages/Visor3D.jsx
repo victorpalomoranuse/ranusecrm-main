@@ -3732,6 +3732,35 @@ export default function Visor3D({ cliente = false }) {
   const [foto3d, setFoto3d] = useState({ nombre: '', medidas: '' });
   const [foto3dEstado, setFoto3dEstado] = useState('');
   const [fotos3d, setFotos3d] = useState([]); // fotos del producto (elegidas o pegadas con Ctrl+V)
+  // Generar el modelo 3D de la máquina seleccionada con fotos (como en los bloques de Planos): se guarda en el producto y se ve igual en todos los planos
+  const [fotosMaq, setFotosMaq] = useState([]), [enlaceMaq, setEnlaceMaq] = useState(''), [estadoMaq, setEstadoMaq] = useState(''), [genMaq, setGenMaq] = useState(false), [abrirGenMaq, setAbrirGenMaq] = useState(false);
+  const anadirFotosMaq = fs2 => setFotosMaq(a => [...a, ...Array.from(fs2 || []).filter(x => String(x.type).startsWith('image'))].slice(0, 6));
+  const fotoADataUrl = (file) => new Promise((ok, ko) => { const img = new Image(), url = URL.createObjectURL(file); img.onload = () => { const k = Math.min(1, 1600 / Math.max(img.width, img.height)), cv = document.createElement('canvas'); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url); ok(cv.toDataURL('image/jpeg', 0.9)); }; img.onerror = () => { URL.revokeObjectURL(url); ko(new Error('No se pudo leer una foto')); }; img.src = url; });
+  const generarModeloMaq = async () => {
+    const cid = seleccion?.cid; if (!cid || genMaq) return;
+    if (!fotosMaq.length && !enlaceMaq.trim() && !window.confirm('No has puesto fotos ni enlace: se usarán las fotos que ya tiene este producto. ¿Seguimos?')) return;
+    setGenMaq(true); setEstadoMaq('Preparando las fotos…');
+    try {
+      const imagenes = await Promise.all(fotosMaq.map(fotoADataUrl));
+      const r = await api.post('/catalog/products/' + cid + '/modelo3d-ia', { imagenes, enlace: enlaceMaq.trim(), segundoPlano: true, reusar: true }, { timeout: 120000 }), job = r.data.job;
+      setEstadoMaq('Modelando… (suele tardar de 2 a 5 minutos; puedes seguir trabajando)');
+      const t0 = Date.now();
+      for (;;) {
+        await new Promise(ok => setTimeout(ok, 5000));
+        const e = (await api.get('/catalog/modelo3d-ia/estado/' + job)).data;
+        if (e.estado === 'error') { setEstadoMaq('No se pudo: ' + (e.error || 'error')); break; }
+        if (e.estado === 'perdido') { setEstadoMaq('Se perdió el trabajo (el servidor se reinició). Vuelve a intentarlo.'); break; }
+        if (e.estado === 'listo') {
+          const m = e.modelo3d, mod2 = { url: m.url, tipo: m.tipo || 'glb', rot: m.rot || 0, bytes: m.bytes || 0 };
+          setBiblioteca(prev => { const p0 = prev || []; return p0.map(x => (x.id === cid ? { ...x, modelo3d: mod2 } : x)); });
+          refrescarModelosEq(); setEstadoMaq('Modelo creado y guardado en el producto ✓'); setFotosMaq([]); setEnlaceMaq(''); break;
+        }
+        if (Date.now() - t0 > 20 * 60 * 1000) { setEstadoMaq('Tarda demasiado. Mira la galería o vuelve a intentarlo.'); break; }
+        setEstadoMaq('Modelando… ' + Math.round((Date.now() - t0) / 1000) + ' s (suele tardar de 2 a 5 minutos; puedes seguir trabajando)');
+      }
+    } catch (er) { setEstadoMaq(er.response?.data?.error || er.message || 'No se pudo generar'); }
+    setGenMaq(false);
+  };
   const anadirFotos3d = fs => setFotos3d(a => [...a, ...Array.from(fs || []).filter(f => String(f.type).startsWith('image'))].slice(0, 6));
   const crearConIA = async (files, categoria) => {
     const lista = Array.from(files || []);
@@ -7235,6 +7264,24 @@ export default function Visor3D({ cliente = false }) {
                 </label>
                 <button style={{ ...btn, marginLeft: 6 }} onClick={() => { setElegirMod(v => !v); if (!b3d) api.get('/biblioteca3d').then(r => { const d = r.data || { modelos: [], texturas: [] }; setB3d({ ...d, mistex: d.texturasMias || [] }); }).catch(() => setB3d({ modelos: [], texturas: [], error: true })); }} title="Coge un modelo que ya tienes en «Mis modelos» y se lo asigna a este producto, para todas las máquinas iguales">📂 Elegir de mis modelos</button>
                 {mod && <button style={{ ...btn, marginLeft: 6 }} onClick={quitarModeloEq}>Quitar</button>}
+                <div style={{ marginTop: 8 }}>
+                  <button style={{ ...btn, width: '100%', background: '#6b6159' }} onClick={() => setAbrirGenMaq(v => !v)} title="Crea el modelo 3D de este producto con la IA a partir de fotos, igual que en los bloques de Planos">✨ {mod ? 'Volver a generar' : 'Generar'} el modelo con fotos (IA)</button>
+                  {abrirGenMaq && (
+                    <div style={{ marginTop: 6, background: '#2a2a2a', borderRadius: 6, padding: 8 }}>
+                      <div tabIndex={0} onPaste={e => { const fs2 = Array.from(e.clipboardData?.files || []); if (fs2.length) { e.preventDefault(); anadirFotosMaq(fs2); } }} style={{ border: '1px dashed #6b6159', borderRadius: 6, padding: 6, outline: 'none' }} title="Haz clic aquí y pega con Ctrl+V">
+                        <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4 }}>Haz clic aquí y pega fotos con Ctrl+V (hasta 6, distintas vistas). Si no pones ninguna se usan las que ya tiene el producto.</div>
+                        {!!fotosMaq.length && <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 4 }}>{fotosMaq.map((x, i) => <div key={i + x.name + x.size} style={{ position: 'relative' }}><img src={URL.createObjectURL(x)} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4 }} /><span onClick={() => setFotosMaq(a => a.filter((_, j) => j !== i))} style={{ position: 'absolute', top: -4, right: -4, background: '#a33', borderRadius: 8, width: 14, height: 14, fontSize: 10, textAlign: 'center', cursor: 'pointer' }}>×</span></div>)}</div>}
+                        <label style={{ ...btn, display: 'block', textAlign: 'center', cursor: 'pointer', fontSize: 12 }}>＋ Elegir fotos
+                          <input type="file" multiple accept="image/*" style={{ display: 'none' }} onChange={e => { anadirFotosMaq(e.target.files); e.target.value = ''; }} />
+                        </label>
+                      </div>
+                      <input value={enlaceMaq} onChange={e => setEnlaceMaq(e.target.value)} placeholder="o enlace de la página del proveedor (opcional)" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginTop: 4 }} />
+                      <button disabled={genMaq} style={{ ...btn, display: 'block', width: '100%', marginTop: 4, background: '#8c8076', opacity: genMaq ? 0.5 : 1 }} onClick={generarModeloMaq}>{genMaq ? 'Generando…' : 'Generar modelo' + (fotosMaq.length > 1 ? ' con ' + fotosMaq.length + ' fotos' : '')}</button>
+                      <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>Se guarda en el producto: se verá igual en todas las máquinas iguales y en todos los planos. Se paga por uso con tu clave de OpenAI.</div>
+                      {estadoMaq && <div style={{ fontSize: 11, marginTop: 4, color: '#d4c9bb' }}>{estadoMaq}</div>}
+                    </div>
+                  )}
+                </div>
                 {elegirMod && (() => {
                   const mios = (b3d?.mios || []).filter(m => !elegirFiltro || (m.nombre + ' ' + (m.categoria || '')).toLowerCase().includes(elegirFiltro.toLowerCase()));
                   const asignar = async (m) => {
