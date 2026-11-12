@@ -207,7 +207,7 @@ const SUELOS_TEC = [
   ...[['blackblue-03', 'Negro + azul'], ['blacklightblue-03', 'Negro + celeste'], ['carbon-black-04', 'Carbón negro + blanco'], ['carbon-blackred-03', 'Carbón negro + rojo'], ['eco-viola-03', 'Eco negro + violeta'], ['darkgrey-03', 'Gris oscuro'], ['eco-grey-03', 'Eco gris'], ['granite-red-03', 'Granito gris + rojo'], ['granite-03', 'Granito gris'], ['brownstone-04', 'Terracota'], ['terra-03', 'Arena'], ['chocolate-3', 'Chocolate']]
     .map(([slug, nombre]) => ({ id: 'pavi-' + slug, nombre: 'Paviflex · ' + nombre, tam: 100, fijo: true, suelo: { antirep: true, junta: false, tono: 0.03 }, url: SB_PUBLICO + 'biblioteca3d/paviflex/' + slug + '.jpg', grupo: 'Paviflex (moteados)' })),
 ];
-let envEsp = null, espejoSucio = false, GL_SOFTWARE = false;
+let envEsp = null, espejoSucio = false, GL_SOFTWARE = false, hayEspejos = false;
 // Mapas PBR sueltos (normales, rugosidad, AO): se descargan una vez y cada material usa una copia con el mismo tiling, giro y desplazamiento que su textura base
 const cacheMapas = new Map(); // url → { tex, listo }
 // Los mapas comprimidos KTX2 (Basis) ocupan mucho menos en la memoria de la gráfica. Si no se pueden leer, se usa el JPG equivalente
@@ -238,7 +238,7 @@ function aplicaEspejos(scene) {
       const pb = m.map?.userData?.pbr, mp = m.map?.userData?.mapsUrl, esp = m.map?.userData?.espejo;
       if (esp) {
         if (!m.userData.espOn) { m.userData.espOn = true; m.userData.esp0 = { metalness: m.metalness, roughness: m.roughness, envMapIntensity: m.envMapIntensity }; }
-        m.metalness = 1; m.roughness = 0.04; m.envMap = envEsp; m.envMapIntensity = 1.4; m.bumpMap = null; m.needsUpdate = true;
+        hayEspejos = true; m.metalness = 1; m.roughness = 0.04; m.envMap = envEsp; m.envMapIntensity = 1.4; m.bumpMap = null; m.needsUpdate = true;
       } else if (pb || mp) {
         if (!m.userData.espOn) { m.userData.espOn = true; m.userData.esp0 = { metalness: m.metalness, roughness: m.roughness, envMapIntensity: m.envMapIntensity }; }
         const z = m.userData.esp0 || {}, P = pb || {};
@@ -2355,7 +2355,19 @@ export default function Visor3D({ cliente = false }) {
       if (ctrl.update()) { a0.despierta = ahora + 400; a0.pt?.updateCamera?.(); }
       if (a0.ptRebuild && ahora >= a0.ptRebuild && a0.ptReconstruir) { a0.ptRebuild = 0; a0.ptReconstruir(); }
       const refinando = !!(a0.pt && a0.ptReady && a0.pt.samples < (a0.ptMax || 200));
-      if (!(movi || ahora < (a0.despierta || 0) || refinando)) { a0.reposo = true; return; } // nada ha cambiado: no se dibuja y la tarjeta gráfica descansa
+      if (!(movi || ahora < (a0.despierta || 0) || refinando)) {
+        // espejos reales: cuando la cámara se para en modo Realista, los espejos y metales reflejan la sala de verdad (máquinas, paredes, luces) y no un estudio genérico
+        if (a0.composer && hayEspejos && ahora - (a0.ultEnvEsp || 0) > 1200 && (!a0.envEspPos || a0.envEspPos.distanceTo(cam.position) > 0.25)) {
+          a0.ultEnvEsp = ahora; a0.envEspPos = cam.position.clone();
+          try {
+            const rtC = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType, generateMipmaps: false }), cc = new THREE.CubeCamera(0.1, 200, rtC), oc = [a0.gizmoG, a0.cotasG, a0.nodoG, a0.guiaG], vis = oc.map(o => o && o.visible);
+            oc.forEach(o => { if (o) o.visible = false; }); cc.position.copy(cam.position); scene.add(cc); cc.update(renderer, scene); scene.remove(cc); oc.forEach((o, i) => { if (o) o.visible = vis[i]; });
+            const pm = new THREE.PMREMGenerator(renderer), tx = pm.fromCubemap(rtC.texture).texture; pm.dispose(); rtC.dispose();
+            const vieja = envEsp; envEsp = tx; espejoSucio = true; a0.despierta = ahora + 450; if (vieja && vieja !== tx) vieja.dispose();
+          } catch (e) { a0.ultEnvEsp = ahora + 60000; /* si falla, no se reintenta durante un minuto */ }
+        }
+        if (!(ahora < (a0.despierta || 0))) { a0.reposo = true; return; }
+      } // nada ha cambiado: no se dibuja y la tarjeta gráfica descansa
       a0.reposo = false;
       if (a0.pt && a0.ptReady && !(cliente && movi)) {
         a0.pt.renderSample();
@@ -5332,7 +5344,10 @@ export default function Visor3D({ cliente = false }) {
     } catch (e) { setIa({ estado: 'error', mensaje: e.response?.data?.error || 'No se ha podido mejorar la imagen' }); }
   };
   // Vista bonita (1 clic): Realista + calidad alta, sin aristas ni modo ligero. Es lo contrario del modo Ligero: para ver, mostrar y sacar renders.
-  const poneBonita = () => { setLigero(false); antesLigero.current = null; setRealista(true); setCalidad('alta'); setAristas(false); setAviso('Vista bonita: modo Realista y calidad alta. Para trabajar más fluido, pulsa Ligero.'); };
+  const poneBonita = () => { setLigero(false); antesLigero.current = null; setRealista(true); setCalidad('alta'); setAristas(false);
+    // si todavía no has tocado el look, se aplica el de gimnasio: reflejos de estudio, resplandor en los LED y tono de cámara de cine; si ya lo ajustaste, se respeta
+    if (!(fx.bloom > 0)) { setFx(x => ({ ...x, contraste: 1.08, saturacion: 1.05, calidez: 0.1, vineta: 0.12, bloom: 0.3 })); setTono('agx'); setAmbiente(a => ({ ...a, exposicion: Math.max(a.exposicion || 1, 1.1), luces: Math.max(a.luces || 1, 2.2) })); if (hdris.some(h => 'hdri:' + h.id === 'hdri:brown_photostudio_02')) { setEntorno('hdri:brown_photostudio_02'); setModoAmb('hdri'); } }
+    setAviso('Vista bonita: Realista, calidad alta, reflejos reales en espejos y resplandor en los LED. Para trabajar más fluido, pulsa Ligero.'); };
   // Render rápido (1 clic): estilo revista, fiel al modelo, con la luz del proyecto; sin abrir el formulario
   const renderRapido = () => {
     if ((ligero || !realista || calidad !== 'alta') && !window.confirm('Ahora tienes ' + [ligero ? 'el modo Ligero' : '', !realista ? 'el modo Realista apagado' : '', calidad !== 'alta' ? 'la calidad en «' + calidad + '»' : ''].filter(Boolean).join(', ') + ': el render saldría con menos calidad.\n\nMejor pulsa «✨ Bonita» antes de generarlo.\n\n¿Generarlo igualmente?')) return;
