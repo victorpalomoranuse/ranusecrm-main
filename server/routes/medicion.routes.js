@@ -684,7 +684,7 @@ router.put('/:id/escena3d', async (req, res) => {
         };
       })() : undefined,
       ia: typeof o.ia === 'string' ? o.ia.slice(0, 60) : undefined,
-      deco: o.tipo === 'deco' ? { kind: ['planta', 'planta_alta', 'arbusto', 'escultura_esfera', 'escultura_arco', 'escultura_monolito', 'banco', 'columna_luz', 'cuadro'].includes(o.deco?.kind) ? o.deco.kind : 'planta', ...(hex(o.deco?.color2) ? { color2: hex(o.deco.color2) } : {}) } : undefined,
+      deco: o.tipo === 'deco' ? { kind: ['planta', 'planta_alta', 'arbusto', 'escultura_esfera', 'escultura_arco', 'escultura_monolito', 'banco', 'columna_luz', 'cuadro', 'persona_de_pie', 'persona_andando', 'persona_corriendo', 'persona_mancuernas', 'persona_sentadilla', 'persona_sentada', 'persona_estirando', 'grupo_hablando'].includes(o.deco?.kind) ? o.deco.kind : 'planta', ...(hex(o.deco?.color2) ? { color2: hex(o.deco.color2) } : {}) } : undefined,
       rack: o.tipo === 'rack' && o.rack && typeof o.rack === 'object' ? (() => {
         const r = o.rack, hx = (v, d) => (/^#[0-9a-fA-F]{6}$/.test(v || '') ? v : d), n = (v, d, mn, mx) => Math.max(mn, Math.min(mx, num(v, d)));
         const precios = {}; if (r.precios && typeof r.precios === 'object') Object.keys(r.precios).slice(0, 30).forEach(k => { if (/^[a-z]{2,20}$/.test(k)) precios[k] = n(r.precios[k], 0, 0, 1e6); });

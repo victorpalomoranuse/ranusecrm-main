@@ -11,7 +11,7 @@ import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import opentype from 'opentype.js';
 import EstudioIdeas from '../components/EstudioIdeas';
 import { PRESETS_REVEST, PERFILES_MOLDURA, construirRevest, colocaEnMuro, normalizaRevest, preset as presetRevest, cajaRevest, espesorRevest } from '../components/revestimientos';
-import { construirDeco, KINDS_DECO, MEDIDAS_DECO } from '../components/deco3d';
+import { construirDeco, KINDS_DECO, MEDIDAS_DECO, KINDS_PERSONAS } from '../components/deco3d';
 import { construirRack, rackPorDefecto, normalizaRack, calculosRack, textoRack, dimRack, TIPOS_RACK, TIPOS_BAHIA, ACCESORIOS, PERFILES_RACK, COLORES_RACK, bahiaPorDefecto } from '../components/rack3d';
 import { construirCesped, cespedPorDefecto, normalizaCesped, calculosCesped, textoCesped, PRESETS_CESPED, PRESETS_MARCAJE, aplicaPresetMarcaje, COLORES_CESPED, COLORES_LINEA } from '../components/cesped3d';
 import { construirCubierta, cubiertaPorDefecto, normalizaCubierta, calculosCubierta, textoCubierta, altoCubierta, TIPOS_CUBIERTA, PANELES, COLORES_PANEL } from '../components/cubierta3d';
@@ -1192,6 +1192,7 @@ const ICONOS = {
   alzado: 'M4 4h16v16H4z M4 15h16 M9 4v11 M15 4v11', planta: 'M4 4h16v16H4z M4 10h9 M13 4v16', techo: 'M4 4h16v16H4z M8 8h8v8H8z',
   textura: 'M4 4h16v16H4z M4 9h16 M4 14h16 M9 4v16 M14 4v16', modelos: 'M12 3l8 4v10l-8 4-8-4V7z M4 7l8 4 8-4 M12 11v10',
   cesped: 'M3 18h18 M3 13h18 M3 8h18 M7 6v14 M13 6v14 M19 6v14',
+  persona: 'M12 3.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4z M9 21v-6.5l-2-3.5 2.5-2.5h5L17 11l-2 3.5V21 M12 12v9',
   rack: 'M5 3v18 M19 3v18 M5 7h14 M5 13h14 M5 19h14 M9 7v6 M15 13v6',
   cubierta: 'M2 14l10-8 10 8 M5 13v7 M19 13v7 M2 14h20',
   sauna: 'M4 4h16v16H4z M4 12h9 M4 16h14 M15 7c0-2 2-2 2-4 M11 7c0-2 2-2 2-4',
@@ -4067,6 +4068,7 @@ export default function Visor3D({ cliente = false }) {
   const [saunaMenu, setSaunaMenu] = useState(false);
   const [cubiertaMenu, setCubiertaMenu] = useState(false);
   const [cespedMenu, setCespedMenu] = useState(false);
+  const [personasMenu, setPersonasMenu] = useState(false);
   const [rackMenu, setRackMenu] = useState(false);
   const [revSel, setRevSel] = useState(null);
   const revSelRef = useRef(null); revSelRef.current = revSel;
@@ -4098,6 +4100,13 @@ export default function Visor3D({ cliente = false }) {
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setCubiertaMenu(false);
   };
   // Césped de arrastres: se coloca en el centro de la vista; medidas, colores y marcas se ajustan en el panel
+  // Personas: dan vida y escala (se ven como maniquíes; el render con IA es el que les da realismo)
+  const crearPersona = (kind) => {
+    const { ctrl } = api3d.current, M = MEDIDAS_DECO[kind] || [55, 40, 175], tops = ['#2f6fa8', '#a8322f', '#2f7d57', '#c9a45c', '#5a5a60', '#7b4fa3', '#d9d4c8'], legs = ['#222226', '#2e3340', '#3a3a3e'];
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'deco', deco: { kind, color2: legs[Math.floor(Math.random() * legs.length)] }, color: tops[Math.floor(Math.random() * tops.length)], nombre: KINDS_DECO[kind], etiqueta: 'Personas', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: M[0], d: M[1], alto: M[2], z0: 0 };
+    setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setPersonasMenu(false);
+    setAviso('«' + KINDS_DECO[kind] + '» colocada en el centro de la vista. Se mueve y gira como cualquier objeto; cambia su altura para otra estatura.');
+  };
   const crearCesped = (preset) => {
     const { ctrl } = api3d.current, p = cespedPorDefecto(preset);
     const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'cesped', nombre: 'Césped de arrastres', etiqueta: 'Céspedes', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: p.w, d: p.d, alto: p.alto, z0: 0, cesped: p.cesped };
@@ -5549,6 +5558,10 @@ export default function Visor3D({ cliente = false }) {
           menuRail(muebleMenu, setMuebleMenu, railBtn(muebleMenu, 'mueble', 'A medida', 'Muebles a medida por módulos', () => setMuebleMenu(v => !v)), (<>
             {Object.keys(PLANTILLAS_MUEBLE).map(n => <div key={n} onClick={() => crearMueble(n)} style={itemMenu}>{n}</div>)}
           </>), 250),
+          menuRail(personasMenu, setPersonasMenu, railBtn(personasMenu, 'persona', 'Personas', 'Personas haciendo deporte, andando o hablando: dan vida y escala al espacio', () => setPersonasMenu(v => !v)), (<>
+            <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Se colocan en el centro de la vista. Dan escala; el render con IA les da el realismo</div>
+            {KINDS_PERSONAS.map(k => <div key={k} onClick={() => crearPersona(k)} style={itemMenu}>🧍 {KINDS_DECO[k]}</div>)}
+          </>), 260),
           menuRail(cespedMenu, setCespedMenu, railBtn(cespedMenu, 'cesped', 'Césped', 'Césped para pistas de arrastre y trineo: colores a elegir, líneas, metros y carriles', () => setCespedMenu(v => !v)), (<>
             <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Elige un color de partida; luego cambias medidas, colores y marcas en el panel</div>
             {Object.entries(PRESETS_CESPED).map(([k, v]) => <div key={k} onClick={() => crearCesped(k)} style={{ ...itemMenu, display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ width: 18, height: 18, borderRadius: 4, background: v.cesped, border: '1px solid #777', flex: 'none' }} />{v.n}</div>)}
