@@ -2525,8 +2525,9 @@ export default function Visor3D({ cliente = false }) {
         else setSelAcab(null);
       }
     };
-    dom.addEventListener('pointerdown', onDown);
-    dom.addEventListener('pointerup', onUp);
+    // el cliente solo mira y anda: sin selección, arrastre ni herramientas ni atajos de edición
+    if (!cliente) dom.addEventListener('pointerdown', onDown);
+    if (!cliente) dom.addEventListener('pointerup', onUp);
     const onDbl = e => {
       if (cliente) return;
       const r0 = dom.getBoundingClientRect(); p2.set(((e.clientX - r0.left) / r0.width) * 2 - 1, -((e.clientY - r0.top) / r0.height) * 2 + 1); rayo.setFromCamera(p2, cam);
@@ -2708,7 +2709,7 @@ export default function Visor3D({ cliente = false }) {
       }
       if (e.key === 'Escape') { poli = []; escrito = ''; setMedidaMuro(''); dibujarPoli(null); setHerr('sel'); }
     };
-    window.addEventListener('keydown', onTecla);
+    if (!cliente) window.addEventListener('keydown', onTecla);
     const aplicarPincel = (hit, todos) => {
       const mat = matSelRef.current; if (!mat) return;
       const valor = mat.conMapa ? 'tinte:' + (mat.tinte || '#ffffff') : (mat.hex || ('tex:' + mat.id));
@@ -3083,9 +3084,9 @@ export default function Visor3D({ cliente = false }) {
         if (a.mov && a.cx != null) setObjs(prev => prev.map(x => { if (x.id === a.id) return { ...x, cx: a.cx, cy: a.cy, ...(a.rot !== undefined ? { rot: a.rot } : {}) }; const q = a.otros.find(t => t.id === x.id); return q ? { ...x, cx: a.cx + q.dx0, cy: a.cy + q.dy0 } : x; }));
       }
     };
-    el.addEventListener('pointerdown', onDownD, true);
-    window.addEventListener('pointermove', onMoveD);
-    window.addEventListener('pointerup', onUpD);
+    if (!cliente) el.addEventListener('pointerdown', onDownD, true);
+    if (!cliente) window.addEventListener('pointermove', onMoveD);
+    if (!cliente) window.addEventListener('pointerup', onUpD);
 
     return () => { evsD.forEach(n => window.removeEventListener(n, despertar)); window.removeEventListener('visor3d-tex', despertar); window.removeEventListener('resize', despertar); window.removeEventListener('keydown', onTecla); el.removeEventListener('pointerdown', onDownD, true); window.removeEventListener('pointermove', onMoveD); window.removeEventListener('pointerup', onUpD); vivo = false; clearInterval(reloj); dom.removeEventListener('pointerdown', onDown); dom.removeEventListener('pointerup', onUp); dom.removeEventListener('dblclick', onDbl); cancelAnimationFrame(raf); window.removeEventListener('resize', ajustar); window.removeEventListener('keydown', tDown); window.removeEventListener('keyup', tUp); renderer.dispose(); el.removeChild(renderer.domElement); };
   }, [id]);
@@ -4427,7 +4428,7 @@ export default function Visor3D({ cliente = false }) {
       else if (k === 'escape') { setSelObj(null); setSelAcab(null); setSelHueco(null); setLuzSel(null); setSeleccion(null); api3d.current.limpiarSel?.(); }
       else if (k === ' ') { e.preventDefault(); document.activeElement?.blur?.(); setHerr('sel'); }
     };
-    window.addEventListener('keydown', onKey);
+    if (!cliente) window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }); // se vuelve a registrar en cada cambio para leer siempre el estado actual
   // Comandos: cada uno tiene su letra (t) y se pueden buscar con Ctrl+K o /. Las mismas letras salen en la ayuda (?)
