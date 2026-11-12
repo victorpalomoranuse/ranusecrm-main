@@ -235,7 +235,7 @@ function aplicaEspejos(scene) {
         if (!m.userData.espOn) { m.userData.espOn = true; m.userData.esp0 = { metalness: m.metalness, roughness: m.roughness, envMapIntensity: m.envMapIntensity }; }
         const z = m.userData.esp0 || {}, P = pb || {};
         // clearcoat: el material pasa a ser físico (capa de barniz)
-        if ((P.clearcoat || 0) > 0 && !m.isMeshPhysicalMaterial) {
+        if (((P.clearcoat || 0) > 0 || P.espec != null || mp?.espec) && !m.isMeshPhysicalMaterial) {
           const ph = new THREE.MeshPhysicalMaterial();
           for (const k of COPIA_MAT) if (m[k] !== undefined) ph[k] = m[k]?.isColor ? m[k].clone() : m[k];
           ph.userData = { ...m.userData };
@@ -245,7 +245,9 @@ function aplicaEspejos(scene) {
         if (m.isMeshPhysicalMaterial) { m.clearcoat = P.clearcoat || 0; m.clearcoatRoughness = 0.08; }
         m.metalness = P.metal ?? z.metalness ?? 0; m.roughness = P.rough ?? z.roughness ?? 0.6;
         const usaEnv = (P.metal || 0) > 0.3 || P.env != null || (P.clearcoat || 0) > 0;
-        m.envMap = usaEnv ? (scene.environment || envEsp) : null; m.envMapIntensity = P.env ?? 1.2;
+        const kEsp = P.espec != null ? P.espec / 0.3 : 1; // 0.3 = el aspecto de siempre
+        if (m.isMeshPhysicalMaterial) m.specularIntensity = Math.max(0, Math.min(1, kEsp));
+        m.envMap = usaEnv ? (scene.environment || envEsp) : null; m.envMapIntensity = (P.env ?? 1.2) * Math.max(0, kEsp);
         if (P.relieve > 0) { m.bumpMap = m.map; m.bumpScale = P.relieve * 4; } else m.bumpMap = null;
         if (!m.userData.opac0) m.userData.opac0 = { t: m.transparent, o: m.opacity, d: m.depthWrite, c: m.color.getHex() };
         if (P.opac != null && P.opac < 1) { m.transparent = true; m.opacity = P.opac; m.depthWrite = false; } else { m.transparent = m.userData.opac0.t; m.opacity = m.userData.opac0.o; m.depthWrite = m.userData.opac0.d; }
@@ -267,14 +269,16 @@ function aplicaEspejos(scene) {
         else if (m.userData.emisPbr) { m.emissive.setHex(0x000000); m.emissiveIntensity = 1; m.userData.emisPbr = false; }
         // mapas PBR: se vuelven a crear solo si cambia el tiling, el giro o los archivos
         const B = m.map, alt = B.userData.mapsAlt || {}, clave = JSON.stringify(mp || {}) + '|' + B.repeat.x + ',' + B.repeat.y + '|' + B.rotation + '|' + B.offset.x + ',' + B.offset.y;
-        const ents = ['normal', 'rough', 'ao'].filter(k => mp?.[k]).map(k => [k, texMapa(mp[k], alt[k])]);
+        const ents = ['normal', 'rough', 'ao', 'metal', 'espec'].filter(k => mp?.[k]).map(k => [k, texMapa(mp[k], alt[k])]);
         // se esperan a que todos los mapas estén descargados; al terminar de cargar se vuelve a pasar por aquí
         if (ents.every(([, e]) => e.listo) && m.userData.mapasClave !== clave) {
           m.userData.mapasClave = clave;
           const mk = k => { const e = ents.find(x => x[0] === k); if (!e) return null; const t = e[1].tex.clone(); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.NoColorSpace; t.repeat.copy(B.repeat); t.rotation = B.rotation; t.center.copy(B.center); t.offset.copy(B.offset); t.needsUpdate = true; return t; };
-          m.normalMap = mk('normal'); m.roughnessMap = mk('rough'); m.aoMap = mk('ao');
+          m.normalMap = mk('normal'); m.roughnessMap = mk('rough'); m.aoMap = mk('ao'); m.metalnessMap = mk('metal'); if (m.isMeshPhysicalMaterial) m.specularColorMap = mk('espec');
         }
         if (m.normalMap) m.normalScale.set(P.normal ?? 1, P.normal ?? 1);
+        if (m.metalnessMap && P.metal == null) m.metalness = 1;
+        if (m.aoMap) m.aoMapIntensity = P.ao ?? 1;
         m.needsUpdate = true;
       } else if (m.userData.espOn) {
         const z = m.userData.esp0 || {}; m.userData.espOn = false; m.envMap = null; m.bumpMap = null; m.normalMap = null;
@@ -318,8 +322,9 @@ function dibujaDesp(cx, img, t, j) {
 function texturaDe(t, uvEnCm) {
   const k = uvEnCm ? 1 / t.tam : 1 / (t.tam * CM), kH = t.tamH > 0 ? (uvEnCm ? 1 / t.tamH : 1 / (t.tamH * CM)) : k, j = t.junta && t.junta.mm > 0 ? t.junta : null;
   if (t.espejo || t.pbr || t.maps) espejoSucio = true;
-  const clave = t.url.slice(0, 200) + '|' + k + '|' + kH + '|' + (t.rot || 0) + '|' + (t.ox || 0) + '|' + (t.oy || 0) + '|' + (j ? j.hex + j.mm : '') + (t.desp ? JSON.stringify(t.desp) : '') + (t.espejo || '') + (t.pbr ? JSON.stringify(t.pbr) : '') + (t.maps ? JSON.stringify(t.maps) : '') + (KTX2L && t.ktx ? 'k' : '');
+  const clave = t.url.slice(0, 200) + '|' + k + '|' + kH + '|' + (t.rot || 0) + '|' + (t.ox || 0) + '|' + (t.oy || 0) + '|' + (j ? j.hex + j.mm : '') + (t.desp ? JSON.stringify(t.desp) : '') + (t.espejo || '') + (t.maps ? JSON.stringify(t.maps) : '') + (KTX2L && t.ktx ? 'k' : '');
   let x = cacheTex.get(clave);
+  if (x) x.userData.pbr = t.pbr || undefined;
   if (!x) {
     if (t.espejo) {
       const cv = document.createElement('canvas'); cv.width = cv.height = 4; const cx = cv.getContext('2d'); cx.fillStyle = t.espejo; cx.fillRect(0, 0, 4, 4);
@@ -2046,6 +2051,8 @@ export default function Visor3D({ cliente = false }) {
   const [acab, setAcab] = useState({ muros: {}, salas: {}, techos: {}, equipos: {}, pilares: {}, huecos: {}, regiones: {}, todosMuros: null, todosSuelos: null, todosTechos: null, todosPilares: null });
   const [texturasBase, setTexturas] = useState([]);
   const texturas = useMemo(() => [...ESPEJOS, ...SUELOS_TEC, ...texturasBase], [texturasBase]);
+  const texturasRef = useRef([]); texturasRef.current = texturasBase;
+  const [mtTab, setMtTab] = useState('color'), [mtLock, setMtLock] = useState(true), [mtAvz, setMtAvz] = useState(false);
   const [b3dAbierta, setB3dAbierta] = useState(false);
   const [elegirMod, setElegirMod] = useState(false), [elegirFiltro, setElegirFiltro] = useState('');
   const [b3d, setB3d] = useState(null);           // índice de la biblioteca 3D gratuita
@@ -5450,6 +5457,142 @@ export default function Visor3D({ cliente = false }) {
                 </div>
               );
             })();
+  // ── Panel de material sencillo (como el de D5, simplificado): color o mapa base, normal, especular, rugosidad, metálico, AO, emisivo, UV y transparencia. Los cambios se ven al instante y se guardan solos.
+  const guardaMatServidor = (tid) => {
+    const t = texturasRef.current.find(x => x.id === tid); if (!t) return;
+    api.patch('/medicion/' + id + '/textura/' + tid, { junta: t.junta || null, tam: t.tam, tamH: t.tamH || null, rot: t.rot || 0, ox: t.ox || 0, oy: t.oy || 0, desp: t.desp || null, pbr: t.pbr || null, ...(t.color ? { color: t.color } : {}) }).catch(() => setGuardado('No se pudo guardar el material'));
+  };
+  const ajustaMat = (tid, cambios) => {
+    setTexturas(xs => xs.map(x => {
+      if (x.id !== tid) return x; const n = { ...x, ...cambios };
+      if (cambios.pbr) { const p = { ...(x.pbr || {}), ...cambios.pbr }; Object.keys(p).forEach(k => { if (p[k] === null) delete p[k]; }); if (Object.keys(p).length) n.pbr = p; else delete n.pbr; }
+      return n;
+    }));
+    clearTimeout(window.__mtT); window.__mtT = setTimeout(() => guardaMatServidor(tid), 600);
+  };
+  const subirMapaMat = async (t, tipo, file) => {
+    if (!file) return; setGuardado('Subiendo el mapa…');
+    try { const fd = new FormData(); fd.append('tipo', tipo); fd.append('file', file); const r2 = await api.post('/medicion/' + id + '/textura/' + t.id + '/mapa', fd); setTexturas(xs => xs.map(x => (x.id === t.id ? r2.data.textura : x))); setGuardado('Mapa añadido ✓'); }
+    catch (e) { setGuardado(e.response?.data?.error || 'No se pudo subir el mapa'); }
+  };
+  const quitaMapaMat = async (t, tipo) => { try { const r2 = await api.delete('/medicion/' + id + '/textura/' + t.id + '/mapa/' + tipo); setTexturas(xs => xs.map(x => (x.id === t.id ? r2.data.textura : x))); } catch { setGuardado('No se pudo quitar el mapa'); } };
+  const cambiaImagenMat = async (t, file) => {
+    if (!file) return; setGuardado('Subiendo la imagen…');
+    try { const fd = new FormData(); fd.append('file', file); const r2 = await api.post('/medicion/' + id + '/textura/' + t.id + '/imagen', fd); setTexturas(xs => xs.map(x => (x.id === t.id ? r2.data.textura : x))); setGuardado('Imagen cambiada ✓'); }
+    catch (e) { setGuardado(e.response?.data?.error || 'No se pudo cambiar la imagen'); }
+  };
+  const duplicaMat = async (t) => {
+    try {
+      const r2 = await api.post('/medicion/' + id + '/textura/' + t.id + '/duplicar'), nueva = r2.data.textura;
+      setTexturas(x => [...x, nueva]);
+      const g = api3d.current.ultimoGoteo; matSelRef.current = { id: nueva.id }; g?.aplicar?.(g.hit, false);
+      setMatSel({ id: nueva.id }); setGuardado('Material duplicado: lo que ajustes ahora solo afecta a esta superficie');
+    } catch (e) { setAviso(e.response?.data?.error || 'No se pudo duplicar el material'); }
+  };
+  const editorSimple = () => {
+    const t = texturasBase.find(x => x.id === matSel?.id);
+    if (!t) return editorTextura();
+    const P = t.pbr || {}, esColor = !!t.color, base = esColor ? t.color : (P.tinte || '#ffffff');
+    const cuadro = { width: 30, height: 30, borderRadius: 5, border: '1px solid #666', flex: '0 0 30px', cursor: 'pointer', position: 'relative', overflow: 'hidden', backgroundColor: '#e8e8e8', backgroundImage: 'linear-gradient(45deg,#bbb 25%,transparent 25%,transparent 75%,#bbb 75%),linear-gradient(45deg,#bbb 25%,transparent 25%,transparent 75%,#bbb 75%)', backgroundSize: '10px 10px', backgroundPosition: '0 0,5px 5px', display: 'block' };
+    const casilla = (tipo) => (
+      <label title={t.maps?.[tipo] ? 'Mapa cargado: pulsa para cambiarlo' : 'Cargar una imagen para este ajuste (vacío = sin mapa)'} style={cuadro}>
+        {t.maps?.[tipo] && <img src={t.maps[tipo]} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />}
+        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { subirMapaMat(t, tipo, e.target.files?.[0]); e.target.value = ''; }} />
+        {t.maps?.[tipo] && <span onClick={e => { e.preventDefault(); e.stopPropagation(); quitaMapaMat(t, tipo); }} title="Quitar el mapa" style={{ position: 'absolute', top: -1, right: 1, fontSize: 11, color: '#fff', textShadow: '0 0 3px #000' }}>✕</span>}
+      </label>
+    );
+    const fila = (nombre, tipo, clave, v, mn, mx, def, ayuda) => (
+      <div title={ayuda} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+        {casilla(tipo)}<span style={{ width: 74, fontSize: 12 }}>{nombre}</span>
+        <input type="range" min={mn} max={mx} step="0.01" value={v} onChange={e => ajustaMat(t.id, { pbr: { [clave]: parseFloat(e.target.value) } })} style={{ flex: 1, minWidth: 0 }} />
+        <input type="number" min={mn} max={mx} step="0.05" value={Math.round(v * 100) / 100} onChange={e => { const n = parseFloat(e.target.value); if (Number.isFinite(n)) ajustaMat(t.id, { pbr: { [clave]: Math.max(mn, Math.min(mx, n)) } }); }} style={{ ...btn, width: 50, padding: '2px 4px' }} />
+        <span onClick={() => ajustaMat(t.id, { pbr: { [clave]: def === undefined ? null : def } })} title="Volver al valor de siempre" style={{ cursor: 'pointer', opacity: 0.6, fontSize: 14 }}>⚙</span>
+      </div>
+    );
+    const interruptor = (txt, on, fn) => (
+      <div onClick={fn} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 6 }}>
+        <span style={{ width: 34, height: 18, borderRadius: 10, background: on ? '#3f7d3a' : '#555', position: 'relative', flex: '0 0 34px', transition: 'background .15s' }}><span style={{ position: 'absolute', top: 2, left: on ? 18 : 2, width: 14, height: 14, borderRadius: 7, background: '#fff', transition: 'left .15s' }} /></span>
+        <span style={{ fontSize: 12 }}>{txt}</span>
+      </div>
+    );
+    const tamX = t.tam, tamY = t.tamH > 0 ? t.tamH : t.tam;
+    const poneTam = (eje, v) => {
+      if (!(v >= 5)) return; v = Math.min(1000, v);
+      if (eje === 'x') ajustaMat(t.id, mtLock ? { tam: v, tamH: Math.max(5, Math.round(v * tamY / tamX * 10) / 10) } : { tam: v, tamH: tamY });
+      else ajustaMat(t.id, mtLock ? { tamH: v, tam: Math.max(5, Math.round(v * tamX / tamY * 10) / 10) } : { tamH: v });
+    };
+    const cab = { fontWeight: 700, margin: '12px 0 6px', fontSize: 12, opacity: 0.9 };
+    const pestana = (k, txt) => <span onClick={() => setMtTab(k)} style={{ flex: 1, textAlign: 'center', padding: '5px 0', cursor: 'pointer', fontSize: 12, borderBottom: mtTab === k ? '2px solid #d4c9bb' : '2px solid transparent', opacity: mtTab === k ? 1 : 0.6 }}>{txt}</span>;
+    return (
+      <div style={{ marginTop: 6 }}>
+        {t.fijo ? editorTextura() : <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span style={{ width: 28, height: 28, borderRadius: 5, border: '1px solid #666', background: 'url(' + t.url + ') center/cover', flex: '0 0 28px' }} />
+            <b style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.nombre}</b>
+            <button style={{ ...btn, padding: '4px 10px' }} onClick={() => duplicaMat(t)} title="Crea una copia de este material y la pone solo en la superficie que cogiste, para ajustarla sin tocar el original">⧉ Duplicar</button>
+          </div>
+          <div style={{ display: 'flex', marginBottom: 8, borderBottom: '1px solid #333' }}>{pestana('color', 'Color base')}{pestana('mapa', 'Mapa base de colores')}</div>
+          {mtTab === 'color' ? (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(base) ? base : '#ffffff'} onChange={e => {
+                const hx = e.target.value.toLowerCase();
+                if (esColor) { try { const cv = document.createElement('canvas'); cv.width = cv.height = 8; const cx2 = cv.getContext('2d'); cx2.fillStyle = hx; cx2.fillRect(0, 0, 8, 8); ajustaMat(t.id, { color: hx, url: cv.toDataURL('image/png'), nombre: 'Color ' + hx.toUpperCase() }); } catch { ajustaMat(t.id, { color: hx }); } }
+                else ajustaMat(t.id, { pbr: { tinte: hx === '#ffffff' ? null : hx } });
+              }} style={{ width: 56, height: 40, padding: 0, border: '1px solid #666', borderRadius: 6, background: 'none', cursor: 'pointer' }} />
+              <span style={{ fontSize: 11, opacity: 0.65, lineHeight: 1.4 }}>{esColor ? 'Color liso del material.' : 'Tiñe la imagen (blanco = sin teñir).'} El selector tiene rueda de color y cuentagotas.</span>
+            </label>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <span style={{ width: 56, height: 56, borderRadius: 6, border: '1px solid #666', background: 'url(' + t.url + ') center/cover', flex: '0 0 56px' }} />
+              <label style={{ ...btn, cursor: 'pointer', padding: '5px 10px', fontSize: 12 }}>Cambiar imagen…<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { cambiaImagenMat(t, e.target.files?.[0]); e.target.value = ''; }} /></label>
+              <span style={{ fontSize: 11, opacity: 0.6 }}>{esColor ? 'Ahora es un color liso; al poner una imagen pasa a ser una textura.' : 'La imagen que da el dibujo al material.'}</span>
+            </div>
+          )}
+          <div style={cab}>Ajustes</div>
+          {fila('Normal', 'normal', 'normal', P.normal ?? 1, 0, 2, undefined, 'Fuerza del relieve del mapa de normales. Cárgale una imagen en la casilla.')}
+          {fila('Especular', 'espec', 'espec', P.espec ?? 0.3, 0, 1, undefined, 'Cuánto brilla el reflejo directo de la luz')}
+          {fila('Rugosidad', 'rough', 'rough', P.rough ?? 0.6, 0, 1, undefined, '0 = pulido como un espejo · 1 = totalmente mate')}
+          {fila('Metálico', 'metal', 'metal', P.metal ?? 0, 0, 1, undefined, '0 = no metal · 1 = metal. Con rugosidad baja y metálico alto sale cromo')}
+          {fila('AO', 'ao', 'ao', P.ao ?? (t.maps?.ao ? 1 : 0), 0, 1, undefined, 'Sombreado en los huecos y rincones (hace falta un mapa AO)')}
+          <div style={cab}>Emisivo</div>
+          {interruptor('Que el material emita luz', P.emis > 0, () => (P.emis > 0 ? ajustaMat(t.id, { pbr: { emis: null, emisHex: null } }) : ajustaMat(t.id, { pbr: { emis: 1, emisHex: P.emisHex || (esColor ? t.color : P.tinte) || '#ffffff' } })))}
+          {P.emis > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(P.emisHex || '') ? P.emisHex : '#ffffff'} onChange={e => ajustaMat(t.id, { pbr: { emisHex: e.target.value } })} style={{ width: 30, height: 26, padding: 0, border: '1px solid #666', borderRadius: 4, background: 'none' }} />
+              <span style={{ fontSize: 12, width: 52 }}>Fuerza</span>
+              <input type="range" min="0.1" max="3" step="0.05" value={P.emis} onChange={e => ajustaMat(t.id, { pbr: { emis: parseFloat(e.target.value) } })} style={{ flex: 1, minWidth: 0 }} />
+            </div>
+          )}
+          <div style={cab}>UV</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+            <span style={{ fontSize: 12, width: 52 }}>Estirar</span>
+            <span style={{ fontSize: 11, opacity: 0.6 }}>X</span><input type="number" min="5" max="1000" step="1" value={Math.round(tamX * 10) / 10} onChange={e => poneTam('x', parseFloat(e.target.value))} style={{ ...btn, width: 58, padding: '2px 4px' }} />
+            <span onClick={() => setMtLock(v => !v)} title={mtLock ? 'Proporción bloqueada' : 'Proporción libre'} style={{ cursor: 'pointer', fontSize: 14, opacity: mtLock ? 1 : 0.45 }}>{mtLock ? '🔒' : '🔓'}</span>
+            <span style={{ fontSize: 11, opacity: 0.6 }}>Y</span><input type="number" min="5" max="1000" step="1" value={Math.round(tamY * 10) / 10} onChange={e => poneTam('y', parseFloat(e.target.value))} style={{ ...btn, width: 58, padding: '2px 4px' }} />
+            <span style={{ fontSize: 11, opacity: 0.55 }}>cm</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+            <span style={{ fontSize: 12, width: 52 }}>Rotar</span>
+            <input type="range" min="0" max="360" step="1" value={((t.rot || 0) % 360 + 360) % 360} onChange={e => ajustaMat(t.id, { rot: parseFloat(e.target.value) })} style={{ flex: 1, minWidth: 0 }} />
+            <input type="number" min="-360" max="360" step="15" value={t.rot || 0} onChange={e => ajustaMat(t.id, { rot: parseFloat(e.target.value) || 0 })} style={{ ...btn, width: 50, padding: '2px 4px' }} /><span style={{ fontSize: 11, opacity: 0.55 }}>°</span>
+          </div>
+          <div style={cab}>Vidrio</div>
+          {interruptor('Transparente', P.opac != null && P.opac < 1, () => (P.opac != null && P.opac < 1 ? ajustaMat(t.id, { pbr: { opac: null } }) : ajustaMat(t.id, { pbr: { opac: 0.35, rough: Math.min(P.rough ?? 0.6, 0.1) } })))}
+          {P.opac != null && P.opac < 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <span style={{ fontSize: 12, width: 74 }}>Opacidad</span>
+              <input type="range" min="0.05" max="0.95" step="0.01" value={P.opac} onChange={e => ajustaMat(t.id, { pbr: { opac: parseFloat(e.target.value) } })} style={{ flex: 1, minWidth: 0 }} />
+              <span style={{ width: 36, fontSize: 12, textAlign: 'right' }}>{Math.round(P.opac * 100)}%</span>
+            </div>
+          )}
+          <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 6 }}>
+            <div onClick={() => setMtAvz(v => !v)} style={{ cursor: 'pointer', fontSize: 12, opacity: 0.75 }}>{mtAvz ? '▾' : '▸'} Más opciones (despiece, juntas, brillo y contraste…)</div>
+            {mtAvz && <div style={{ marginTop: 4 }}>{editorTextura()}</div>}
+          </div>
+        </>}
+      </div>
+    );
+  };
   // Pestañita de la vista (como la de D5): selector de material y pintura
   const panelIzqAbierto = bibAbierta || b3dAbierta || capasAbierto || matAbierto || revAbierto;
   const pildora = (
@@ -6289,7 +6432,7 @@ export default function Visor3D({ cliente = false }) {
               {false && <div style={{ marginTop: 10, padding: '8px 10px', border: '1px solid #3a342f', borderRadius: 8 }}><div style={{ fontWeight: 700, marginBottom: 6 }}>Color base</div><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ width: 34, height: 34, borderRadius: 6, background: matSel.hex.slice(0, 7), border: '1px solid #666' }} /><code>{matSel.hex.slice(0, 7)}</code></div><div style={{ opacity: 0.6, fontSize: 11, marginTop: 6 }}>Es un color liso. Para ajustar rugosidad, normales o UV, pinta con una textura de la lista.</div><button style={{ ...btn, marginTop: 8, width: '100%' }} onClick={() => { setMatAbierto(true); setHerr('pincel'); }}>Pintar con este color</button></div>}
               {!matSel?.id && !matSel?.hex
                 ? <div style={{ marginTop: 10, opacity: 0.75, lineHeight: 1.5 }}>Aquí se ajusta el material seleccionado: color base, normales, rugosidad, metálico, AO, emisivo y UV (estirar, desfase y rotar).<br /><br />Elige un material con <b>Pintura</b> (la lista de texturas o la biblioteca de Ranuse) y aparecerán sus ajustes.<button style={{ ...btn, marginTop: 8, width: '100%' }} onClick={() => { setMatAbierto(true); setHerr('pincel'); }}>Abrir Pintura</button></div>
-                : <div style={{ marginTop: 6 }}>{editorTextura()}</div>}
+                : editorSimple()}
             </>}
 
             {pestanaRender === 'salida' && <>

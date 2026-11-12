@@ -910,7 +910,7 @@ router.patch('/:id/textura/:tid', async (req, res) => {
     // propiedades del material: rugosidad, metal y relieve (0–1)
     if (req.body && 'pbr' in req.body) {
       const pb = req.body.pbr, q = v => Math.max(0, Math.min(1, Number(v) || 0));
-      if (pb && typeof pb === 'object') { const o = {}; if (pb.rough != null) o.rough = q(pb.rough); if (pb.metal != null) o.metal = q(pb.metal); if (Number(pb.relieve) > 0) o.relieve = q(pb.relieve); const qr = (v, mx) => Math.max(0, Math.min(mx, Number(v) || 0)); if (pb.normal != null) o.normal = qr(pb.normal, 3); if (pb.env != null) o.env = qr(pb.env, 3); if (Number(pb.clearcoat) > 0) o.clearcoat = q(pb.clearcoat); if (Number(pb.opac) > 0 && Number(pb.opac) < 1) o.opac = Math.max(0.05, q(pb.opac)); if (/^#[0-9a-fA-F]{6}$/.test(pb.tinte || '')) o.tinte = pb.tinte; if (Number(pb.emis) > 0 && /^#[0-9a-fA-F]{6}$/.test(pb.emisHex || '')) { o.emis = qr(pb.emis, 3); o.emisHex = pb.emisHex; } const rg = (v, mn, mx) => Math.max(mn, Math.min(mx, Number(v) || 0)); if (Math.abs(Number(pb.bri)) > 0.01) o.bri = rg(pb.bri, -1, 1); if (pb.con != null && Math.abs(Number(pb.con) - 1) > 0.01) o.con = rg(pb.con, 0.3, 2); if (pb.sat != null && Math.abs(Number(pb.sat) - 1) > 0.01) o.sat = rg(pb.sat, 0, 2.5); if (Math.abs(Number(pb.hue)) > 0.5) o.hue = rg(pb.hue, -180, 180); if (Object.keys(o).length) t.pbr = o; else delete t.pbr; } else delete t.pbr;
+      if (pb && typeof pb === 'object') { const o = {}; if (pb.espec != null) o.espec = q(pb.espec); if (pb.ao != null) o.ao = q(pb.ao); if (pb.rough != null) o.rough = q(pb.rough); if (pb.metal != null) o.metal = q(pb.metal); if (Number(pb.relieve) > 0) o.relieve = q(pb.relieve); const qr = (v, mx) => Math.max(0, Math.min(mx, Number(v) || 0)); if (pb.normal != null) o.normal = qr(pb.normal, 3); if (pb.env != null) o.env = qr(pb.env, 3); if (Number(pb.clearcoat) > 0) o.clearcoat = q(pb.clearcoat); if (Number(pb.opac) > 0 && Number(pb.opac) < 1) o.opac = Math.max(0.05, q(pb.opac)); if (/^#[0-9a-fA-F]{6}$/.test(pb.tinte || '')) o.tinte = pb.tinte; if (Number(pb.emis) > 0 && /^#[0-9a-fA-F]{6}$/.test(pb.emisHex || '')) { o.emis = qr(pb.emis, 3); o.emisHex = pb.emisHex; } const rg = (v, mn, mx) => Math.max(mn, Math.min(mx, Number(v) || 0)); if (Math.abs(Number(pb.bri)) > 0.01) o.bri = rg(pb.bri, -1, 1); if (pb.con != null && Math.abs(Number(pb.con) - 1) > 0.01) o.con = rg(pb.con, 0.3, 2); if (pb.sat != null && Math.abs(Number(pb.sat) - 1) > 0.01) o.sat = rg(pb.sat, 0, 2.5); if (Math.abs(Number(pb.hue)) > 0.5) o.hue = rg(pb.hue, -180, 180); if (Object.keys(o).length) t.pbr = o; else delete t.pbr; } else delete t.pbr;
     }
     // giro (°) y desplazamiento (cm) de la textura
     for (const [k, a, b] of [['rot', -360, 360], ['ox', -1000, 1000], ['oy', -1000, 1000]]) if (k in (req.body || {})) { const v = Math.max(a, Math.min(b, parseFloat(req.body[k]) || 0)); if (v) t[k] = v; else delete t[k]; }
@@ -1060,7 +1060,7 @@ router.delete('/:id/render/:rid', async (req, res) => {
   }
 });
 // Mapas PBR de una textura (normales, rugosidad, oclusión ambiental): se suben reducidos a 2K como máximo y se guardan en la propia textura
-const TIPOS_MAPA = ['normal', 'rough', 'ao'];
+const TIPOS_MAPA = ['normal', 'rough', 'ao', 'metal', 'espec'];
 router.post('/:id/textura/:tid/mapa', uploadReferenceImageFile, handleMulterError, async (req, res) => {
   try {
     const tipo = String(req.body?.tipo || '');
@@ -1080,6 +1080,25 @@ router.post('/:id/textura/:tid/mapa', uploadReferenceImageFile, handleMulterErro
     if (error) throw error;
     res.status(201).json({ textura: t });
   } catch (err) { console.error('medicion mapa:', err); res.status(500).json({ error: 'No se pudo guardar el mapa' }); }
+});
+// Cambiar la imagen base de un material (o convertir un color liso en textura)
+router.post('/:id/textura/:tid/imagen', uploadReferenceImageFile, handleMulterError, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Falta la imagen' });
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const esc = fila.data?.escena3d || {}, t = (esc.texturas || []).find(x => x.id === req.params.tid);
+    if (!t) return res.status(404).json({ error: 'No he encontrado ese material' });
+    const buf = await sharp(req.file.buffer).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
+    const ruta = 'texturas/' + req.params.id + '-' + t.id + '-base.jpg';
+    const { error: eUp } = await supabase.storage.from(BUCKET_TEX).upload(ruta, buf, { contentType: 'image/jpeg', upsert: true });
+    if (eUp) throw eUp;
+    const { data: { publicUrl } } = supabase.storage.from(BUCKET_TEX).getPublicUrl(ruta);
+    t.url = publicUrl + '?v=' + Date.now().toString(36); delete t.color; delete t.desp;
+    const { error } = await supabase.from('mediciones').update({ data: { ...fila.data, escena3d: esc } }).eq('id', req.params.id);
+    if (error) throw error;
+    res.status(201).json({ textura: t });
+  } catch (err) { console.error('medicion imagen base:', err); res.status(500).json({ error: 'No se pudo cambiar la imagen' }); }
 });
 router.delete('/:id/textura/:tid/mapa/:tipo', async (req, res) => {
   try {
