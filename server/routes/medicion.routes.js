@@ -126,6 +126,53 @@ router.post('/bloque-ia-3d', async (req, res) => {
     res.status(500).json({ error: 'No se pudo generar el modelo 3D (' + String(err.message || err).slice(0, 120) + ')' });
   }
 });
+// Excel para pedir precios a proveedores: encabezado con logo y datos del proyecto, una foto por línea, categorías, y columnas de precio con el total calculado
+router.post('/xlsx-precios', async (req, res) => {
+  try {
+    const { default: ExcelJS } = await import('exceljs');
+    const b = req.body || {}, filas = (Array.isArray(b.filas) ? b.filas : []).slice(0, 1500);
+    if (!filas.length) return res.status(400).json({ error: 'No hay líneas que exportar' });
+    const wb = new ExcelJS.Workbook(); wb.creator = 'Ranuse Design'; wb.created = new Date();
+    const ws = wb.addWorksheet('Solicitud de precio', { views: [{ state: 'frozen', ySplit: 9 }], pageSetup: { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } } });
+    const OSC = 'FF1E1B18', BEIGE = 'FFEFE9DF', GRIS = 'FF6B6560', LIN = 'FFD9D2C7';
+    ws.columns = [{ width: 15 }, { width: 11 }, { width: 46 }, { width: 22 }, { width: 28 }, { width: 11 }, { width: 8 }, { width: 38 }, { width: 16 }, { width: 16 }, { width: 18 }];
+    const NC = 11, dataUri = (u) => { const m = /^data:image\/(png|jpe?g|gif);base64,(.+)$/i.exec(String(u || '')); return m ? { ext: m[1].toLowerCase().startsWith('jp') ? 'jpeg' : m[1].toLowerCase(), base64: u } : null; };
+    // — encabezado —
+    ws.getRow(1).height = 22; ws.getRow(2).height = 22; ws.getRow(3).height = 18; ws.getRow(4).height = 18; ws.getRow(5).height = 18; ws.getRow(6).height = 18;
+    const lg = dataUri(b.logo);
+    if (lg) { const id = wb.addImage({ base64: lg.base64, extension: lg.ext }), W = Math.max(1, Number(b.logoW) || 300), H = Math.max(1, Number(b.logoH) || 80), k = Math.min(210 / W, 60 / H); ws.addImage(id, { tl: { col: 0.1, row: 0.2 }, ext: { width: W * k, height: H * k } }); }
+    ws.mergeCells('D1:K1'); ws.getCell('D1').value = 'SOLICITUD DE PRECIO'; ws.getCell('D1').font = { name: 'Calibri', size: 20, bold: false, color: { argb: OSC } }; ws.getCell('D1').alignment = { horizontal: 'right', vertical: 'middle' };
+    const datos = [['Proyecto', b.proyecto], ['Cliente', b.cliente], ['Dirección', b.direccion], ['Fecha', b.fecha || new Date().toLocaleDateString('es-ES')]];
+    datos.forEach(([k, v], i) => { const r = 3 + i; ws.getCell('D' + r).value = k.toUpperCase(); ws.getCell('D' + r).font = { size: 8, bold: true, color: { argb: GRIS } }; ws.getCell('D' + r).alignment = { horizontal: 'right', vertical: 'middle' }; ws.mergeCells('E' + r + ':K' + r); ws.getCell('E' + r).value = String(v || '—'); ws.getCell('E' + r).font = { size: 10, bold: true, color: { argb: OSC } }; ws.getCell('E' + r).alignment = { vertical: 'middle' }; });
+    ws.mergeCells('A7:K7'); ws.getRow(7).height = 32; ws.getCell('A7').value = String(b.intro || 'Por favor, indicadnos precio unitario, total y plazo de entrega de lo siguiente (sin IVA, indicando si incluye transporte e instalación).'); ws.getCell('A7').font = { size: 9, color: { argb: GRIS } }; ws.getCell('A7').alignment = { wrapText: true, vertical: 'middle' };
+    for (let c = 1; c <= NC; c++) ws.getRow(8).getCell(c).border = { top: { style: 'medium', color: { argb: OSC } } };
+    ws.getRow(8).height = 6;
+    // — cabecera de la tabla —
+    const cab = ['Foto', 'Código', 'Descripción', 'Referencia / marca', 'Medidas / detalle', 'Cantidad', 'Unidad', 'Observaciones', 'Precio unitario (€)', 'Total (€)', 'Plazo de entrega'];
+    const rc = ws.getRow(9); rc.height = 26; cab.forEach((t, i) => { const c = rc.getCell(i + 1); c.value = t; c.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: OSC } }; c.alignment = { horizontal: i >= 5 && i <= 6 ? 'center' : 'left', vertical: 'middle', wrapText: true }; });
+    // — líneas —
+    let r = 10, grupo = null; const totales = [];
+    for (const f of filas) {
+      if (f.grupo !== grupo) { grupo = f.grupo; const g = ws.getRow(r); g.height = 20; ws.mergeCells('A' + r + ':K' + r); const c = ws.getCell('A' + r); c.value = String(grupo || '').toUpperCase(); c.font = { bold: true, size: 9, color: { argb: OSC } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BEIGE } }; c.alignment = { vertical: 'middle', indent: 1 }; r++; }
+      const row = ws.getRow(r), ft = dataUri(f.foto && f.foto.uri), conFoto = !!ft;
+      row.height = conFoto ? 66 : 34;
+      const cant = Number(String(f.cant).replace(',', '.')) || 0;
+      row.getCell(2).value = String(f.cod || ''); row.getCell(3).value = String(f.nombre || ''); row.getCell(4).value = String(f.ref || ''); row.getCell(5).value = String(f.medidas || '');
+      row.getCell(6).value = cant; row.getCell(7).value = String(f.unid || 'ud'); row.getCell(8).value = String(f.obs || '');
+      row.getCell(10).value = { formula: 'IF(I' + r + '="","",F' + r + '*I' + r + ')' }; row.getCell(9).numFmt = '#,##0.00 "€"'; row.getCell(10).numFmt = '#,##0.00 "€"'; row.getCell(6).numFmt = '#,##0.##';
+      for (let c = 1; c <= NC; c++) { const cell = row.getCell(c); cell.border = { bottom: { style: 'thin', color: { argb: LIN } } }; cell.alignment = { vertical: 'middle', wrapText: true, horizontal: c === 6 || c === 7 ? 'center' : undefined }; cell.font = { size: c === 3 ? 10 : 9, bold: c === 2 || c === 3, color: { argb: c >= 4 && c !== 6 ? GRIS : OSC } }; }
+      row.getCell(9).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFBF0' } }; row.getCell(11).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFBF0' } };
+      if (ft) { try { const id = wb.addImage({ base64: ft.base64, extension: ft.ext }), W = Math.max(1, Number(f.foto.w) || 100), H = Math.max(1, Number(f.foto.h) || 100), k = Math.min(86 / W, 82 / H); ws.addImage(id, { tl: { col: 0.12, row: r - 1 + 0.08 }, ext: { width: Math.round(W * k), height: Math.round(H * k) } }); } catch { /* una foto que falla no tumba el Excel */ } }
+      totales.push(r); r++;
+    }
+    // — total —
+    const t = ws.getRow(r + 1); t.height = 24; ws.mergeCells('A' + (r + 1) + ':I' + (r + 1)); const tl = ws.getCell('A' + (r + 1)); tl.value = 'TOTAL (sin IVA)'; tl.font = { bold: true, size: 10, color: { argb: OSC } }; tl.alignment = { horizontal: 'right', vertical: 'middle' };
+    const tt = ws.getCell('J' + (r + 1)); tt.value = { formula: 'SUM(J10:J' + (r - 1) + ')' }; tt.numFmt = '#,##0.00 "€"'; tt.font = { bold: true, size: 11, color: { argb: OSC } }; tt.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BEIGE } }; tt.alignment = { vertical: 'middle' };
+    ws.pageSetup.printTitlesRow = '9:9';
+    const buf = await wb.xlsx.writeBuffer();
+    res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="listado-precios.xlsx"' }); res.send(Buffer.from(buf));
+  } catch (err) { console.error('xlsx-precios:', err); res.status(500).json({ error: 'No se pudo crear el Excel' }); }
+});
 router.post('/bloque-ia', async (req, res) => {
   try {
     const m = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.imagen || ''));

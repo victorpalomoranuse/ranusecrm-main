@@ -71,6 +71,14 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
         try { const { data } = await api.post(`/medicion/${m.id}/sketchup`); responder({ type: 'enlaceSketchup', url: data.url }); }
         catch (err) { responder({ type: 'enlaceSketchup', message: err.response?.data?.error || 'No se pudo crear el enlace' }); }
       }
+      else if (m.type === 'xlsxPrecios' && Array.isArray(m.filas)) {
+        try {
+          const r = await api.post('/medicion/xlsx-precios', { filas: m.filas, proyecto: m.proyecto, cliente: m.cliente, direccion: m.direccion, fecha: m.fecha, logo: m.logo, logoW: m.logoW, logoH: m.logoH, intro: m.intro }, { responseType: 'blob', timeout: 120000 });
+          const url = URL.createObjectURL(new Blob([r.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })), a = document.createElement('a');
+          a.href = url; a.download = (m.nombre || 'listado-precios') + '.xlsx'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
+          responder({ type: 'xlsxListo' });
+        } catch (err) { responder({ type: 'xlsxError', message: 'No se pudo crear el Excel' }); }
+      }
       else if (m.type === 'pedirBloque' && m.id) {
         try { const { data } = await api.get(`/medicion/bloque/${m.id}`); responder({ type: 'bloque', id: m.id, bloque: data.bloque }); }
         catch { responder({ type: 'error', message: 'No se pudo cargar el bloque de ese producto' }); }
