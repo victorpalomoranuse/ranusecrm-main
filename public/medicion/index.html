@@ -2678,6 +2678,11 @@ function lumGroups(){
   gs.sort(function(a,b){return a.gi-b.gi});
   return gs;
 }
+/* medida de cada tramo de una línea (tira LED, perfil, carril): «3 tramos: 12,35 + 20,10 + 23,15 m» */
+function tramosTxt(g){
+  var n=g.n,t=(g.tr||[]).map(function(x){return m2(x/100)});
+  return n+(n===1?' tramo':' tramos')+(t.length&&t.length<=12?': '+t.join(' + ')+' m':'');
+}
 function lumTagMap(){var m={};lumGroups().forEach(function(g){g.ids.forEach(function(id){m[id]=g.tag})});return m}
 function swTagMap(){var m={},i=0;st.v.pts.forEach(function(q){if(isSw(q)){i++;m[q.id]={tag:'I'+i,i:i}}});return m}
 function cnList(){return (st.v.cn||[]).filter(function(c){var a=by(st.v.pts,c.a),b=by(st.v.pts,c.b);return a&&b&&isSw(a)&&b.v==='ilum'&&b.s!=='dem'})}
@@ -8604,6 +8609,23 @@ function carpCSV(){
 }
 /* listado para pedir precios a proveedores: lo que hay en el plano, agrupado, con cantidades y medidas y las columnas de precio vacías */
 function preciosFilas(){
+  if(!pisosOn())return preciosFilas1();
+  var orig=st.v,todas=[],mapa={},res=[];
+  try{
+    orig.pisos.forEach(function(p){
+      st.v=pisoVisita(orig,p);
+      preciosFilas1().forEach(function(fl){fl.planta=p.nombre||'Planta';todas.push(fl)});
+    });
+  }finally{st.v=orig}
+  todas.forEach(function(fl){
+    var key=[fl.grupo,fl.cod,fl.nombre,fl.ref,fl.medidas,fl.unid].join('|'),tx=(fl.planta?fl.planta+': ':'')+(fl.obs||'');
+    if(mapa[key]==null){mapa[key]=res.length;fl.obs=tx;fl.plantas=[fl.planta];res.push(fl)}
+    else{var q=res[mapa[key]];q.cant=r2((+q.cant||0)+(+fl.cant||0));q.obs=(q.obs?q.obs+' | ':'')+tx;if(q.plantas.indexOf(fl.planta)<0)q.plantas.push(fl.planta);if(!q.foto&&fl.foto)q.foto=fl.foto}
+  });
+  res.forEach(function(fl,i){fl.k='f'+i});
+  return res;
+}
+function preciosFilas1(){
   var v=st.v,out=[],r;
   try{r=buildResumen()}catch(e){r={}}
   function add(grupo,cod,nombre,ref,medidas,cant,unid,obs,foto,sub){out.push({grupo:grupo,sub:sub||'',cod:cod||'',nombre:nombre||'',ref:ref||'',medidas:medidas||'',cant:cant,unid:unid||'ud',obs:obs||'',foto:foto||null,k:'f'+out.length})}
@@ -8617,7 +8639,7 @@ function preciosFilas(){
     var det=[c.hole?'Ø agujero '+c.hole+' mm':'',c.lm?c.lm+' lm':'',c.w?c.w+' W':'',c.k?c.k+' K':''].filter(Boolean).join(' · ');
     var mo=g.mo?'montaje: '+g.mo:'';
     var fl=g.ft?{t:'lum',id:g.ft.id,uri:g.ft.uri,pw:g.ft.pw,ph:g.ft.ph}:(g.lid?{t:'lum',id:g.lid}:null); /* la foto pegada en la luminaria manda sobre la del catálogo */
-    if(g.len>0)add('Iluminación',g.tag,nm,c.ref||'',det,r2(g.len/100),'ml',[mo,g.pf?'perfil: '+g.pf:'',g.n+' tramo'+(g.n===1?'':'s'),c.comp?String(c.comp).replace(/\s*\n\s*/g,' / '):''].filter(Boolean).join(' · '),fl);
+    if(g.len>0)add('Iluminación',g.tag,nm,c.ref||'',det,r2(g.len/100),'ml',[mo,g.pf?'perfil: '+g.pf:'',tramosTxt(g),c.comp?String(c.comp).replace(/\s*\n\s*/g,' / '):''].filter(Boolean).join(' · '),fl);
     else add('Iluminación',g.tag,nm,c.ref||'',det,g.n,'ud',[mo,c.comp?String(c.comp).replace(/\s*\n\s*/g,' / '):''].filter(Boolean).join(' · '),fl);
   });
   (r.electricidad||[]).forEach(function(q){add('Instalación eléctrica','',q.nombre,'','',q.n,'ud','')});
@@ -12324,7 +12346,7 @@ function medDatos1(){
   lumGroups().forEach(function(g){
     var d=ptDef(g.k),nom=g.tag+' · '+(g.nm||(g.cat?g.cat.n:(d?d.n:g.k)))+(MONT_ALL[g.mo]?' · en '+MONT_ALL[g.mo]:'');
     if(d&&d.lin){
-      lumF.push(fila(nom,g.len/100,null,g.n,g.n+(g.n===1?' tramo':' tramos')));
+      lumF.push(fila(nom,g.len/100,null,g.n,tramosTxt(g)));
       if(g.n>1)g.ids.forEach(function(id,i){var q=by(st.v.pts,id);if(q){var r=fila('   Tramo '+(i+1),ptLen(q)/100,null,null,'');r.sub=true;lumF.push(r)}});
     }else lumF.push(fila(nom,null,null,g.n));
   });
