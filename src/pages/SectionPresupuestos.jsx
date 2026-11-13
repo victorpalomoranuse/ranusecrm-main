@@ -1094,6 +1094,10 @@ function BudgetEditor({ id, onBack, onOpen }) {
     ['50% / 50%', [{ concepto: 'Al firmar / inicio', pct: 50 }, { concepto: 'Al finalizar', pct: 50 }]],
     ['50 / 40 / 10', [{ concepto: 'Al inicio (firma)', pct: 50 }, { concepto: 'A mitad de obra', pct: 40 }, { concepto: 'Al finalizar y entregar', pct: 10 }]],
     ['40 / 30 / 30', [{ concepto: 'Al firmar / inicio', pct: 40 }, { concepto: 'A mitad de obra', pct: 30 }, { concepto: 'Al finalizar', pct: 30 }]],
+    // Reformas: los pagos van ligados a lo que se termina en obra, así el cliente paga por avance real y tú financias menos tiempo
+    ['Reforma · 4 hitos', [{ concepto: 'Firma del presupuesto y reserva de fecha', pct: 30 }, { concepto: 'Demoliciones e instalaciones terminadas', pct: 30 }, { concepto: 'Albañilería y revestimientos terminados', pct: 30 }, { concepto: 'Entrega final y repaso de remates', pct: 10 }]],
+    ['Reforma · 5 hitos', [{ concepto: 'Firma y reserva (acopio de materiales)', pct: 30 }, { concepto: 'Inicio de obra y demoliciones', pct: 20 }, { concepto: 'Instalaciones y albañilería terminadas', pct: 25 }, { concepto: 'Acabados y carpinterías colocados', pct: 20 }, { concepto: 'Entrega final y repaso de remates', pct: 5 }]],
+    ['Reforma + equipamiento', [{ concepto: 'Firma y pedido del equipamiento (anticipo a proveedores)', pct: 40 }, { concepto: 'Inicio de obra', pct: 15 }, { concepto: 'Instalaciones y obra terminadas', pct: 20 }, { concepto: 'Llegada y montaje del equipamiento', pct: 20 }, { concepto: 'Entrega final y recepción', pct: 5 }]],
   ];
   const sumaCal = calendario.reduce((s, h) => s + (parseFloat(h.pct) || 0), 0);
 
