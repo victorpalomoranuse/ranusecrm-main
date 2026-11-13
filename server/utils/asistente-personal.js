@@ -626,9 +626,11 @@ async function ejecutar(nombre, input, ctx = {}) {
     if (!esTexto) { a = (ctx.adjuntos || []).find(x => x.id === input.adjunto); if (!a || !/^image\/(jpeg|png|webp)$/.test(a.mime)) return { error: 'Necesito una foto (jpg, png o webp) adjunta.' }; }
     let proy = null; if (input.proyecto) { proy = await proyectoPor(input.proyecto); if (!proy) return { error: 'No encuentro el proyecto "' + input.proyecto + '". Dime cuál es o lo guardo sin proyecto.' }; }
     const n = esTexto ? Math.min(3, Math.max(1, (Array.isArray(input.prompts) ? input.prompts.filter(Boolean).length : 0) || Math.round(Number(input.variantes)) || 1)) : 1;
-    if (ctx.avisar) await ctx.avisar(esTexto ? 'Voy con ' + (n > 1 ? 'las ' + n + ' ideas' : 'la idea') + ', tarda un minuto…' : nombre === 'editar_foto' ? 'Editando la foto, un momento…' : 'Voy con el render, tarda un minuto…');
+    if (ctx.avisar) await ctx.avisar(esTexto ? 'Voy con ' + (n > 1 ? 'las ' + n + ' ideas' : 'la idea') + ', tarda un minuto o dos…' : nombre === 'editar_foto' ? 'Editando la foto, un momento…' : 'Voy con el render, tarda uno o dos minutos…');
     const prompts = esTexto ? (Array.isArray(input.prompts) && input.prompts.length ? input.prompts : [input.prompt]).map(x => String(x || '').trim()).filter(Boolean).slice(0, 3) : [];
+    const aviso2 = ctx.avisar ? setTimeout(() => { Promise.resolve(ctx.avisar('Sigo con ello: la imagen está tardando un poco más de lo normal…')).catch(() => {}); }, 75000) : null;
     const hechas = await Promise.allSettled(Array.from({ length: n }, (_, i) => esTexto ? imagenDesdeTexto({ prompt: prompts[i] || prompts[0], estilo: input.estilo }) : nombre === 'editar_foto' ? editarFoto({ buffer: a.buffer, mime: a.mime, instruccion: input.instruccion }) : renderDesdeFoto({ buffer: a.buffer, mime: a.mime, instrucciones: input.instrucciones, estilo: input.estilo })));
+    if (aviso2) clearTimeout(aviso2);
     const pngs = hechas.filter(h => h.status === 'fulfilled').map(h => h.value);
     if (!pngs.length) return { error: 'No he podido generar la imagen: ' + (hechas[0].reason?.message || 'error desconocido') };
     const titulo = esTexto ? String(input.prompt).slice(0, 90) : nombre === 'editar_foto' ? String(input.instruccion).slice(0, 90) : 'Render desde móvil';

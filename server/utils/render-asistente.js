@@ -25,9 +25,9 @@ async function conOpenAI(buffer, mime, prompt) {
   const clave = (process.env.OPENAI_API_KEY || '').trim(); if (!clave) throw new Error('sin clave de OpenAI');
   return openaiImagen(clave, 'edits', (modelo) => {
     const fd = new FormData();
-    fd.append('model', modelo); fd.append('prompt', prompt); fd.append('size', 'auto'); fd.append('quality', process.env.OPENAI_IMAGE_QUALITY || 'high'); fd.append('n', '1');
+    fd.append('model', modelo); fd.append('prompt', prompt); fd.append('size', 'auto'); fd.append('quality', process.env.OPENAI_IMAGE_QUALITY_ASIST || 'medium'); fd.append('n', '1');
     fd.append('image', new Blob([buffer], { type: mime }), 'foto.' + (mime === 'image/png' ? 'png' : 'jpg'));
-    return fetch('https://api.openai.com/v1/images/edits', { method: 'POST', headers: { Authorization: 'Bearer ' + clave }, body: fd });
+    return fetch('https://api.openai.com/v1/images/edits', { method: 'POST', headers: { Authorization: 'Bearer ' + clave }, body: fd, signal: AbortSignal.timeout(110000) }); // si tarda más de ~2 min se corta y prueba el otro motor
   });
 }
 async function conGemini(buffer, mime, prompt) {
@@ -54,7 +54,7 @@ export async function renderDesdeFoto({ buffer, mime, instrucciones, estilo }) {
 // ── Imagen desde texto (inspiración sin foto de partida) y edición de una foto con una instrucción ──
 async function textoOpenAI(prompt) {
   const clave = (process.env.OPENAI_API_KEY || '').trim(); if (!clave) throw new Error('sin clave de OpenAI');
-  return openaiImagen(clave, 'generations', (modelo) => fetch('https://api.openai.com/v1/images/generations', { method: 'POST', headers: { Authorization: 'Bearer ' + clave, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: modelo, prompt, size: 'auto', quality: process.env.OPENAI_IMAGE_QUALITY || 'high', n: 1 }) }));
+  return openaiImagen(clave, 'generations', (modelo) => fetch('https://api.openai.com/v1/images/generations', { method: 'POST', headers: { Authorization: 'Bearer ' + clave, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: modelo, prompt, size: 'auto', quality: process.env.OPENAI_IMAGE_QUALITY_ASIST || 'medium', n: 1 }), signal: AbortSignal.timeout(110000) }));
 }
 async function textoGemini(prompt) {
   const clave = (process.env.GEMINI_API_KEY || '').trim(); if (!clave) throw new Error('sin clave de Gemini');
