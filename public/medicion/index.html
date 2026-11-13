@@ -10439,11 +10439,10 @@ $('b-historia').addEventListener('click',publicarHistoria);
 $('b-pdfdocall').addEventListener('click',function(){abrirLaminas('subir')});
 $('b-pdfcarp').addEventListener('click',function(){if(!st.v.ops.length){toast('Aún no hay puertas ni ventanas');return}exportPDF('carp')});
 $('b-pdfprecios').addEventListener('click',preciosAbrir);
-$('b-csvprecios').addEventListener('click',function(){if(!preciosFilas().length){toast('Aún no hay equipamiento ni nada que listar en el plano');return}saveFile(slug()+'-listado-precios.csv',preciosCSV(),'CSV')});
+$('b-csvprecios').addEventListener('click',function(){if(!preciosFilas().length){toast('Aún no hay equipamiento ni nada que listar en el plano');return}preciosAbrir()}); /* se elige qué líneas van al CSV en la ventana de selección (marcar categorías o líneas sueltas) */
 $('b-txtprecios').addEventListener('click',function(){
   if(!preciosFilas().length){toast('Aún no hay nada que listar en el plano');return}
-  var t=preciosTexto();
-  try{navigator.clipboard.writeText(t).then(function(){toast('Listado copiado: pégalo en el correo')},function(){toast('No se pudo copiar')})}catch(e){toast('No se pudo copiar')}
+  preciosAbrir(); /* mismo selector: se elige qué se incluye y se pulsa «Copiar texto» */
 });
 $('b-csvcarp').addEventListener('click',function(){if(!st.v.ops.length){toast('Aún no hay puertas ni ventanas');return}saveFile(slug()+'-carpinterias.csv',carpCSV(),'CSV')});
 $('x-logo').addEventListener('change',function(e){loadLogoFile(e.target.files&&e.target.files[0]);e.target.value=''});
