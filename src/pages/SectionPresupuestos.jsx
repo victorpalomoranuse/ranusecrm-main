@@ -1114,6 +1114,23 @@ function BudgetEditor({ id, onBack, onOpen }) {
     finally { setSavingInstallNote(false); }
   };
 
+  // Condiciones del contrato (texto que sale al final del PDF)
+  const [condAbierto, setCondAbierto] = useState(false), [cond, setCond] = useState(null), [condOriginal, setCondOriginal] = useState(''), [condGuardando, setCondGuardando] = useState(false);
+  const abreCond = async () => {
+    setCondAbierto(true); setCond(null);
+    try { const [a, b] = await Promise.all([api.get('/budgets/' + id + '/condiciones'), api.get('/budgets/condiciones-base')]); setCond(a.data); setCondOriginal(b.data.original || ''); }
+    catch { flash('No se pudieron cargar las condiciones', 'error'); setCondAbierto(false); }
+  };
+  const guardaCond = async (cuerpo, msg) => {
+    setCondGuardando(true);
+    try { const { data } = await api.put('/budgets/' + id + '/condiciones', cuerpo); setCond(data); flash(msg || 'Condiciones guardadas'); }
+    catch { flash('No se pudieron guardar las condiciones', 'error'); }
+    finally { setCondGuardando(false); }
+  };
+  const guardaPlantilla = async () => {
+    if (!window.confirm('¿Guardar este texto como plantilla para todos los presupuestos nuevos?')) return;
+    try { await api.put('/budgets/condiciones-base', { texto: cond.texto }); flash('Plantilla general guardada'); } catch (e) { flash(e.response?.data?.error || 'No se pudo guardar la plantilla', 'error'); }
+  };
   const handlePdf = async () => {
     setGeneratingPdf(true);
     try {
@@ -1563,6 +1580,26 @@ function BudgetEditor({ id, onBack, onOpen }) {
                   <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',flexShrink:0}}>Nota instalación/envío</span>
                   <input className="ap-field-input" value={installNote} onChange={e=>setInstallNote(e.target.value)} placeholder="Ej: Instalación, montaje y envío: pendientes de valorar (varían según ciudad, acceso y planta)." style={{flex:1,fontSize:'0.72rem',minWidth:200}} />
                   <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleSaveInstallNote} disabled={savingInstallNote} style={{fontSize:'0.7rem'}}>{savingInstallNote?'…':'Guardar'}</button>
+                </div>
+              )}
+              <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={abreCond} title="Texto del contrato que sale al final del PDF: partidas pendientes, imprevistos, hitos de pago, plazos y garantía" style={{fontSize:'0.7rem'}}>Condiciones del contrato</button>
+              {condAbierto && (
+                <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:1000,display:'grid',placeItems:'center'}} onClick={() => setCondAbierto(false)}>
+                  <div onClick={e => e.stopPropagation()} style={{width:'min(860px,94vw)',maxHeight:'90vh',overflowY:'auto',background:'#161616',color:'#fff',borderRadius:12,padding:20,border:'1px solid rgba(255,255,255,0.12)'}}>
+                    <div style={{display:'flex',alignItems:'center',marginBottom:8}}><b style={{flex:1,fontSize:'1rem'}}>Condiciones del contrato</b><span onClick={() => setCondAbierto(false)} style={{cursor:'pointer',opacity:0.7}}>✕</span></div>
+                    {!cond ? <div style={{opacity:0.6}}>Cargando…</div> : (<>
+                      <div style={{fontSize:'0.75rem',opacity:0.65,marginBottom:8,lineHeight:1.5}}>Este texto sale al final del PDF del cliente, con un espacio para las firmas. Completa los huecos <b>[___]</b> (días, % e importes). Es una propuesta de redacción: que la revise un abogado o tu gestoría antes de usarla como contrato.</div>
+                      <textarea value={cond.texto} onChange={e => setCond(c => ({ ...c, texto: e.target.value }))} rows={18} style={{width:'100%',boxSizing:'border-box',background:'#0f0f0f',color:'#fff',border:'1px solid rgba(255,255,255,0.15)',borderRadius:8,padding:10,fontSize:'0.8rem',lineHeight:1.5,fontFamily:'inherit'}} />
+                      <label style={{display:'flex',alignItems:'center',gap:8,marginTop:10,cursor:'pointer',fontSize:'0.8rem'}}><input type="checkbox" checked={cond.incluir} onChange={e => setCond(c => ({ ...c, incluir: e.target.checked }))} />Incluir las condiciones en el PDF de este presupuesto</label>
+                      <label style={{display:'flex',alignItems:'flex-start',gap:8,marginTop:8,cursor:'pointer',fontSize:'0.8rem'}}><input type="checkbox" checked={cond.hitosSoloFirme} onChange={e => setCond(c => ({ ...c, hitosSoloFirme: e.target.checked }))} style={{marginTop:3}} /><span><b>Calcular los hitos de pago solo sobre lo firme</b><br /><span style={{opacity:0.65,fontSize:'0.72rem'}}>Los capítulos «Reserva…» (pendientes de definir e imprevistos) no entran en los hitos: se facturan aparte, cuando se aprueban y por su importe real. El PDF lo deja escrito con las dos cantidades.</span></span></label>
+                      <div style={{display:'flex',gap:8,marginTop:14,flexWrap:'wrap'}}>
+                        <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={condGuardando} onClick={() => guardaCond({ texto: cond.texto, incluir: cond.incluir, hitosSoloFirme: cond.hitosSoloFirme })}>{condGuardando ? 'Guardando…' : 'Guardar en este presupuesto'}</button>
+                        <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={guardaPlantilla}>Guardar como plantilla general</button>
+                        <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setCond(c => ({ ...c, texto: condOriginal }))} title="Vuelve al texto original propuesto">Restaurar el texto original</button>
+                        <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setCondAbierto(false)}>Cerrar</button>
+                      </div>
+                    </>)}
+                  </div>
                 </div>
               )}
               <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleExcelProveedor} disabled={generandoExcel} title="Excel con las partidas sin precios nuestros y el total con fórmula, para que el proveedor ponga el suyo" style={{fontSize:'0.7rem'}}>{generandoExcel ? 'Generando…' : 'Excel proveedor'}</button>

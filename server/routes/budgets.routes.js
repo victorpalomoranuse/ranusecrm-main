@@ -12,6 +12,7 @@ import { uploadRenderFile, handleMulterError } from '../middleware/upload.middle
 import { internalAdminToken } from '../utils/internal-auth.js';
 import { computeCatalogPricing } from '../utils/pricing.js';
 import { callClaude } from '../utils/anthropic.js';
+import { condicionesDe, guardarDe, leerBase, guardarBase, TEXTO_BASE } from '../utils/condiciones-presupuesto.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,6 +41,17 @@ router.param('id', async (req, res, next, id) => {
     if (!data || data.created_by !== req.user.id) return res.status(404).json({ error: 'Presupuesto no encontrado' });
     next();
   } catch { res.status(500).json({ error: 'No se pudo comprobar el presupuesto' }); }
+});
+// Condiciones del contrato (texto que sale al final del PDF): plantilla general y versión de cada presupuesto
+router.get('/condiciones-base', async (req, res) => { try { res.json({ texto: await leerBase(), original: TEXTO_BASE }); } catch { res.status(500).json({ error: 'No se pudo leer la plantilla' }); } });
+router.put('/condiciones-base', async (req, res) => {
+  if (req.user?.role !== 'admin_superior') return res.status(403).json({ error: 'Solo el administrador cambia la plantilla general' });
+  try { await guardarBase(req.body?.texto); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudo guardar la plantilla' }); }
+});
+router.get('/:id/condiciones', async (req, res) => { try { res.json(await condicionesDe(req.params.id)); } catch { res.status(500).json({ error: 'No se pudieron leer las condiciones' }); } });
+router.put('/:id/condiciones', async (req, res) => {
+  try { await guardarDe(req.params.id, { texto: req.body?.texto === null ? null : (typeof req.body?.texto === 'string' ? req.body.texto : undefined), incluir: req.body?.incluir, hitosSoloFirme: req.body?.hitosSoloFirme }); res.json(await condicionesDe(req.params.id)); }
+  catch { res.status(500).json({ error: 'No se pudieron guardar las condiciones' }); }
 });
 // Inserta un presupuesto anotando quién lo crea; si aún no está la columna y es el admin, lo crea igualmente (sin el dato)
 async function insertaPresupuesto(req, row, select) {
@@ -1195,8 +1207,17 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     // Oferta "si contratas todo junto": se enseña aparte, sin tocar el total normal
     const packPct = parseFloat(budget.pack_discount_pct) || 0;
     const packEur = parseFloat(budget.pack_discount_eur) || 0;
-    let baseCalendario = total; // con oferta, el calendario de pagos se calcula sobre el precio de la oferta
-    if ((packEur > 0 || packPct > 0) && total > 0) {
+    const cond = await condicionesDe(budget.id).catch(() => ({ texto: TEXTO_BASE, incluir: false, hitosSoloFirme: false }));
+    // reservas = capítulos de primer nivel cuyo nombre habla de reserva, imprevistos o pendientes de definir
+    let capActual = '', reservaNeta = 0;
+    for (const i of items) {
+      if (i.is_chapter_header) { if ((parseInt(i.nivel_capitulo, 10) || 1) === 1) capActual = String(i.name || ''); continue; }
+      if (/reserva|imprevist|pendientes? de definir/i.test(capActual)) reservaNeta += lineListPrice(i) * (parseFloat(i.quantity) || 1) * (1 - dtoEfectivo(i) / 100);
+    }
+    const ratioFirme = subtotalAfterLines > 0 ? Math.max(0, Math.min(1, (subtotalAfterLines - reservaNeta) / subtotalAfterLines)) : 1;
+    const totalFirme = total * ratioFirme, totalReservas = total - totalFirme;
+    let baseCalendario = cond.hitosSoloFirme && reservaNeta > 0 ? totalFirme : total; // con oferta, el calendario de pagos se calcula sobre el precio de la oferta
+    if ((packEur > 0 || packPct > 0) && total > 0 && !(cond.hitosSoloFirme && reservaNeta > 0)) {
       // Si hay importe en euros manda sobre el %. El importe es lo que ahorra el cliente sobre el total final.
       const ahorroPack = packEur > 0 ? Math.min(packEur, total) : total * packPct / 100;
       const totalPack = total - ahorroPack;
@@ -1260,7 +1281,14 @@ router.get('/:id/pdf-cliente', async (req, res) => {
         });
         const sumaPct = calendarioPagos.reduce((s, h) => s + (parseFloat(h.pct) || 0), 0);
         if (Math.abs(sumaPct - 100) > 0.01) { doc.fillColor('#cc3333').fontSize(7).font('Helvetica').text('Aviso: el calendario suma ' + sumaPct + '%', margin, y); y += 10; }
-        doc.fillColor('#999999').fontSize(7).font('Helvetica-Oblique').text((baseCalendario !== total ? 'Importes sobre el precio con la oferta' : 'Importes sobre el total del presupuesto') + (parseFloat(iva) > 0 ? ' (IVA incluido).' : '.'), margin, y); y += 11;
+        if (cond.hitosSoloFirme && reservaNeta > 0) {
+          if (y > H - 90) { doc.addPage(); y = margin + 20; }
+          doc.fillColor(BRAND.dark).fontSize(8).font('Helvetica-Bold').text('Importe firme (base de los hitos)', margin, y, { width: W - margin * 2 - 110 }); doc.text(fmtEur(totalFirme), W - margin - 100, y, { width: 100, align: 'right' }); y += 12;
+          doc.fillColor('#555555').fontSize(8).font('Helvetica').text('Reservas por pendientes de definir e imprevistos (no incluidas en los hitos)', margin, y, { width: W - margin * 2 - 110 }); doc.text(fmtEur(totalReservas), W - margin - 100, y, { width: 100, align: 'right' }); y += 12;
+          doc.fillColor('#777777').fontSize(7).font('Helvetica-Oblique').text('Las reservas se facturan aparte, solo cuando se aprueban y por su importe real; lo no utilizado se descuenta de la factura final.', margin, y, { width: W - margin * 2 }); y += 18;
+        }
+        doc.fillColor('#777777').fontSize(7).font('Helvetica-Oblique').text('Cada hito se factura cuando Ranuse Design comunica por escrito que se ha cumplido la condición indicada.', margin, y, { width: W - margin * 2 }); y += 10;
+        doc.fillColor('#999999').fontSize(7).font('Helvetica-Oblique').text(((cond.hitosSoloFirme && reservaNeta > 0) ? 'Importes sobre el importe firme' : baseCalendario !== total ? 'Importes sobre el precio con la oferta' : 'Importes sobre el total del presupuesto') + (parseFloat(iva) > 0 ? ' (IVA incluido).' : '.'), margin, y); y += 11;
       }
       if (settings.payment_notes && !calendarioPagos.length) { doc.fillColor('#888888').fontSize(7.5).font('Helvetica').text(settings.payment_notes, margin, y, { width: W - margin * 2 }); y += 11; }
     }
@@ -1284,6 +1312,27 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       doc.fillColor(BRAND.primary).fontSize(7).font('Helvetica-Bold').text('INSTALACIÓN Y ENVÍO', margin, y);
       y += 12;
       doc.fillColor('#555555').fontSize(8).font('Helvetica').text(budget.install_shipping_note, margin, y, { width: W - margin * 2 });
+    }
+
+    // CONDICIONES DEL CONTRATO (texto editable en el CRM)
+    if (cond.incluir && String(cond.texto || '').trim()) {
+      doc.addPage(); y = margin + 20;
+      doc.fillColor(BRAND.primary).fontSize(9).font('Helvetica-Bold').text('CONDICIONES DEL CONTRATO', margin, y); y += 8;
+      doc.moveTo(margin, y + 6).lineTo(W - margin, y + 6).strokeColor('#dddddd').lineWidth(0.5).stroke(); y += 18;
+      for (const par of String(cond.texto).split(/\n\s*\n/).map(t => t.trim()).filter(Boolean)) {
+        const m = /^(\d+\.\s+[^.]{2,80}\.)\s+([\s\S]*)$/.exec(par);
+        const titulo = m ? m[1] : '', cuerpo = m ? m[2] : par;
+        const hT = titulo ? doc.font('Helvetica-Bold').fontSize(8.5).heightOfString(titulo, { width: W - margin * 2 }) + 2 : 0;
+        const hC = doc.font('Helvetica').fontSize(8).heightOfString(cuerpo, { width: W - margin * 2, lineGap: 1 });
+        if (y + hT + hC > H - 70) { doc.addPage(); y = margin + 20; }
+        if (titulo) { doc.fillColor(BRAND.dark).fontSize(8.5).font('Helvetica-Bold').text(titulo, margin, y, { width: W - margin * 2 }); y += hT; }
+        doc.fillColor('#444444').fontSize(8).font('Helvetica').text(cuerpo, margin, y, { width: W - margin * 2, lineGap: 1 }); y += hC + 9;
+      }
+      if (y > H - 130) { doc.addPage(); y = margin + 20; }
+      y += 14;
+      doc.fillColor('#666666').fontSize(7.5).font('Helvetica').text('Conforme, el cliente:', margin, y); doc.text('Ranuse Design:', W / 2 + 10, y); y += 44;
+      doc.moveTo(margin, y).lineTo(margin + 200, y).strokeColor('#999999').lineWidth(0.5).stroke(); doc.moveTo(W / 2 + 10, y).lineTo(W / 2 + 210, y).stroke();
+      doc.fillColor('#999999').fontSize(7).text('Nombre, fecha y firma', margin, y + 4); doc.text('Nombre, fecha y firma', W / 2 + 10, y + 4);
     }
 
     // FOOTER
