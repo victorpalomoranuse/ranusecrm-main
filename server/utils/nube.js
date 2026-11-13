@@ -21,7 +21,7 @@ async function acceso() {
 export async function lanzarNube(id) {
   try {
     const c = await config(); if (!c.activo) return false;
-    const r = await fetch('https://run.googleapis.com/v2/projects/' + c.proyecto + '/locations/' + c.region + '/jobs/' + c.job + ':run', { method: 'POST', headers: { Authorization: 'Bearer ' + await acceso(), 'content-type': 'application/json' }, body: JSON.stringify({ overrides: { containerOverrides: [{ env: [{ name: 'JOB_ID', value: String(id) }] }] } }) });
+    const r = await fetch('https://run.googleapis.com/v2/projects/' + c.proyecto + '/locations/' + c.region + '/jobs/' + c.job + ':run', { method: 'POST', headers: { Authorization: 'Bearer ' + await acceso(), 'content-type': 'application/json' }, body: JSON.stringify({ overrides: { containerOverrides: [{ env: [{ name: 'JOB_ID', value: String(id) }, ...(process.env.OPENAI_API_KEY ? [{ name: 'OPENAI_API_KEY', value: String(process.env.OPENAI_API_KEY).trim() }] : [])] }] } }) });
     if (!r.ok) { console.error('Nube: Google rechazó el arranque', r.status, (await r.text()).slice(0, 200)); return false; }
     return true;
   } catch (e) { console.error('Nube: no se pudo lanzar', e.message); return false; }
