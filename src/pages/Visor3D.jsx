@@ -1747,6 +1747,17 @@ function puntosForma(forma, x0, y0, x1, y1) {
   if (forma === 'oval') { const cx = (ax + bx) / 2, cy = (ay + by) / 2, rx = (bx - ax) / 2, ry = (by - ay) / 2; return Array.from({ length: 48 }, (_, i) => [cx + rx * Math.cos((i / 48) * 2 * Math.PI), cy + ry * Math.sin((i / 48) * 2 * Math.PI)]); }
   return [[ax, ay], [bx, ay], [bx, by], [ax, by]];
 }
+// Arco de 3 puntos: pasa por A (inicio), B (final) y C (punto del arco). Devuelve el segmento cerrado (arco + cuerda)
+function arcoPuntos(a, b, c, n = 32) {
+  const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+  if (Math.abs(d) < 1e-6) return null;
+  const a2 = a.x * a.x + a.y * a.y, b2 = b.x * b.x + b.y * b.y, c2 = c.x * c.x + c.y * c.y;
+  const ox = (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / d, oy = (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / d;
+  const r = Math.hypot(a.x - ox, a.y - oy), TAU = Math.PI * 2, nor = t => ((t % TAU) + TAU) % TAU;
+  const ta = Math.atan2(a.y - oy, a.x - ox), tb = Math.atan2(b.y - oy, b.x - ox), tc = Math.atan2(c.y - oy, c.x - ox);
+  let barrido = nor(tb - ta); if (nor(tc - ta) > barrido) barrido -= TAU; // si C no cae en el giro antihorario de A a B, se va por el otro lado
+  return Array.from({ length: n + 1 }, (_, i) => [ox + r * Math.cos(ta + (barrido * i) / n), oy + r * Math.sin(ta + (barrido * i) / n)]);
+}
 // Curva cerrada suave que pasa por los puntos (para contornos curvos)
 function suavizar(pts) {
   if (pts.length < 3) return pts;
@@ -2678,7 +2689,9 @@ export default function Visor3D({ cliente = false }) {
     const idNuevo = () => 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const dibujarPoli = (cursor) => {
       if (poliLinea) { scene.remove(poliLinea); poliLinea.geometry.dispose(); poliLinea = null; }
-      const ptsF = cursor && poli.length === 1 && ['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current !== 'poli' ? puntosForma(formaRef.current, poli[0].x, poli[0].y, cursor.x, cursor.y).map(([x, y]) => ({ x, y })) : null;
+      const esArco = ['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current === 'arco';
+      const arcoF = esArco && cursor && poli.length === 2 ? arcoPuntos(poli[0], poli[1], cursor) : null;
+      const ptsF = arcoF ? arcoF.map(([x, y]) => ({ x, y })) : (cursor && poli.length === 1 && ['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current !== 'poli' && !esArco ? puntosForma(formaRef.current, poli[0].x, poli[0].y, cursor.x, cursor.y).map(([x, y]) => ({ x, y })) : null);
       const pts = ptsF ? [...ptsF, ptsF[0]] : (cursor ? [...poli, cursor] : poli);
       if (pts.length < 2) return;
       poliLinea = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x * CM, 0.03, p.y * CM))), new THREE.LineBasicMaterial({ color: ejeBloq === 'x' ? 0xe03131 : ejeBloq === 'y' ? 0x2f9e44 : 0x1b6dd6 }));
@@ -3078,7 +3091,7 @@ export default function Visor3D({ cliente = false }) {
       if (poliAbajo) {
         const ini0 = poliAbajo, d0 = Math.hypot(e.clientX - poliAbajo[0], e.clientY - poliAbajo[1]); poliAbajo = null;
         // arrastrar con el izquierdo dibuja el rectángulo u óvalo de una vez (de donde se pulsa a donde se suelta)
-        if (d0 >= 4 && ['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current !== 'poli') {
+        if (d0 >= 4 && ['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current !== 'poli' && formaRef.current !== 'arco') {
           const p1 = puntoSuelo(e), p0 = poli.length === 1 ? poli[0] : puntoSuelo({ clientX: ini0[0], clientY: ini0[1] });
           if (p0 && p1 && Math.hypot(p1.x - p0.x, p1.y - p0.y) > 5) { poli = puntosForma(formaRef.current, p0.x, p0.y, p1.x, p1.y).map(([x, y]) => ({ x, y })); cerrarPoli(); }
           return;
@@ -3095,7 +3108,13 @@ export default function Visor3D({ cliente = false }) {
           if (p) {
             const formaTool = ['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current !== 'poli';
             if (!formaTool) p = ortoPoli(p, e);
-            if (formaTool && poli.length === 1) { poli = puntosForma(formaRef.current, poli[0].x, poli[0].y, p.x, p.y).map(([x, y]) => ({ x, y })); cerrarPoli(); }
+            if (formaTool && formaRef.current === 'arco') {
+              // Arco de 3 clics: inicio, final y un punto por donde pasa la curva
+              if (poli.length === 1) { if (Math.hypot(p.x - poli[0].x, p.y - poli[0].y) > 5) { poli.push(p); dibujarPoli(null); } }
+              else if (poli.length >= 2) { const arc = arcoPuntos(poli[0], poli[1], p); if (arc) { poli = arc.map(([x, y]) => ({ x, y })); cerrarPoli(); } else setAviso('Los 3 puntos están en línea: mueve el último para curvar el arco'); }
+              else { poli.push(p); dibujarPoli(null); }
+            }
+            else if (formaTool && poli.length === 1) { poli = puntosForma(formaRef.current, poli[0].x, poli[0].y, p.x, p.y).map(([x, y]) => ({ x, y })); cerrarPoli(); }
             else if (poli.length >= 3 && Math.hypot(p.x - poli[0].x, p.y - poli[0].y) < 15) { cierraLazo = true; cerrarPoli(); cierraLazo = false; }
             else { poli.push(p); ejeBloq = null; dibujarPoli(null); }
           }
@@ -4535,6 +4554,7 @@ export default function Visor3D({ cliente = false }) {
     { g: 'Herramientas', n: 'Rectángulo', k: 'R', t: 'r', f: () => { setFormaDib('rect'); setHerr('poli'); } },
     { g: 'Herramientas', n: 'Círculo', k: 'C', t: 'c', f: () => { setFormaDib('oval'); setHerr('poli'); } },
     { g: 'Herramientas', n: 'Polígono', k: 'G', t: 'g', f: () => { setFormaDib('poli'); setHerr('poli'); } },
+    { g: 'Herramientas', n: 'Arco (3 clics: inicio, final y por dónde curva)', k: '', f: () => { setFormaDib('arco'); setHerr('poli'); } },
     { g: 'Herramientas', n: 'Empujar / Tirar', k: 'P', t: 'p', f: () => setHerr('empujar') },
     { g: 'Herramientas', n: 'Muro', k: 'M', t: 'm', f: () => setHerr('muro') },
     { g: 'Herramientas', n: 'Zona en el suelo', k: 'Z', t: 'z', f: () => setHerr('zonaS') },
@@ -6078,7 +6098,7 @@ export default function Visor3D({ cliente = false }) {
           {herr === 'focoC' && <select value={kindFoco} onChange={e => setKindFoco(e.target.value)} style={bTop}>{Object.entries(TIPOS_FOCO).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>}
           {herr === 'pincel' && <span style={{ opacity: 0.9 }}>Modo: <b>{modoPincel === 'cara' ? 'Cara' : modoPincel === 'pieza' ? 'Pieza' : 'Entero'}</b></span>}
           {herr === 'guia' && guias.length > 0 && <button style={bTop} onClick={() => setGuias([])}>✕ Quitar guías ({guias.length})</button>}
-          {['poli', 'zonaS', 'zonaT', 'zonaP'].includes(herr) && <select value={formaDib} onChange={e => setFormaDib(e.target.value)} style={bTop} title="Forma que se dibuja"><option value="poli">Polígono (clic a clic)</option><option value="rect">Rectángulo (2 clics)</option><option value="oval">Óvalo (2 clics)</option></select>}
+          {['poli', 'zonaS', 'zonaT', 'zonaP'].includes(herr) && <select value={formaDib} onChange={e => setFormaDib(e.target.value)} style={bTop} title="Forma que se dibuja"><option value="poli">Polígono (clic a clic)</option><option value="rect">Rectángulo (2 clics)</option><option value="oval">Óvalo (2 clics)</option><option value="arco">Arco (3 clics)</option></select>}
           {['poli', 'zonaS', 'zonaT', 'zonaP', 'muro', 'sigue', 'carril', 'led', 'guia', 'luz'].includes(herr) && <>
             <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} title="Atrae el dibujo a paredes, esquinas, vértices y guías. Desmárcalo para dibujar libre, sin conectar"><input type="checkbox" checked={imanActivo} onChange={e => setImanActivo(e.target.checked)} /> Imán</label>
             <select value={gridCm} onChange={e => setGridCm(parseFloat(e.target.value))} style={bTop} title="Salto de la rejilla al dibujar"><option value={1}>1 cm</option><option value={5}>5 cm</option><option value={10}>10 cm</option><option value={50}>50 cm</option></select>
