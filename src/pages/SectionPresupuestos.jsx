@@ -84,6 +84,18 @@ function computeSummary(items, b) {
   };
 }
 
+// Lo que suman los capítulos de primer nivel que son reservas (pendientes de definir, imprevistos): no entran en los hitos de pago si así se elige
+function ingresosReserva(items) {
+  let cap = '', t = 0;
+  for (const i of items) {
+    if (i.is_chapter_header) { if ((parseInt(i.nivel_capitulo, 10) || 1) === 1) cap = String(i.name || ''); continue; }
+    if (!/reserva|imprevist|pendientes? de definir/i.test(cap)) continue;
+    const qty = parseFloat(i.quantity) || 1;
+    t += (i.pricing_mode || 'margin') === 'pvp' ? (parseFloat(i.pvp_ref) || 0) * qty * (1 - (parseFloat(i.discount_pct) || 0) / 100) : (parseFloat(i.unit_price) || 0) * qty;
+  }
+  return t;
+}
+
 function MsgBanner({ msg }) {
   if (!msg) return null;
   return (
@@ -1116,6 +1128,8 @@ function BudgetEditor({ id, onBack, onOpen }) {
 
   // Condiciones del contrato (texto que sale al final del PDF)
   const [condAbierto, setCondAbierto] = useState(false), [cond, setCond] = useState(null), [condOriginal, setCondOriginal] = useState(''), [condGuardando, setCondGuardando] = useState(false);
+  const [hitosFirme, setHitosFirme] = useState(false);
+  useEffect(() => { let vivo = true; api.get('/budgets/' + id + '/condiciones').then(r => { if (vivo) setHitosFirme(!!r.data.hitosSoloFirme); }).catch(() => {}); return () => { vivo = false; }; }, [id]);
   const abreCond = async () => {
     setCondAbierto(true); setCond(null);
     try { const [a, b] = await Promise.all([api.get('/budgets/' + id + '/condiciones'), api.get('/budgets/condiciones-base')]); setCond(a.data); setCondOriginal(b.data.original || ''); }
@@ -1123,7 +1137,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
   };
   const guardaCond = async (cuerpo, msg) => {
     setCondGuardando(true);
-    try { const { data } = await api.put('/budgets/' + id + '/condiciones', cuerpo); setCond(data); flash(msg || 'Condiciones guardadas'); }
+    try { const { data } = await api.put('/budgets/' + id + '/condiciones', cuerpo); setCond(data); setHitosFirme(!!data.hitosSoloFirme); flash(msg || 'Condiciones guardadas'); }
     catch { flash('No se pudieron guardar las condiciones', 'error'); }
     finally { setCondGuardando(false); }
   };
@@ -1389,6 +1403,8 @@ function BudgetEditor({ id, onBack, onOpen }) {
   if (!budget) return null;
 
   const sum = computeSummary(items, budget);
+  const reservaRev = ingresosReserva(items), subtotalLineas = sum.itemRev + sum.fee;
+  const baseHitos = (hitosFirme && reservaRev > 0 && subtotalLineas > 0) ? sum.totalRev * Math.max(0, 1 - reservaRev / subtotalLineas) : sum.totalRev;
   const realItems = items.filter(i => !i.is_chapter_header);
   const totalItemCost = realItems.reduce((s,i)=>(parseFloat(i.unit_cost)||0)*(parseFloat(i.quantity)||1)+s, 0);
   const totalItemPvp  = realItems.reduce((s,i)=>(parseFloat(i.unit_price)||0)*(parseFloat(i.quantity)||1)+s, 0);
@@ -1562,10 +1578,16 @@ function BudgetEditor({ id, onBack, onOpen }) {
                       <input className="ap-field-input" value={h.concepto} onChange={e => setCalendario(c => c.map((x, j) => j === i ? { ...x, concepto: e.target.value } : x))} placeholder="Ej: Al firmar el contrato" style={{flex:1,fontSize:'0.72rem',minWidth:140}} />
                       <input className="ap-field-input" type="number" min="0" max="100" step="1" value={h.pct} onChange={e => setCalendario(c => c.map((x, j) => j === i ? { ...x, pct: e.target.value } : x))} style={{width:64,flex:'none',minWidth:0,fontSize:'0.72rem'}} />
                       <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)'}}>%</span>
-                      <span className="pres-mono" style={{fontSize:'0.72rem',minWidth:90,textAlign:'right',color:'#baafa5'}}>{fmt(sum.totalRev * (parseFloat(h.pct) || 0) / 100)}</span>
+                      <span className="pres-mono" style={{fontSize:'0.72rem',minWidth:90,textAlign:'right',color:'#baafa5'}}>{fmt(baseHitos * (parseFloat(h.pct) || 0) / 100)}</span>
                       <button type="button" className="ap-btn-icon" onClick={() => setCalendario(c => c.filter((_, j) => j !== i))} title="Quitar hito"><X size={12}/></button>
                     </div>
                   ))}
+                  {reservaRev > 0 && (
+                    <label style={{display:'flex',alignItems:'flex-start',gap:8,cursor:'pointer',fontSize:'0.72rem',color:'rgba(255,255,255,0.75)',padding:'2px 0'}}>
+                      <input type="checkbox" checked={hitosFirme} onChange={e => guardaCond({ hitosSoloFirme: e.target.checked }, e.target.checked ? 'Hitos calculados sobre lo firme' : 'Hitos calculados sobre el total')} style={{marginTop:2}} />
+                      <span><b>Calcular los hitos solo sobre lo firme</b> (sin las reservas por pendientes e imprevistos). Base de los hitos: <b>{fmt(baseHitos)}</b>{hitosFirme && <> · reservas fuera de los hitos: <b>{fmt(sum.totalRev - baseHitos)}</b></>}. {hitosFirme ? 'Las reservas se facturan aparte, al aprobarse.' : 'Ahora los hitos incluyen las reservas.'}</span>
+                    </label>
+                  )}
                   {(calendario.length > 0 || (budget.payment_schedule || []).length > 0) && (
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
                       <span style={{fontSize:'0.7rem',color: Math.abs(sumaCal - 100) < 0.01 ? '#8bae8f' : '#e08a82'}}>Suma: {sumaCal}% {Math.abs(sumaCal - 100) < 0.01 ? '✓' : '(debería sumar 100%)'}</span>
