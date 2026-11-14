@@ -134,6 +134,53 @@ router.post('/:id/productos', uploadReferenceImageFile, handleMulterError, async
   } catch (e) { console.error('combinador producto:', e); res.status(500).json({ error: 'No se pudo subir y leer la foto' }); }
 });
 
+// ── búsqueda de productos por estilo en tiendas reales (la IA navega y devuelve enlaces)
+const hostSeguro = (u) => { try { const x = new URL(u); if (x.protocol !== 'https:') return false; const h = x.hostname; return !(/^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h) || !h.includes('.')); } catch { return false; } };
+async function imagenDe(url) {
+  if (!hostSeguro(url)) return '';
+  try {
+    const r = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(7000), headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RanuseBot/1.0)', Accept: 'text/html' } });
+    if (!r.ok) return '';
+    const html = (await r.text()).slice(0, 400000);
+    const m = /<meta[^>]+(?:property|name)=["']og:image(?::secure_url)?["'][^>]*content=["']([^"']+)["']/i.exec(html) || /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:image["']/i.exec(html);
+    if (!m) return '';
+    const abs = new URL(m[1].replace(/&amp;/g, '&'), r.url).toString();
+    return hostSeguro(abs) ? abs : '';
+  } catch { return ''; }
+}
+router.post('/:id/buscar', async (req, res) => {
+  try {
+    const t = await leerTablero(req.params.id); if (!t) return res.status(404).json({ error: 'Tablero no encontrado' });
+    const estilo = txt(req.body?.estilo, 300), busco = txt(req.body?.busco, 300), maxPrecio = num(req.body?.maxPrecio, 0);
+    if (!estilo && !busco && !t.espacio) return res.status(400).json({ error: 'Cuéntame el estilo que buscas (por ejemplo: japandi cálido, madera clara y negro mate)' });
+    const yaHay = t.productos.map(p => [p.nombre, p.estilo, p.material, p.color].filter(Boolean).join(' / ')).slice(0, 12).join('; ');
+    const system = 'Eres interiorista de Ranuse Design y buscas productos REALES de mobiliario y decoración en tiendas online (España y envío a España). Prioriza el ESTILO y la coherencia estética sobre el precio. Usa la búsqueda web y devuelve solo productos cuya página de producto hayas visto. Responde SOLO con JSON.';
+    const pedido = 'ESTILO: ' + (estilo || 'el que encaje con el espacio') + '\nBUSCO: ' + (busco || 'piezas variadas (silla, mesa, lámpara, complementos)') + '\nESPACIO: ' + (t.espacio || 'sin descripción') + (maxPrecio ? '\nPRECIO MÁXIMO POR PIEZA: ' + maxPrecio + ' €' : '') + (yaHay ? '\nYA TENGO EN EL TABLERO (que combinen con esto): ' + yaHay : '') + '\n\nDevuelve de 6 a 8 productos de tiendas distintas. JSON: {"productos":[{"nombre":"...","tipo":"silla|mesa|sofá|butaca|taburete|lámpara|alfombra|estantería|aparador|espejo|cuadro|planta|otro","tienda":"nombre de la tienda","enlace":"URL https directa a la página del producto","precio":número en euros o 0 si no lo sabes,"material":"...","color":"...","estilo":"...","motivo":"una frase: por qué encaja"}]}';
+    const r = await callClaude({ system, messages: [{ role: 'user', content: pedido }], tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 6 }], maxTokens: 4000 });
+    const j = /\{[\s\S]*\}/.exec((r.content || []).filter(b => b.type === 'text').map(b => b.text || '').join('')); if (!j) return res.status(502).json({ error: 'La IA no devolvió productos. Inténtalo otra vez.' });
+    let lista = (JSON.parse(j[0]).productos || []).filter(p => hostSeguro(String(p.enlace || ''))).slice(0, 8);
+    lista = await Promise.all(lista.map(async p => ({ id: uid(), nombre: txt(p.nombre, 90), tipo: txt(p.tipo, 40), tienda: txt(p.tienda, 40), enlace: String(p.enlace).slice(0, 600), precio: num(p.precio), material: txt(p.material, 80), color: txt(p.color, 60), estilo: txt(p.estilo, 80), motivo: txt(p.motivo, 200), imagen: await imagenDe(String(p.enlace)) })));
+    if (!lista.length) return res.status(502).json({ error: 'No encontré productos con enlace válido. Prueba con otra descripción.' });
+    res.json({ propuestas: lista });
+  } catch (e) { console.error('mobiliario buscar:', e); res.status(500).json({ error: 'No se pudo buscar: ' + String(e.message || '').slice(0, 120) }); }
+});
+// la propuesta elegida pasa al tablero como producto «lo compra el cliente» (la foto se descarga y se guarda)
+router.post('/:id/propuesta', async (req, res) => {
+  try {
+    const t = await leerTablero(req.params.id); if (!t) return res.status(404).json({ error: 'Tablero no encontrado' });
+    if (t.productos.length >= 60) return res.status(400).json({ error: 'Máximo 60 productos por tablero' });
+    const b = req.body || {}, pid = uid(); let foto = '';
+    if (hostSeguro(String(b.imagen || ''))) {
+      try {
+        const ri = await fetch(b.imagen, { signal: AbortSignal.timeout(10000), headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RanuseBot/1.0)' } });
+        if (ri.ok) { const buf = await sharp(Buffer.from(await ri.arrayBuffer())).rotate().resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 86 }).toBuffer(); const ruta = CARPETA + '/img/' + t.id + '/' + pid + '.jpg'; const { error } = await supabase.storage.from(BUCKET).upload(ruta, buf, { contentType: 'image/jpeg', upsert: true }); if (!error) foto = urlPublica(ruta); }
+      } catch { /* sin foto: se puede subir a mano */ }
+    }
+    const p = limpiaProducto({ ...b, foto, compra: 'cliente' }, { id: pid, foto });
+    t.productos.push(p); t.actualizado = new Date().toISOString(); await guardaJson(rutaTablero(t.id), t); res.status(201).json({ producto: p });
+  } catch (e) { console.error('mobiliario propuesta:', e); res.status(500).json({ error: 'No se pudo añadir el producto' }); }
+});
+
 // ── la IA propone combinaciones con lo que hay en el tablero
 router.post('/:id/combinar', async (req, res) => {
   try {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../services/api';
-import { Armchair, Plus, Upload, Trash2, Wand2, Loader2, ArrowLeft, FileDown, BookOpen, Receipt, Image as Img, ExternalLink, Check } from 'lucide-react';
+import { Search, Armchair, Plus, Upload, Trash2, Wand2, Loader2, ArrowLeft, FileDown, BookOpen, Receipt, Image as Img, ExternalLink, Check } from 'lucide-react';
 
 const card = { background: 'linear-gradient(160deg,rgba(255,255,255,.055),rgba(255,255,255,.02))', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 16, padding: '1rem 1.1rem' };
 const mut = { color: 'rgba(255,255,255,0.5)', fontSize: '0.78rem' };
@@ -67,6 +67,7 @@ function Producto({ p, onChange, onBorrar }) {
 function Tablero({ id, volver }) {
   const [t, setT] = useState(null), [proyectos, setProyectos] = useState([]), [ocupado, setOcupado] = useState(''), [aviso, setAviso] = useState('');
   const [sel, setSel] = useState({}), [destinos, setDestinos] = useState({ presupuestos: [], capitulos: [] }), [capSel, setCapSel] = useState('nuevo'), [presSel, setPresSel] = useState('');
+  const [busq, setBusq] = useState({ abierto: false, estilo: '', busco: '', max: '' }), [props, setProps] = useState([]);
   const fileRef = useRef(null), guardar = useRef(null), compraNueva = useRef('cliente');
   const [compraDefecto, setCompraDefecto] = useState('cliente');
   const flash = (m) => { setAviso(m); setTimeout(() => setAviso(''), 4500); };
@@ -81,6 +82,8 @@ function Tablero({ id, volver }) {
     for (const f of files) { const fd = new FormData(); fd.append('file', f); fd.append('compra', compraDefecto); const r = await api.post('/mobiliario/' + id + '/productos', fd, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 }); cur = { ...cur, productos: [...cur.productos, r.data.producto] }; setT(cur); }
     flash('Fotos leídas por la IA. Revisa nombre, enlace y precio.');
   });
+  const buscar = () => accion('buscar', async () => { const r = await api.post('/mobiliario/' + id + '/buscar', { estilo: busq.estilo, busco: busq.busco, maxPrecio: busq.max }, { timeout: 240000 }); setProps(r.data.propuestas); });
+  const añade = (p) => accion('add' + p.id, async () => { const r = await api.post('/mobiliario/' + id + '/propuesta', p, { timeout: 60000 }); setT(x => ({ ...x, productos: [...x.productos, r.data.producto] })); setProps(l => l.filter(k => k.id !== p.id)); flash(r.data.producto.foto ? 'Producto añadido al tablero.' : 'Añadido sin foto (la tienda no la dejó descargar): puedes subirla a mano.'); });
   const combinar = () => accion('combinar', async () => { await api.put('/mobiliario/' + id, { nombre: t.nombre, espacio: t.espacio, productos: t.productos }); const r = await api.post('/mobiliario/' + id + '/combinar', { espacio: t.espacio, cantidad: 3 }, { timeout: 180000 }); setT(r.data.tablero); flash('Combinaciones listas. Crea el moodboard de cada una.'); });
   const moodboard = (c) => accion('mb' + c.id, async () => { await api.put('/mobiliario/' + id, { productos: t.productos, combinaciones: t.combinaciones }); const img = await dibujaMoodboard(c, t.productos); const r = await api.post('/mobiliario/' + id + '/combinaciones/' + c.id + '/moodboard', { imagen: img }); setT(x => ({ ...x, combinaciones: x.combinaciones.map(k => k.id === c.id ? { ...k, moodboard: r.data.moodboard } : k) })); });
   const publicar = (c) => accion('pub' + c.id, async () => { await api.put('/mobiliario/' + id, { productos: t.productos, combinaciones: t.combinaciones }); const r = await api.post('/mobiliario/' + id + '/combinaciones/' + c.id + '/publicar', { proyectoId: t.proyectoId, capituloId: capSel }); setT(x => ({ ...x, combinaciones: x.combinaciones.map(k => k.id === c.id ? r.data.combinacion : k) })); flash('Publicada en la historia del cliente (capítulo oculto hasta que lo muestres).'); });
@@ -109,9 +112,38 @@ function Tablero({ id, volver }) {
         <button style={btn({ background: '#b79a6b', color: '#1e1b18', fontWeight: 700 })} onClick={() => fileRef.current.click()} disabled={!!ocupado}>{ocupado === 'subir' ? <Loader2 size={14} className="spin" /> : <Upload size={14} />} Subir fotos de productos</button>
         <span style={mut}>Las nuevas fotos entran como:</span>
         <select style={{ ...inp, width: 'auto' }} value={compraDefecto} onChange={e => setCompraDefecto(e.target.value)}><option value="cliente">Lo compra el cliente</option><option value="ranuse">Lo vendo yo</option></select>
+        <button style={btn()} onClick={() => setBusq(b => ({ ...b, abierto: !b.abierto }))} disabled={!!ocupado}><Search size={14} /> Buscar productos por estilo</button>
         <span style={{ flex: 1 }} />
         <button style={btn({ background: '#fff', color: '#1e1b18', fontWeight: 700 })} onClick={combinar} disabled={!!ocupado || t.productos.length < 2}>{ocupado === 'combinar' ? <Loader2 size={14} className="spin" /> : <Wand2 size={14} />} Combinar con IA</button>
       </div>
+
+      {busq.abierto && (
+        <div style={{ ...card, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 110px auto', gap: 8, alignItems: 'center' }}>
+            <input style={inp} placeholder="Estilo: japandi cálido, madera clara y negro mate…" value={busq.estilo} onChange={e => setBusq({ ...busq, estilo: e.target.value })} />
+            <input style={inp} placeholder="Qué busco: 4 sillas, lámpara de pie…" value={busq.busco} onChange={e => setBusq({ ...busq, busco: e.target.value })} />
+            <input style={inp} type="number" placeholder="Máx. € pieza" value={busq.max} onChange={e => setBusq({ ...busq, max: e.target.value })} />
+            <button style={btn({ background: '#b79a6b', color: '#1e1b18', fontWeight: 700 })} onClick={buscar} disabled={!!ocupado}>{ocupado === 'buscar' ? <Loader2 size={14} className="spin" /> : <Search size={14} />} {ocupado === 'buscar' ? 'Buscando… (1-2 min)' : 'Buscar'}</button>
+          </div>
+          <div style={{ ...mut, marginTop: 6 }}>Sale con enlace de la tienda. Los precios son de referencia: abre el enlace para comprobar stock y precio.</div>
+          {props.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(250px,1fr))', gap: 10, marginTop: 12 }}>
+              {props.map(p => (
+                <div key={p.id} style={{ ...card, padding: '.6rem' }}>
+                  {p.imagen ? <img src={p.imagen} alt="" referrerPolicy="no-referrer" style={{ width: '100%', height: 140, objectFit: 'contain', background: '#fff', borderRadius: 8 }} /> : <div style={{ ...mut, height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed rgba(255,255,255,.2)', borderRadius: 8 }}>Sin foto</div>}
+                  <div style={{ fontWeight: 600, fontSize: '.82rem', marginTop: 6 }}>{p.nombre}</div>
+                  <div style={mut}>{p.tienda}{p.precio > 0 ? ' · ≈ ' + eur(p.precio) : ''}</div>
+                  <div style={{ ...mut, margin: '3px 0 6px' }}>{p.motivo}</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button style={btn({ padding: '4px 8px' })} onClick={() => añade(p)} disabled={!!ocupado}>{ocupado === 'add' + p.id ? <Loader2 size={12} className="spin" /> : <Plus size={12} />} Añadir</button>
+                    <a href={p.enlace} target="_blank" rel="noreferrer" style={{ ...inp, width: 'auto', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}><ExternalLink size={12} /> Ver</a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(380px,1fr))', gap: 10, marginBottom: 26 }}>
         {t.productos.map(p => <Producto key={p.id} p={p} onChange={setProd} onBorrar={() => borraProd(p)} />)}
