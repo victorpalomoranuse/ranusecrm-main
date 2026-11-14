@@ -9,6 +9,7 @@ import { SectionAsistenteIA } from './SectionAsistenteIA';
 import { SectionAsistenteFinanzas } from './SectionAsistenteFinanzas';
 import { SectionAsistentePersonal } from './SectionAsistentePersonal';
 import { SectionEstudioVideo, SectionRedes } from './SectionEstudioVideo';
+import SectionMobiliario from './SectionMobiliario';
 import { SectionAsistenteDiseno } from './SectionAsistenteDiseno';
 import { SectionAsistenteSetter } from './SectionAsistenteSetter';
 import { SectionAgenda } from './SectionAgenda';
@@ -2890,6 +2891,7 @@ const NAV_ITEMS = [
   { id:'obra', label:'Relación de obra', Icon:Hammer, permissions:['ventas','finanzas'] },
   { id:'tareas', label:'Tareas', Icon:CheckCircle, adminOnly:true },
   { id:'catalogo', label:'Catálogo', Icon:BookOpen, permission:'catalogo' },
+  { id:'mobiliario', label:'Mobiliario y ambientes', Icon:Sparkles, permission:'referencias' },
   { id:'referencias', label:'Referencias', Icon:Bookmark, permission:'referencias' },
   { id:'recursos', label:'Recursos', Icon:Download, permission:'recursos' },
   { id:'contactos', label:'Proveedores', Icon:Phone, permission:'contactos' },
@@ -2948,6 +2950,7 @@ export function AdminPanel() {
       case 'tareas': return <SectionTareas/>;
       case 'ajustes': return <SectionAjustes/>;
       case 'catalogo': return <SectionCatalogo/>;
+      case 'mobiliario': return <SectionMobiliario/>;
       case 'referencias': return <SectionReferencias/>;
       case 'recursos': return <SectionRecursos/>;
       case 'contactos': return <SectionContactos/>;
