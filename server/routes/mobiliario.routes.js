@@ -134,6 +134,35 @@ router.post('/:id/productos', uploadReferenceImageFile, handleMulterError, async
   } catch (e) { console.error('combinador producto:', e); res.status(500).json({ error: 'No se pudo subir y leer la foto' }); }
 });
 
+// ── ideas de mobiliario según el cliente: lee lo que el CRM sabe del proyecto (sin enviar el nombre del cliente)
+router.post('/:id/ideas', async (req, res) => {
+  try {
+    const t = await leerTablero(req.params.id); if (!t) return res.status(404).json({ error: 'Tablero no encontrado' });
+    let ctx = [];
+    if (t.proyectoId) {
+      const { data: p } = await supabase.from('client_projects').select('project_name, phase, moodboard_description, moodboard_palette, memoria_intro, condicionantes').eq('id', t.proyectoId).maybeSingle();
+      if (p) {
+        ctx.push('PROYECTO: ' + txt(p.project_name, 100));
+        if (p.moodboard_description) ctx.push('MOODBOARD DEL PROYECTO: ' + txt(p.moodboard_description, 700));
+        if (p.moodboard_palette) ctx.push('PALETA DEL PROYECTO: ' + txt(typeof p.moodboard_palette === 'string' ? p.moodboard_palette : JSON.stringify(p.moodboard_palette), 300));
+        if (p.memoria_intro) ctx.push('MEMORIA / QUÉ SE HACE: ' + txt(p.memoria_intro, 900));
+        if (p.condicionantes) ctx.push('CONDICIONANTES DEL CLIENTE: ' + txt(typeof p.condicionantes === 'string' ? p.condicionantes : JSON.stringify(p.condicionantes), 900));
+      }
+      const { data: bs } = await supabase.from('budgets').select('id').eq('project_id', t.proyectoId).order('created_at', { ascending: false }).limit(1);
+      if (bs?.[0]) { const { data: caps } = await supabase.from('budget_items').select('name').eq('budget_id', bs[0].id).eq('is_chapter_header', true).limit(30); if (caps?.length) ctx.push('CAPÍTULOS DEL PRESUPUESTO (qué se está reformando): ' + caps.map(c => txt(c.name, 50)).join(', ')); }
+    }
+    if (t.espacio) ctx.push('ESPACIO (lo que he escrito yo): ' + t.espacio);
+    const yaHay = t.productos.map(p => p.nombre).slice(0, 12).join(', '); if (yaHay) ctx.push('PRODUCTOS YA ELEGIDOS: ' + yaHay);
+    if (!ctx.length) return res.status(400).json({ error: 'Elige el proyecto del cliente o describe el espacio para que la IA tenga de qué partir' });
+    const system = 'Eres directora creativa de interiorismo de Ranuse Design. Con lo que sabes del proyecto de un cliente, propones direcciones de mobiliario y ambiente que le encajen de verdad (su espacio, su paleta, su público, lo que se está reformando). Sé concreta, con criterio y sin tópicos. Responde SOLO con JSON.';
+    const pedido = ctx.join('\n') + '\n\nPropón 4 direcciones de mobiliario MUY distintas entre sí, todas coherentes con el proyecto. JSON: {"ideas":[{"titulo":"nombre corto","estilo":"el estilo en 3-6 palabras para buscar productos","porque":"2 frases: por qué encaja con ESTE cliente","busco":"qué piezas haría falta (ej. 4 sillas, mesa redonda, lámpara de pie)","paleta":[{"hex":"#RRGGBB","nombre":"..."}]}]}';
+    const r = await callClaude({ system, messages: [{ role: 'user', content: pedido }], maxTokens: 2500 });
+    const j = /\{[\s\S]*\}/.exec((r.content || []).map(b => b.text || '').join('')); if (!j) return res.status(502).json({ error: 'La IA no devolvió ideas. Inténtalo otra vez.' });
+    const ideas = (JSON.parse(j[0]).ideas || []).slice(0, 4).map(i => ({ titulo: txt(i.titulo, 70), estilo: txt(i.estilo, 120), porque: txt(i.porque, 400), busco: txt(i.busco, 200), paleta: (Array.isArray(i.paleta) ? i.paleta : []).map(q => ({ hex: hexOk(q.hex), nombre: txt(q.nombre, 40) })).filter(q => q.hex).slice(0, 5) }));
+    res.json({ ideas });
+  } catch (e) { console.error('mobiliario ideas:', e); res.status(500).json({ error: 'No se pudieron crear las ideas: ' + String(e.message || '').slice(0, 120) }); }
+});
+
 // ── búsqueda de productos por estilo en tiendas reales (la IA navega y devuelve enlaces)
 const hostSeguro = (u) => { try { const x = new URL(u); if (x.protocol !== 'https:') return false; const h = x.hostname; return !(/^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h) || !h.includes('.')); } catch { return false; } };
 async function imagenDe(url) {

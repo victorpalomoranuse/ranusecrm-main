@@ -67,7 +67,7 @@ function Producto({ p, onChange, onBorrar }) {
 function Tablero({ id, volver }) {
   const [t, setT] = useState(null), [proyectos, setProyectos] = useState([]), [ocupado, setOcupado] = useState(''), [aviso, setAviso] = useState('');
   const [sel, setSel] = useState({}), [destinos, setDestinos] = useState({ presupuestos: [], capitulos: [] }), [capSel, setCapSel] = useState('nuevo'), [presSel, setPresSel] = useState('');
-  const [busq, setBusq] = useState({ abierto: false, estilo: '', busco: '', max: '' }), [props, setProps] = useState([]);
+  const [busq, setBusq] = useState({ abierto: false, estilo: '', busco: '', max: '' }), [props, setProps] = useState([]), [ideas, setIdeas] = useState([]);
   const fileRef = useRef(null), guardar = useRef(null), compraNueva = useRef('cliente');
   const [compraDefecto, setCompraDefecto] = useState('cliente');
   const flash = (m) => { setAviso(m); setTimeout(() => setAviso(''), 4500); };
@@ -83,6 +83,8 @@ function Tablero({ id, volver }) {
     flash('Fotos leídas por la IA. Revisa nombre, enlace y precio.');
   });
   const buscar = () => accion('buscar', async () => { const r = await api.post('/mobiliario/' + id + '/buscar', { estilo: busq.estilo, busco: busq.busco, maxPrecio: busq.max }, { timeout: 240000 }); setProps(r.data.propuestas); });
+  const pideIdeas = () => accion('ideas', async () => { const r = await api.post('/mobiliario/' + id + '/ideas', {}, { timeout: 120000 }); setIdeas(r.data.ideas); });
+  const usaIdea = (i) => { setBusq(b => ({ ...b, abierto: true, estilo: i.estilo, busco: i.busco })); setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 50); flash('Idea cargada en la búsqueda: pulsa Buscar.'); };
   const añade = (p) => accion('add' + p.id, async () => { const r = await api.post('/mobiliario/' + id + '/propuesta', p, { timeout: 60000 }); setT(x => ({ ...x, productos: [...x.productos, r.data.producto] })); setProps(l => l.filter(k => k.id !== p.id)); flash(r.data.producto.foto ? 'Producto añadido al tablero.' : 'Añadido sin foto (la tienda no la dejó descargar): puedes subirla a mano.'); });
   const combinar = () => accion('combinar', async () => { await api.put('/mobiliario/' + id, { nombre: t.nombre, espacio: t.espacio, productos: t.productos }); const r = await api.post('/mobiliario/' + id + '/combinar', { espacio: t.espacio, cantidad: 3 }, { timeout: 180000 }); setT(r.data.tablero); flash('Combinaciones listas. Crea el moodboard de cada una.'); });
   const moodboard = (c) => accion('mb' + c.id, async () => { await api.put('/mobiliario/' + id, { productos: t.productos, combinaciones: t.combinaciones }); const img = await dibujaMoodboard(c, t.productos); const r = await api.post('/mobiliario/' + id + '/combinaciones/' + c.id + '/moodboard', { imagen: img }); setT(x => ({ ...x, combinaciones: x.combinaciones.map(k => k.id === c.id ? { ...k, moodboard: r.data.moodboard } : k) })); });
@@ -112,11 +114,25 @@ function Tablero({ id, volver }) {
         <button style={btn({ background: '#b79a6b', color: '#1e1b18', fontWeight: 700 })} onClick={() => fileRef.current.click()} disabled={!!ocupado}>{ocupado === 'subir' ? <Loader2 size={14} className="spin" /> : <Upload size={14} />} Subir fotos de productos</button>
         <span style={mut}>Las nuevas fotos entran como:</span>
         <select style={{ ...inp, width: 'auto' }} value={compraDefecto} onChange={e => setCompraDefecto(e.target.value)}><option value="cliente">Lo compra el cliente</option><option value="ranuse">Lo vendo yo</option></select>
+        <button style={btn({ background: '#e5c98f', color: '#1e1b18', fontWeight: 700 })} onClick={pideIdeas} disabled={!!ocupado}>{ocupado === 'ideas' ? <Loader2 size={14} className="spin" /> : <Wand2 size={14} />} Ideas para este cliente</button>
         <button style={btn()} onClick={() => setBusq(b => ({ ...b, abierto: !b.abierto }))} disabled={!!ocupado}><Search size={14} /> Buscar productos por estilo</button>
         <span style={{ flex: 1 }} />
         <button style={btn({ background: '#fff', color: '#1e1b18', fontWeight: 700 })} onClick={combinar} disabled={!!ocupado || t.productos.length < 2}>{ocupado === 'combinar' ? <Loader2 size={14} className="spin" /> : <Wand2 size={14} />} Combinar con IA</button>
       </div>
 
+      {ideas.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 10, marginBottom: 16 }}>
+          {ideas.map((i, k) => (
+            <div key={k} style={card}>
+              <b>{i.titulo}</b><div style={{ ...mut, color: '#e5c98f' }}>{i.estilo}</div>
+              <div style={{ fontSize: '.78rem', color: 'rgba(255,255,255,.75)', margin: '6px 0' }}>{i.porque}</div>
+              <div style={mut}><b>Piezas:</b> {i.busco}</div>
+              <div style={{ display: 'flex', gap: 4, margin: '8px 0' }}>{(i.paleta || []).map((q, n) => <div key={n} title={q.nombre} style={{ width: 26, height: 16, borderRadius: 4, background: q.hex }} />)}</div>
+              <button style={btn()} onClick={() => usaIdea(i)}><Search size={13} /> Buscar productos así</button>
+            </div>
+          ))}
+        </div>
+      )}
       {busq.abierto && (
         <div style={{ ...card, marginBottom: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 110px auto', gap: 8, alignItems: 'center' }}>
