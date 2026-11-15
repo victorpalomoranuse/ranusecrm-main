@@ -11,6 +11,7 @@ import api from '../services/api';
 //   y con o sin proyecto vinculado.
 
 import { ImportarDePlanos } from './ImportarDePlanos';
+import { LaminaZonasModal } from './LaminaZonasModal';
 
 // catálogo de la herramienta (más de mil bloques): se descarga una vez y se reutiliza unos minutos; se vacía al guardar cambios
 let catCache = { t: 0, data: null };
@@ -21,6 +22,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(true);
   const [verListados, setVerListados] = useState(false);
+  const [laminaZonas, setLaminaZonas] = useState(null);
   const fullRef = useRef(fullscreen);
   useEffect(() => {
     fullRef.current = fullscreen;
@@ -98,6 +100,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
         try { const { data } = await api.post('/catalog/products/desde-pieza', { nombre: m.nombre, marca: m.marca, largo: m.largo, fondo: m.fondo, alto: m.alto, categoria: m.categoria }); catCache = { t: 0, data: null }; responder({ type: 'productoDePieza', piezas: m.piezas || [], producto: data.producto, categoria: data.categoria }); }
         catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudo crear la ficha del producto' }); }
       }
+      else if (m.type === 'laminaZonas' && typeof m.id === 'string') setLaminaZonas(m.id);
       else if (m.type === 'pedirListadoEquipo') {
         try { const { data } = await api.get(`/client-projects/${projectId}/equipment`); responder({ type: 'listadoEquipo', items: (data.equipment || []).map(x => ({ id: x.id, name: x.name, brand: x.brand || '', qty: Math.max(1, Math.min(30, parseInt(x.quantity) || 1)), cid: x.catalog_product_id || null, tipo: x.category_type || '' })) }); }
         catch { responder({ type: 'error', message: 'No se pudo leer el listado del proyecto' }); }
@@ -242,6 +245,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
 
   return (
     <div style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 10000, background: '#07090c' } : undefined}>
+      {laminaZonas && <LaminaZonasModal planoId={laminaZonas} onClose={() => setLaminaZonas(null)} />}
       {verListados && projectId && <ImportarDePlanos projectId={projectId} onClose={() => setVerListados(false)} onHecho={(r) => { setVerListados(false); responder({ type: 'info', message: `Listados al día: ${r.anadidos || 0} añadidos${r.actualizados ? `, ${r.actualizados} actualizados` : ''}` }); }} />}
       {error && <p className="ap-error" style={fullscreen ? { position: 'absolute', top: 8, left: 8, zIndex: 2 } : undefined}>{error}</p>}
       {cargando && !error && <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)' }}>Cargando herramienta…</p>}
