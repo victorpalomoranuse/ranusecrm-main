@@ -1342,7 +1342,7 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type, productos = []
       <div style={{position:'relative',aspectRatio:'4 / 3',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center'}}>
         {item.image_url?<img src={item.image_url} alt={item.name} style={{width:'100%',height:'100%',objectFit:'contain'}}/>:<span style={{color:'#999',fontSize:'0.72rem'}}>sin foto</span>}
         <button {...attributes} {...listeners} title="Arrastra para cambiar el orden" style={{position:'absolute',top:6,left:6,background:'rgba(0,0,0,0.55)',border:'none',borderRadius:6,cursor:'grab',color:'#fff',padding:'3px 4px',display:'flex'}} type="button"><GripVertical size={13}/></button>
-        <button className="ap-btn-icon" title="Quitar del listado" onClick={()=>onUnassign(item.id,type)} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,0.55)',borderRadius:6}}><X size={13}/></button>
+        <button className="ap-btn-icon" title="Quitar del listado" onClick={()=>onUnassign(item.id,type)} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,0.7)',borderRadius:6,color:'#fff',padding:'4px 5px'}}><X size={14}/></button>
         {isMob&&<span style={{position:'absolute',bottom:6,right:6,background:'rgba(0,0,0,0.75)',color:'#fff',borderRadius:12,padding:'1px 9px',fontSize:'0.74rem',fontWeight:700}}>×{qty}</span>}
       </div>
       <div style={{padding:'10px 12px',display:'flex',flexDirection:'column',gap:3,flex:1}}>
