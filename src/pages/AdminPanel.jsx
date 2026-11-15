@@ -1351,7 +1351,7 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type, productos = []
         {item.color&&<span style={{fontSize:'0.72rem',color:'rgba(255,255,255,0.75)'}}>Color: {item.color}</span>}
         {item.notes&&<span style={{fontSize:'0.72rem',color:'rgba(255,255,255,0.55)',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{item.notes}</span>}
         <span style={{fontSize:'0.68rem',color:'rgba(255,255,255,0.4)'}}>{item.location?`→ ${item.location}`:''}{showLink&&purchaseLink?' · 🔗':''}{!item.catalog_product_id?<span style={{color:'#f5b748'}} title="No está enlazado con ningún producto del catálogo"> · suelto</span>:null}</span>
-        <div style={{marginTop:'auto',paddingTop:6}}><button className="ap-btn ap-btn-ghost ap-btn-sm" style={{fontSize:'0.72rem',width:'100%'}} onClick={()=>setExpanded(v=>!v)} type="button"><Pencil size={11}/> {expanded?'Cerrar':'Editar ficha'}</button></div>
+        <div style={{marginTop:'auto',paddingTop:6,display:'flex',gap:6}}><button className="ap-btn ap-btn-ghost ap-btn-sm" style={{fontSize:'0.72rem',flex:1}} onClick={()=>setExpanded(v=>!v)} type="button"><Pencil size={11}/> {expanded?'Cerrar':'Editar ficha'}</button><button className="ap-btn ap-btn-ghost ap-btn-sm" style={{fontSize:'0.72rem',color:'#ff8a8a'}} onClick={()=>{ if (window.confirm('¿Quitar «'+item.name+'» del listado de este proyecto?')) onUnassign(item.id,type); }} type="button" title="Quitar del listado"><Trash2 size={11}/> Quitar</button></div>
       </div>
       {expanded&&(
         <div className="ap-eq-detail-panel">
