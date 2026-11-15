@@ -1,6 +1,7 @@
 import express from 'express';
 import { responderAsistente } from '../utils/asistente-personal.js';
 import { transcribir } from '../utils/transcribir.js';
+import { analizaVideo, geminiVideoDisponible } from '../utils/video-gemini.js';
 import { registraCanal, anotaEntrante } from '../utils/proactivo.js';
 
 const router = express.Router();
@@ -54,6 +55,14 @@ router.post('/webhook', async (req, res) => {
       if (!(process.env.GROQ_API_KEY || '').trim()) { await enviar(chatId, 'Todavía no puedo oír audios: falta activar la transcripción gratuita. Mientras tanto, escríbeme.'); return; }
       try { const t = await transcribir(await bajar(voz.file_id)); if (!t) { await enviar(chatId, 'No he conseguido entender el audio, ¿me lo repites?'); return; } entrada = '[Audio de Víctor, transcrito] ' + t; }
       catch (e) { console.error('Telegram asistente: audio:', e.message); await enviar(chatId, 'No he podido escuchar ese audio. ¿Me lo escribes?'); return; }
+    } else if (m.video || m.video_note) {
+      if (!geminiVideoDisponible()) { await enviar(chatId, 'Todavía no puedo ver vídeos: falta conectar Gemini (GEMINI_API_KEY en Railway).'); return; }
+      try {
+        const v = m.video || m.video_note; await enviar(chatId, 'Veo el vídeo, tarda un minuto…');
+        const buffer = await bajar(v.file_id); if (buffer.length > 18 * 1024 * 1024) { await enviar(chatId, 'Ese vídeo pesa demasiado (más de 18 MB).'); return; }
+        const an = await analizaVideo({ buffer, mime: v.mime_type || 'video/mp4', pregunta: m.caption || '' });
+        entrada = '[Vídeo de Víctor, ya analizado por Gemini (lo has visto y oído entero, no digas que no puedes verlo)]\n' + an + (m.caption ? '\n\nMensaje de Víctor con el vídeo: ' + m.caption : '\n\n(Víctor no ha escrito nada con el vídeo: resume lo esencial del análisis en pocas líneas y pregúntale qué quiere hacer con él.)');
+      } catch (e) { console.error('Telegram asistente: vídeo:', e.message); await enviar(chatId, 'No he podido ver ese vídeo (' + String(e.message).slice(0, 120) + ').'); return; }
     } else if (m.photo?.length || m.document) {
       try {
         const esFoto = !!m.photo?.length, f = esFoto ? m.photo[m.photo.length - 1] : m.document, buffer = await bajar(f.file_id);
@@ -63,7 +72,7 @@ router.post('/webhook', async (req, res) => {
       } catch (e) { console.error('Telegram asistente: adjunto:', e.message); await enviar(chatId, 'No he podido descargar ese archivo. ¿Me lo mandas otra vez?'); return; }
     }
     if (!adjuntos.length && m.reply_to_message?.photo?.length) { try { const f = m.reply_to_message.photo[m.reply_to_message.photo.length - 1]; adjuntos.push({ id: 'a1', mime: 'image/jpeg', buffer: await bajar(f.file_id), nombre: '' }); entrada = '(Víctor responde citando una imagen del chat; la tienes adjunta como a1) ' + (entrada || ''); } catch { /* sigue sin imagen */ } }
-    if (!entrada) { await enviar(chatId, 'Eso todavía no lo entiendo. Puedo con texto, audios, fotos y documentos.'); return; }
+    if (!entrada) { await enviar(chatId, 'Eso todavía no lo entiendo. Puedo con texto, audios, fotos, vídeos y documentos.'); return; }
     const out = await responderAsistente({ chatId: 'tg:' + chatId, texto: entrada, adjuntos, avisar: (t) => enviar(chatId, t) });
     await enviar(chatId, out.texto);
     for (const f of out.archivos || []) await enviarArchivoTg(chatId, f);

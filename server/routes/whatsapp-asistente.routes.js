@@ -2,6 +2,7 @@ import express from 'express';
 import crypto from 'crypto';
 import { responderAsistente, leerJson, guardarJson } from '../utils/asistente-personal.js';
 import { transcribir } from '../utils/transcribir.js';
+import { analizaVideo, geminiVideoDisponible } from '../utils/video-gemini.js';
 import { registraCanal, anotaEntrante } from '../utils/proactivo.js';
 
 const router = express.Router();
@@ -107,7 +108,16 @@ router.post('/webhook', async (req, res) => {
           const med = m.type === 'image' ? m.image : m.document;
           try { const { buffer, mime } = await descargaMedia(med.id); if (buffer.length > 15 * 1024 * 1024) { await enviar(de, 'Ese archivo pesa demasiado (más de 15 MB).'); continue; } adjuntos.push({ id: 'a1', mime: med.mime_type || mime || 'application/octet-stream', buffer, nombre: med.filename || '' }); if (m.id && m.type === 'image') { recibidas.set(m.id, { mime: med.mime_type || mime || 'image/jpeg', buffer }); if (recibidas.size > 20) recibidas.delete(recibidas.keys().next().value); } entrada = med.caption || '(sin texto)'; nota({ ev: 'adjunto_ok', tipo: m.type, bytes: buffer.length }); }
           catch (e) { nota({ ev: 'adjunto_error', mensaje: e.message }); await enviar(de, 'No he podido descargar ese archivo. ¿Me lo mandas otra vez?'); continue; }
-        } else { await enviar(de, 'Eso todavía no lo entiendo. Puedo con texto, audios, fotos y documentos.'); continue; }
+        } else if (m.type === 'video' && m.video?.id) {
+          if (!geminiVideoDisponible()) { await enviar(de, 'Todavía no puedo ver vídeos: falta conectar Gemini (GEMINI_API_KEY en Railway).'); continue; }
+          try {
+            await enviar(de, 'Veo el vídeo, tarda un minuto…');
+            const { buffer, mime } = await descargaMedia(m.video.id);
+            const an = await analizaVideo({ buffer, mime: m.video.mime_type || mime || 'video/mp4', pregunta: m.video.caption || '' });
+            entrada = '[Vídeo de Víctor, ya analizado por Gemini (lo has visto y oído entero, no digas que no puedes verlo)]\n' + an + (m.video.caption ? '\n\nMensaje de Víctor con el vídeo: ' + m.video.caption : '\n\n(Víctor no ha escrito nada con el vídeo: resume lo esencial del análisis en pocas líneas y pregúntale qué quiere hacer con él.)');
+            nota({ ev: 'video_ok', letras: an.length });
+          } catch (e) { nota({ ev: 'video_error', mensaje: e.message }); await enviar(de, 'No he podido ver ese vídeo (' + String(e.message).slice(0, 120) + ').'); continue; }
+        } else { await enviar(de, 'Eso todavía no lo entiendo. Puedo con texto, audios, fotos, vídeos y documentos.'); continue; }
         if (adjuntos.length && !m.context?.id) { // fotos, capturas o documentos: se esperan 4 s por si vienen más y se contestan juntos
           if (!lote) lote = { de, adj: [], textos: [], timer: null }; else clearTimeout(lote.timer);
           lote.adj.push(adjuntos[0]); lote.textos.push(entrada === '(sin texto)' ? '' : entrada); lote.timer = setTimeout(procesaLote, 4000); continue;
