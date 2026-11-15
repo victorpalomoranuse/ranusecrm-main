@@ -4,7 +4,7 @@ import { callClaude } from './anthropic.js';
 import { uploadDiagnosisImage, uploadProjectDocument, uploadReferenceImage, uploadProjectRender } from './storage.js';
 import { renderDesdeFoto, imagenDesdeTexto, editarFoto } from './render-asistente.js';
 import { internalAdminToken } from './internal-auth.js';
-import { infoPdf, paginaAImagen, escalaDe, construirPlano, registroPlano } from './plano-asistente.js';
+import { infoPdf, paginaAImagen, imagenAIm, escalaDe, construirPlano, registroPlano } from './plano-asistente.js';
 import { alzadoPNG } from './alzado-imagen.js';
 import { computeCatalogPricing } from './pricing.js';
 import { crearInformePdf } from './pdf-informe.js';
@@ -136,6 +136,7 @@ const TOOLS = [
   { name: 'buscar_presupuestos', description: 'Busca presupuestos por el nombre del cliente o del presupuesto (sin tildes, por palabras). Devuelve número, nombre, cliente, estado y fechas. Úsala SIEMPRE que no tengas claro el número: nunca inventes ni copies un número.', input_schema: { type: 'object', properties: { texto: { type: 'string' } }, required: ['texto'] } },
   { name: 'guardar_alias', description: 'Guarda un apodo para un proyecto/cliente (p. ej. "Ángel de Valencia" = el proyecto de Ángel Juan) para entenderlo siempre. Úsala cuando Víctor te confirme a qué proyecto se refiere con un nombre distinto al oficial.', input_schema: { type: 'object', properties: { alias: { type: 'string' }, proyecto: { type: 'string', description: 'nombre oficial del proyecto o cliente' } }, required: ['alias', 'proyecto'] } },
   { name: 'enviar_alzado', description: 'Te manda a Víctor como imagen (PNG con cotas, escala y cajetín de Ranuse) una lámina de alzado ya guardada en el Asistente de diseño de un proyecto. Si no dices cuál, envía la más reciente y te cuenta las demás. Úsala cuando pida ver, pasar o mandar un alzado.', input_schema: { type: 'object', properties: { proyecto: { type: 'string' }, lamina: { type: 'string', description: 'parte del título de la lámina, opcional' } }, required: ['proyecto'] } },
+  { name: 'leer_plano', description: 'INTERPRETA un plano (PDF o foto/captura de una planta) que Víctor te manda y te dice qué hay: tamaño del local, muros, puertas, ventanas y pilares, con medidas reales y posiciones. NO crea nada en el CRM (para eso crear_plano). Úsala cuando Víctor mande un plano y pregunte cómo distribuir máquinas, qué medidas tiene, dónde están las puertas o los pilares, o antes de proponer una distribución. Si el PDF tiene varias páginas, pregunta cuál es la planta. Si el plano no trae cotas legibles, pide la medida real del muro más largo en cm (medida_muro_mas_largo_cm).', input_schema: { type: 'object', properties: { adjunto: { type: 'string' }, pagina: { type: 'number' }, medida_muro_mas_largo_cm: { type: 'number' } }, required: ['adjunto'] } },
   { name: 'crear_plano', description: 'Crea en la herramienta Planos del CRM un plano nuevo del ESTADO ACTUAL de un proyecto (muros, puertas, ventanas y pilares) a partir de un PDF o imagen de plano que Víctor te ha mandado (adjunto). Usa la misma lectura con IA que el botón de importar de Planos. Es un BORRADOR: dile siempre que revise medidas, puertas y pilares sobre el plano del cliente. Si el PDF tiene varias páginas, indica pagina (el número de la lámina que es la planta); si no lo sabes, la herramienta te devuelve la lista de páginas para que se lo preguntes. Si el plano no trae cotas legibles, pasa medida_muro_mas_largo_cm (lo que mide en la realidad el muro más largo). Hace falta el proyecto.', input_schema: { type: 'object', properties: { adjunto: { type: 'string' }, proyecto: { type: 'string' }, pagina: { type: 'number' }, nombre: { type: 'string', description: 'nombre del plano; por defecto el del proyecto' }, medida_muro_mas_largo_cm: { type: 'number' } }, required: ['adjunto', 'proyecto'] } },
   { name: 'crear_proyecto', description: 'Crea un proyecto nuevo en el CRM (igual que desde Proyectos: con su fase 0, las tareas de la plantilla de esa fase y su código de acceso). Hace falta nombre del proyecto y del cliente; tipo "comercial" (gimnasio o local) o "home_gym" (gimnasio en casa), deduce el tipo del contexto si puedes. Crea sin pedir más datos de los imprescindibles. Después, si había una tarea tipo "crear proyecto X", ofrécele marcarla como hecha.', input_schema: { type: 'object', properties: { proyecto: { type: 'string', description: 'nombre del proyecto, p. ej. "Adil Gym Marruecos"' }, cliente: { type: 'string' }, tipo: { type: 'string', enum: ['comercial', 'home_gym'] }, email: { type: 'string' }, urgencia: { type: 'string', enum: ['baja', 'normal', 'alta'] }, responsable: { type: 'string', description: 'nombre de quien lo lleva, opcional' }, notas: { type: 'string' }, forzar: { type: 'boolean', description: 'true solo si ya existe uno parecido y Víctor confirma que quiere otro' } }, required: ['proyecto', 'cliente'] } },
   { name: 'contexto_proyecto', description: 'Todo lo que hay de un proyecto para poder asesorar y desglosar trabajo: ficha, fase, urgencia, resumen del cliente y programa de necesidades, equipos y materiales elegidos, documentos y renders que ya existen, y tareas pendientes. Úsala antes de desglosar una tarea o dar consejo de un proyecto concreto.', input_schema: { type: 'object', properties: { proyecto: { type: 'string' } }, required: ['proyecto'] } },
@@ -388,6 +389,36 @@ async function ejecutar(nombre, input, ctx = {}) {
     (ctx.salida = ctx.salida || []).push({ url, nombre: 'alzado.png', tipo: 'imagen' });
     return { enviado: true, lamina: l.titulo, version: l.versiones.length, otras_laminas: laminas.filter(x => x !== l).map(x => x.titulo).slice(0, 8), nota: 'La imagen se envía a Víctor junto a tu respuesta; no pegues enlaces.' };
   }
+  if (nombre === 'leer_plano') {
+    const a = (ctx.adjuntos || []).find(x => x.id === input.adjunto); if (!a) return { error: 'No encuentro ese adjunto.' };
+    const esPdf = a.mime === 'application/pdf', esImg = /^image\/(jpeg|png|webp)$/.test(a.mime); if (!esPdf && !esImg) return { error: 'Necesito un PDF o una imagen (jpg, png, webp) del plano.' };
+    let im;
+    try {
+      if (esPdf) {
+        const info = infoPdf(a.buffer); let pag = Math.round(Number(input.pagina)) || 0; if (!pag && info.paginas === 1) pag = 1;
+        if (!pag) return { error: 'El PDF tiene ' + info.paginas + ' páginas. Pregúntale a Víctor cuál es la planta.', paginas: info.lista.map(x => 'p' + x.n + ': ' + x.texto) };
+        im = paginaAImagen(a.buffer, pag);
+      } else im = await imagenAIm(a.buffer);
+    } catch (e) { return { error: 'No he podido abrir el archivo: ' + e.message }; }
+    if (ctx.avisar) await ctx.avisar('Interpretando el plano, tarda un minuto…');
+    let lectura; try { lectura = await lectorPlano(im, null); } catch (e) { return { error: 'No he podido leer el plano: ' + e.message }; }
+    if (!lectura?.muros?.length) return { error: 'No he encontrado muros. Prueba con una imagen más nítida o recortada solo a la planta.' };
+    const es = escalaDe(lectura); let cm = es?.cm, origen = es ? 'cotas del propio plano' : null;
+    if (!cm && input.medida_muro_mas_largo_cm > 20) { let Lmax = 0; lectura.muros.forEach(m => { Lmax = Math.max(Lmax, Math.hypot(m.x2 - m.x1, m.y2 - m.y1)); }); cm = Number(input.medida_muro_mas_largo_cm) / Lmax; origen = 'la medida que Víctor dio del muro más largo'; }
+    if (!cm) return { error: 'El plano no trae cotas legibles. Pregúntale a Víctor cuánto mide en la realidad el muro más largo (en cm) y vuelve a llamar con medida_muro_mas_largo_cm.', muros_detectados: lectura.muros.length };
+    const xs = lectura.muros.flatMap(m => [m.x1, m.x2]), ys = lectura.muros.flatMap(m => [m.y1, m.y2]), x0 = Math.min(...xs), y0 = Math.min(...ys), x1 = Math.max(...xs), y1 = Math.max(...ys);
+    const rel = (o) => ({ x_m: +(((o.x - x0) * cm) / 100).toFixed(2), y_m: +(((o.y - y0) * cm) / 100).toFixed(2) });
+    return {
+      escala_de: origen, caja_exterior_m: { ancho: +(((x1 - x0) * cm) / 100).toFixed(2), fondo: +(((y1 - y0) * cm) / 100).toFixed(2) },
+      origen_coordenadas: 'esquina superior izquierda del plano; x hacia la derecha, y hacia abajo (en metros)',
+      muros: lectura.muros.slice(0, 60).map(m => ({ de: rel({ x: m.x1, y: m.y1 }), a: rel({ x: m.x2, y: m.y2 }), largo_m: +((Math.hypot(m.x2 - m.x1, m.y2 - m.y1) * cm) / 100).toFixed(2) })),
+      puertas: (lectura.puertas || []).slice(0, 30).map(o => ({ ...rel(o), ancho_cm: Math.round(o.ancho_cm || (o.ancho_px || 0) * cm) })),
+      ventanas: (lectura.ventanas || []).slice(0, 30).map(o => ({ ...rel(o), ancho_cm: Math.round(o.ancho_cm || (o.ancho_px || 0) * cm) })),
+      pilares: (lectura.pilares || []).slice(0, 30).map(o => ({ ...rel(o), ancho_cm: Math.round((o.ancho_px || 0) * cm), fondo_cm: Math.round((o.fondo_px || 0) * cm) })),
+      aviso: lectura.aviso || null,
+      nota: 'Lectura aproximada hecha por IA: dile a Víctor lo esencial (tamaño, puertas, pilares) y que confirme las medidas importantes antes de fiarse al milímetro. Si va a distribuir máquinas, tenlo en cuenta (puertas y pilares no se pueden tapar).',
+    };
+  }
   if (nombre === 'crear_plano') {
     const a = (ctx.adjuntos || []).find(x => x.id === input.adjunto); if (!a) return { error: 'No encuentro ese adjunto.' };
     const p = await proyectoPor(input.proyecto); if (!p) return { error: 'No encuentro ese proyecto. Dime a cuál va el plano.' };
@@ -399,7 +430,7 @@ async function ejecutar(nombre, input, ctx = {}) {
         if (!pag && info.paginas === 1) pag = 1;
         if (!pag) return { error: 'El PDF tiene ' + info.paginas + ' páginas. Pregúntale a Víctor cuál es la planta (estado actual) que quiere llevar a Planos.', paginas: info.lista.map(x => 'p' + x.n + ': ' + x.texto) };
         im = paginaAImagen(a.buffer, pag);
-      } else { return { error: 'De momento solo sé montar el plano desde un PDF. Si es una foto o imagen, impórtala desde Planos con el botón de importar con IA.' }; }
+      } else { im = await imagenAIm(a.buffer); }
     } catch (e) { return { error: 'No he podido abrir el archivo: ' + e.message }; }
     if (ctx.avisar) await ctx.avisar('Leyendo el plano, tarda un minuto…');
     let lectura; try { lectura = await lectorPlano(im, null); } catch (e) { return { error: 'No he podido leer el plano: ' + e.message }; }
@@ -803,6 +834,7 @@ function sistema(mem, priv, acc, resumenCharla) {
     '- FOTO COMO REFERENCIA ≠ FOTO A EDITAR: si Víctor manda una foto y dice cosas como «quiero este rollo / este azulejo / este acabado / este ambiente en…» y describe OTRO espacio (otras medidas, otra distribución), la foto es solo una referencia de materiales y luz. NO uses generar_render ni editar_foto (replicarían la foto): usa generar_imagen con referencia = el adjunto, y en prompts describe el espacio NUEVO con sus medidas y su distribución (ej.: baño de 190 cm de ancho con la ducha ocupando todo el ancho, vista desde la entrada). Solo usa generar_render o editar_foto cuando quiera ver o cambiar ESE MISMO espacio de la foto. EDITAR = CONSERVAR: si manda una foto y pide un cambio concreto («cámbiale el suelo», «quita esto», «ponle un espejo», «otro color de pared»), usa SIEMPRE editar_foto (solo toca esa zona y deja el resto idéntico); nunca generar_imagen ni generar_render, que crean una imagen nueva. Pasa la instruccion con el cambio exacto y nada más.',
     '- Aprender de su gusto y de lo que vende: antes de proponer ideas, mira sus referencias (ver_referencias) y lo que recuerdas; cuando te mande una foto que claramente le gusta o es una referencia, además de guardarla apunta con recordar el rasgo de gusto (material, paleta, tipología, qué le atrae) en una frase. Si te pide aprender de los proyectos vendidos, usa analizar_proyectos_vendidos, saca los patrones útiles y guárdalos con recordar (uno por patrón, concretos y con datos).\n' +
     '- APRENDE: cada vez que Víctor te corrija, te cuente una preferencia, una forma de trabajar, datos de un cliente o una decisión, guárdalo con recordar sin que te lo pida. Antes de dar consejo, tira de lo que recuerdas.\n' +
+    '- PLANOS QUE LE MANDA VÍCTOR (PDF o foto): si manda un plano y pregunta por medidas, distribución, dónde caben máquinas, puertas o pilares, usa leer_plano (interpreta sin crear nada). Solo usa crear_plano si quiere llevarlo a Planos de un proyecto. Cuando propongas una distribución, parte de las medidas leídas y respeta puertas, ventanas y pilares.\n' +
     '- GUIONES Y CONTENIDO: cuando Víctor pida guiones, ideas de vídeos, reels, ganchos o contenido para redes (o responda sobre un vídeo de referencia que ha mandado), usa SIEMPRE guion_redes (el departamento de redes: conoce su voz, su cuenta y su nicho). NUNCA le pases eso al agente setter: el setter es solo para leads y conversaciones de venta.\n' +
     '- Compañeros del CRM (hablar_con_agente): presupuestos (crear presupuestos), setter (leads), finanzas y diseno (alzados). Si Víctor pide un presupuesto, un alzado, mirar un lead o algo de finanzas, pásaselo al compañero adecuado con todos los datos que te dé. Con una foto adjunta: generar_render (convertirla en render) o editar_foto (cambiarle algo concreto); ninguna exige proyecto. Cuando pida inspiración o ideas sin foto ni proyecto, usa generar_imagen (1 a 3 variantes) y acompáñalas de una explicación breve: piensa como un diseñador top pero viable, evita lo típico y sorpréndele.\n' +
     '- También puedes crear proveedores, buscarlos y programar recordatorios que te llegan a esta misma conversación. Puedes ser su consultor: cuando solo quiera pensar en voz alta o comparar opciones, da tu opinión con criterio y sin rodeos.\n\n' +

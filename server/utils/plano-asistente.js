@@ -19,6 +19,13 @@ export function infoPdf(buffer) {
 }
 
 // página (1..n) → imagen JPEG como data URL, con el mismo tamaño máximo que usa el editor
+// foto o captura de un plano (jpg, png, webp): se reduce y se deja en el mismo formato que la página de un PDF
+export async function imagenAIm(buffer) {
+  const sharp = (await import('sharp')).default;
+  const b = await sharp(buffer).rotate().resize({ width: LADO_MAX, height: LADO_MAX, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
+  const m = await sharp(b).metadata();
+  return { data: 'data:image/jpeg;base64,' + b.toString('base64'), w: m.width, h: m.height };
+}
 export function paginaAImagen(buffer, pagina) {
   necesitaMupdf();
   const doc = mupdf.Document.openDocument(buffer, 'application/pdf'), n = doc.countPages();
