@@ -20,7 +20,7 @@ export async function analizaVideo({ buffer, mime, pregunta }) {
     headers: { 'x-goog-api-key': clave, 'X-Goog-Upload-Protocol': 'resumable', 'X-Goog-Upload-Command': 'start', 'X-Goog-Upload-Header-Content-Length': String(buffer.length), 'X-Goog-Upload-Header-Content-Type': tipo, 'Content-Type': 'application/json' },
     body: JSON.stringify({ file: { display_name: 'video-' + Date.now() } }),
   });
-  const urlSubida = ini.headers.get('x-goog-upload-url'); if (!ini.ok || !urlSubida) throw new Error('Gemini no aceptó la subida (' + ini.status + ')');
+  const urlSubida = ini.headers.get('x-goog-upload-url'); if (!ini.ok || !urlSubida) { const cuerpo = await ini.text().catch(() => ''); let m = ''; try { m = JSON.parse(cuerpo)?.error?.message || ''; } catch { m = cuerpo; } throw new Error('Gemini no aceptó la subida (' + ini.status + '): ' + String(m).slice(0, 220)); }
   const sube = await fetch(urlSubida, { method: 'POST', headers: { 'Content-Length': String(buffer.length), 'X-Goog-Upload-Offset': '0', 'X-Goog-Upload-Command': 'upload, finalize' }, body: buffer });
   const fj = await sube.json().catch(() => ({})); let fichero = fj.file; if (!sube.ok || !fichero?.uri) throw new Error('No se pudo subir el vídeo a Gemini (' + sube.status + ')');
   try {
