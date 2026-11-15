@@ -10,6 +10,7 @@ import { SectionAsistenteFinanzas } from './SectionAsistenteFinanzas';
 import { SectionAsistentePersonal } from './SectionAsistentePersonal';
 import { SectionEstudioVideo, SectionRedes } from './SectionEstudioVideo';
 import SectionMobiliario from './SectionMobiliario';
+import SectionManuales from './SectionManuales';
 import { SectionAsistenteDiseno } from './SectionAsistenteDiseno';
 import { SectionAsistenteSetter } from './SectionAsistenteSetter';
 import { SectionAgenda } from './SectionAgenda';
@@ -2894,6 +2895,7 @@ const NAV_ITEMS = [
   { id:'mobiliario', label:'Mobiliario y ambientes', Icon:Sparkles, permission:'referencias' },
   { id:'referencias', label:'Referencias', Icon:Bookmark, permission:'referencias' },
   { id:'recursos', label:'Recursos', Icon:Download, permission:'recursos' },
+  { id:'manuales', label:'Manuales', Icon:BookOpen, permission:'recursos' },
   { id:'contactos', label:'Proveedores', Icon:Phone, permission:'contactos' },
   { id:'ajustes', label:'Ajustes', Icon:Settings, adminOnly:true },
 ];
@@ -2951,6 +2953,7 @@ export function AdminPanel() {
       case 'ajustes': return <SectionAjustes/>;
       case 'catalogo': return <SectionCatalogo/>;
       case 'mobiliario': return <SectionMobiliario/>;
+      case 'manuales': return <SectionManuales/>;
       case 'referencias': return <SectionReferencias/>;
       case 'recursos': return <SectionRecursos/>;
       case 'contactos': return <SectionContactos/>;
