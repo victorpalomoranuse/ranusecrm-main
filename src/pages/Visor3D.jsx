@@ -1073,7 +1073,7 @@ function luzArea(g, pos, dir, w, h, col, inten, presup, u) {
 }
 // Borde luminoso de una forma en la pared (cm, plano de la pared): cinta visible + luces de área reales. hacia fuera=true: halo que baña la pared alrededor (resalte/plana); false: baña el interior del nicho
 function ledPerimetro(holder, pts, hex, zLed, lado, haciaFuera) {
-  const col = new THREE.Color(hex), mat = new THREE.MeshBasicMaterial({ color: col }), n = pts.length, c = pts.reduce((q, p) => [q[0] + p[0] / n, q[1] + p[1] / n], [0, 0]), paso = Math.max(1, Math.ceil(n / 12));
+  const col = new THREE.Color(hex), mat = new THREE.MeshBasicMaterial({ color: col }), n = pts.length, c = pts.reduce((q, p) => [q[0] + p[0] / n, q[1] + p[1] / n], [0, 0]), paso = Math.max(1, Math.ceil(n / 4));
   let luces = 0;
   for (let i = 0; i < n; i++) {
     const p = pts[i], q = pts[(i + 1) % n], Ls = Math.hypot(q[0] - p[0], q[1] - p[1]); if (Ls < 1) continue;
@@ -1081,9 +1081,9 @@ function ledPerimetro(holder, pts, hex, zLed, lado, haciaFuera) {
     let ix = c[0] - mx, iy = c[1] - my; const il = Math.hypot(ix, iy) || 1; ix /= il; iy /= il;
     const sg = haciaFuera ? -1 : 1, px = mx + sg * ix * 0.4, py = my + sg * iy * 0.4;
     const b = new THREE.Mesh(new THREE.BoxGeometry(Ls * CM * 1.02, 0.022, 0.02), mat); b.position.set(px * CM, py * CM, zLed); b.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); holder.add(b);
-    if (i % paso === 0 && luces < 12) {
+    if (i % paso === 0 && luces < 4) {
       luces++;
-      const dir = new THREE.Vector3(sg * ix * 0.55, sg * iy * 0.55, lado * 0.85).normalize(), rl = new THREE.RectAreaLight(col, 6, Math.max(0.05, Ls * paso * CM), 0.05);
+      const dir = new THREE.Vector3(sg * ix * 0.55, sg * iy * 0.55, lado * 0.85).normalize(), rl = new THREE.RectAreaLight(col, 9, Math.max(0.05, Ls * paso * CM), 0.05);
       rl.position.set(px * CM, py * CM, zLed); rl.up.copy(new THREE.Vector3().crossVectors(dir.clone().negate(), new THREE.Vector3(ex, ey, 0))); rl.lookAt(rl.position.clone().add(dir)); holder.add(rl);
     }
   }
