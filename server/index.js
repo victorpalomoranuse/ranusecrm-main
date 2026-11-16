@@ -24,6 +24,7 @@ import conocimientoRoutes from './routes/conocimiento.routes.js';
 import medicionRoutes from './routes/medicion.routes.js';
 import renderIaRoutes from './routes/render-ia.routes.js';
 import estudioIdeasRoutes from './routes/estudio-ideas.routes.js';
+import iaChatsRoutes from './routes/ia-chats.routes.js';
 import redesRoutes from './routes/redes.routes.js';
 import visorAyudaRoutes from './routes/visor-ayuda.routes.js';
 import renderNubeRoutes from './routes/render-nube.routes.js';
@@ -132,6 +133,7 @@ app.use('/api/tour-publico', tourPublicoRoutes); // tour 360° para el cliente (
 app.use('/api/medicion', medicionRoutes);
 app.use('/api/render-ia', renderIaRoutes);
 app.use('/api/estudio-ideas', estudioIdeasRoutes);
+app.use('/api/ia-chats', iaChatsRoutes);
 app.use('/api/redes', redesRoutes);
 app.use('/api/visor-ayuda', visorAyudaRoutes);
 app.use('/api/render-nube', renderNubeRoutes);
