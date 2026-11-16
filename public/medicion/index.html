@@ -7489,9 +7489,14 @@ function applyField(key,val,adv,raw){
     }
     if(key==='pt_lm'||key==='pt_ap'){
       var kk=key==='pt_lm'?'lm':'ap';
-      if(String(val).trim()===''){snap();delete qp[kk];commit(false);return}
+      /* el cambio llega a todas las luminarias iguales a esta (mismo tipo, montaje, nombre, lúmenes y apertura: las que llevan la misma etiqueta L1, L2…) */
+      var dqL=ptDef(qp.k),kOldL=dqL?lumKey(qp,dqL,ptMontAny(qp)):null,grupoL=[qp];
+      if(kOldL)(st.v.pts||[]).forEach(function(o2){if(o2!==qp&&o2.v==='ilum'&&o2.s!=='dem'){var d2=ptDef(o2.k);if(d2&&lumKey(o2,d2,ptMontAny(o2))===kOldL)grupoL.push(o2)}});
+      if(String(val).trim()===''){snap();grupoL.forEach(function(o3){delete o3[kk]});commit(false);return}
       if(!(n>=1&&n<=(kk==='lm'?100000:180))){toast(kk==='lm'?'Escribe unos lúmenes entre 1 y 100000':'Escribe un ángulo entre 1° y 180°');return}
-      snap();qp[kk]=n;commit(false);return;
+      snap();grupoL.forEach(function(o3){o3[kk]=n});commit(false);
+      if(grupoL.length>1)toast((kk==='lm'?'Lúmenes':'Apertura')+' cambiados en las '+grupoL.length+' luminarias iguales');
+      return;
     }
     if(key==='pt_dc'){
       if(String(val).trim()===''){snap();delete qp.dc;commit(false);return}
