@@ -2439,6 +2439,7 @@ export default function Visor3D({ cliente = false }) {
     try { KTX2L = new KTX2Loader().setTranscoderPath('/basis/').detectSupport(renderer); } catch { KTX2L = null; }
     el.appendChild(renderer.domElement);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.info.autoReset = false; // se reinicia a mano en cada fotograma para contar todos los pases
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.shadowMap.autoUpdate = false; // las sombras del sol se recalculan unas 4 veces por segundo, no en cada fotograma: con muchos modelos pesados era lo que más frenaba
@@ -2503,7 +2504,7 @@ export default function Visor3D({ cliente = false }) {
     const bucle = () => {
       if (!vivo) return; raf = requestAnimationFrame(bucle);
       const ahora = performance.now(), dtReal = ahora - ultimoT, dt = Math.min(0.05, dtReal / 1000); ultimoT = ahora;
-      ema = ema * 0.92 + Math.min(dtReal, 200) * 0.08;
+      if (!api3d.current.reposo && dtReal < 250) ema = ema * 0.92 + Math.min(dtReal, 200) * 0.08; // solo fotogramas seguidos: el primero tras un reposo trae un hueco que no es lentitud
       if (teclas.size || api3d.current.joy) {
         cam.getWorldDirection(vF); vF.y = 0; if (vF.lengthSq() < 1e-6) vF.set(0, 0, -1); vF.normalize(); vR.crossVectors(vF, ARRIBA).normalize(); vM.set(0, 0, 0);
         if (teclas.has('w')) vM.add(vF); if (teclas.has('s')) vM.sub(vF); if (teclas.has('d')) vM.add(vR); if (teclas.has('a')) vM.sub(vR);
@@ -2541,7 +2542,7 @@ export default function Visor3D({ cliente = false }) {
         }
         if (!(ahora < (a0.despierta || 0))) { a0.reposo = true; return; }
       } // nada ha cambiado: no se dibuja y la tarjeta gráfica descansa
-      a0.reposo = false;
+      a0.reposo = false; renderer.info.reset();
       if (a0.pt && a0.ptReady && !(cliente && movi)) {
         a0.pt.renderSample();
         a0.ptLento = ema > 450 ? (a0.ptLento || 0) + 1 : 0; // si va muy lento se desactiva solo
