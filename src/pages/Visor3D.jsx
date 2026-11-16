@@ -8319,6 +8319,56 @@ export default function Visor3D({ cliente = false }) {
               </details>
             </div>
           )}
+          {objSel.tipo === 'zona' && objSel.plano === 'pared' && Array.isArray(objSel.pts) && objSel.pts.length >= 3 && (() => {
+            const xs = objSel.pts.map(p => p[0]), ys = objSel.pts.map(p => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), r1 = v => Math.round(v * 10) / 10;
+            // cambia posición/tamaño de la zona escalando y moviendo todos sus puntos (vale para círculos, óvalos y rectángulos)
+            const aplica = (nx0, ny0, nw, nh) => { const sx = nw / Math.max(0.1, x1 - x0), sy = nh / Math.max(0.1, y1 - y0); cambiar(objSel.id, { pts: objSel.pts.map(p => [r1(nx0 + (p[0] - x0) * sx), r1(ny0 + (p[1] - y0) * sy)]), rect: undefined }); };
+            const campo = (et, val, fn) => <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 92, opacity: 0.7 }}>{et}</span><input type="number" value={r1(val)} onChange={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) fn(v); }} style={{ ...btn, width: 64 }} /></label>;
+            const esCirc = Math.abs((x1 - x0) - (y1 - y0)) < 0.6;
+            return (
+              <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Medidas de la zona (cm)</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 8px', marginBottom: 4 }}>
+                  {campo('Desde inicio', x0, v => aplica(v, y0, x1 - x0, y1 - y0))}
+                  {campo('Desde suelo', y0, v => aplica(x0, v, x1 - x0, y1 - y0))}
+                  {campo(esCirc ? 'Diámetro' : 'Ancho', x1 - x0, v => aplica(x0, y0, Math.max(1, v), esCirc ? Math.max(1, v) : y1 - y0))}
+                  {campo('Alto', y1 - y0, v => aplica(x0, y0, esCirc ? Math.max(1, v) : x1 - x0, Math.max(1, v)))}
+                </div>
+                <div style={{ opacity: 0.55, fontSize: 11 }}>Centro: {r1((x0 + x1) / 2)} desde el inicio del muro, {r1((y0 + y1) / 2)} desde el suelo. Los vértices están más abajo.</div>
+              </div>
+            );
+          })()}
+          {objSel.tipo === 'zona' && objSel.plano === 'pared' && (() => {
+            const pr = Number(objSel.prof) || 0, modo = pr > 0 ? 'resalte' : pr < 0 ? 'nicho' : 'plana';
+            const poner = (m, p) => cambiar(objSel.id, { prof: m === 'plana' ? 0 : m === 'resalte' ? Math.max(1, p || 5) : -Math.max(1, p || 8) });
+            return (
+              <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Forma en la pared</div>
+                <select value={modo} onChange={e => poner(e.target.value, Math.abs(pr))} style={{ ...btn, width: '100%', marginBottom: 6 }}>
+                  <option value="plana">Plana: solo cambia el material</option><option value="resalte">Resalte: sale de la pared</option><option value="nicho">Nicho: hueco en el muro</option>
+                </select>
+                {modo !== 'plana' && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 118, opacity: 0.7 }}>{modo === 'resalte' ? 'Cuánto sale (cm)' : 'Profundidad (cm)'}</span><input type="number" min="1" max={modo === 'resalte' ? 100 : 60} value={Math.abs(pr)} onChange={e => poner(modo, Math.max(1, parseFloat(e.target.value) || 1))} style={{ ...btn, width: 64 }} /></label>}
+                {modo === 'nicho' && <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 6 }}>Máximo: el grosor del muro menos 1 cm. Si es más hondo, atraviesa el muro.</div>}
+                {(() => {
+                  const pts = objSel.pts || [], xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+                  const rect = objSel.rect || (pts.length === 4 && new Set(xs.map(v => Math.round(v * 10))).size === 2 && new Set(ys.map(v => Math.round(v * 10))).size === 2 ? { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) } : null);
+                  if (!rect) return null;
+                  const wr = rect.x1 - rect.x0, hr = rect.y1 - rect.y0, maxR = Math.floor(Math.min(wr, hr) / 2), rr = Math.round(objSel.rr || 0);
+                  const redondea = rad => {
+                    const q = Math.max(0, Math.min(maxR, rad || 0)); let np;
+                    if (q < 0.5) np = [[rect.x0, rect.y0], [rect.x1, rect.y0], [rect.x1, rect.y1], [rect.x0, rect.y1]];
+                    else { np = []; [[rect.x1 - q, rect.y0 + q, -Math.PI / 2], [rect.x1 - q, rect.y1 - q, 0], [rect.x0 + q, rect.y1 - q, Math.PI / 2], [rect.x0 + q, rect.y0 + q, Math.PI]].forEach(([cx0, cy0, a0]) => { for (let k = 0; k <= 8; k++) { const a1 = a0 + (k / 8) * (Math.PI / 2); np.push([Math.round((cx0 + q * Math.cos(a1)) * 100) / 100, Math.round((cy0 + q * Math.sin(a1)) * 100) / 100]); } }); }
+                    cambiar(objSel.id, { pts: np, rect, rr: q });
+                  };
+                  return (<>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>{[['Recto', 0], ['Suave', 4], ['Redondeado', 10], ['Muy redondeado', 20]].map(([n, v]) => <button key={n} style={{ ...btn, padding: '3px 8px', background: rr === v ? '#6b6159' : undefined }} onClick={() => redondea(v)}>{n}</button>)}</div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 150, opacity: 0.7 }}>Esquinas redondeadas (cm)</span><input type="number" min="0" max={maxR} value={rr} onChange={e => redondea(parseFloat(e.target.value) || 0)} style={{ ...btn, width: 64 }} /></label>
+                  </>);
+                })()}
+                {<label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><input type="checkbox" checked={!!objSel.luzZ} onChange={e => cambiar(objSel.id, { luzZ: e.target.checked ? '#ffd9a0' : undefined })} /><span>Luz LED en el borde</span>{objSel.luzZ && <input type="color" value={objSel.luzZ} onChange={e => cambiar(objSel.id, { luzZ: e.target.value })} style={{ marginLeft: 6 }} />}</label>}
+              </div>
+            );
+          })()}
           {['zona', 'prisma', 'falsotecho'].includes(objSel.tipo) && Array.isArray(objSel.pts) && (() => {
             const pared = objSel.tipo === 'zona' && objSel.plano === 'pared', off = pared ? [0, 0] : [objSel.cx, objSel.cy];
             const setPt = (i, k, v) => setObjs(prev => prev.map(x => (x.id === objSel.id ? { ...x, pts: x.pts.map((q, j) => (j === i ? (k === 0 ? [v - off[0], q[1]] : [q[0], v - off[1]]) : q)) } : x)));
@@ -8486,37 +8536,6 @@ export default function Visor3D({ cliente = false }) {
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 150, opacity: 0.7 }}>Grosor del marco (cm)</span><input type="number" min="0" max="12" step="0.5" value={marco} onChange={e => ponDeco({ marco: Math.max(0, Math.min(12, parseFloat(e.target.value) || 0)) })} style={{ ...btn, width: 64 }} /></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 150, opacity: 0.7 }}>Color del marco</span><input type="color" value={/^#[0-9a-fA-F]{6}$/.test(objSel.deco?.color2 || '') ? objSel.deco.color2 : '#222226'} onChange={e => ponDeco({ color2: e.target.value })} /></label>
                 <div style={{ opacity: 0.55, fontSize: 11 }}>Con grosor 0 no lleva marco: solo la luna.</div>
-              </div>
-            );
-          })()}
-          {objSel.tipo === 'zona' && objSel.plano === 'pared' && (() => {
-            const pr = Number(objSel.prof) || 0, modo = pr > 0 ? 'resalte' : pr < 0 ? 'nicho' : 'plana';
-            const poner = (m, p) => cambiar(objSel.id, { prof: m === 'plana' ? 0 : m === 'resalte' ? Math.max(1, p || 5) : -Math.max(1, p || 8) });
-            return (
-              <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
-                <div style={{ fontWeight: 700, marginBottom: 4 }}>Forma en la pared</div>
-                <select value={modo} onChange={e => poner(e.target.value, Math.abs(pr))} style={{ ...btn, width: '100%', marginBottom: 6 }}>
-                  <option value="plana">Plana: solo cambia el material</option><option value="resalte">Resalte: sale de la pared</option><option value="nicho">Nicho: hueco en el muro</option>
-                </select>
-                {modo !== 'plana' && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 118, opacity: 0.7 }}>{modo === 'resalte' ? 'Cuánto sale (cm)' : 'Profundidad (cm)'}</span><input type="number" min="1" max={modo === 'resalte' ? 100 : 60} value={Math.abs(pr)} onChange={e => poner(modo, Math.max(1, parseFloat(e.target.value) || 1))} style={{ ...btn, width: 64 }} /></label>}
-                {modo === 'nicho' && <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 6 }}>Máximo: el grosor del muro menos 1 cm. Si es más hondo, atraviesa el muro.</div>}
-                {(() => {
-                  const pts = objSel.pts || [], xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
-                  const rect = objSel.rect || (pts.length === 4 && new Set(xs.map(v => Math.round(v * 10))).size === 2 && new Set(ys.map(v => Math.round(v * 10))).size === 2 ? { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) } : null);
-                  if (!rect) return null;
-                  const wr = rect.x1 - rect.x0, hr = rect.y1 - rect.y0, maxR = Math.floor(Math.min(wr, hr) / 2), rr = Math.round(objSel.rr || 0);
-                  const redondea = rad => {
-                    const q = Math.max(0, Math.min(maxR, rad || 0)); let np;
-                    if (q < 0.5) np = [[rect.x0, rect.y0], [rect.x1, rect.y0], [rect.x1, rect.y1], [rect.x0, rect.y1]];
-                    else { np = []; [[rect.x1 - q, rect.y0 + q, -Math.PI / 2], [rect.x1 - q, rect.y1 - q, 0], [rect.x0 + q, rect.y1 - q, Math.PI / 2], [rect.x0 + q, rect.y0 + q, Math.PI]].forEach(([cx0, cy0, a0]) => { for (let k = 0; k <= 8; k++) { const a1 = a0 + (k / 8) * (Math.PI / 2); np.push([Math.round((cx0 + q * Math.cos(a1)) * 100) / 100, Math.round((cy0 + q * Math.sin(a1)) * 100) / 100]); } }); }
-                    cambiar(objSel.id, { pts: np, rect, rr: q });
-                  };
-                  return (<>
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>{[['Recto', 0], ['Suave', 4], ['Redondeado', 10], ['Muy redondeado', 20]].map(([n, v]) => <button key={n} style={{ ...btn, padding: '3px 8px', background: rr === v ? '#6b6159' : undefined }} onClick={() => redondea(v)}>{n}</button>)}</div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 150, opacity: 0.7 }}>Esquinas redondeadas (cm)</span><input type="number" min="0" max={maxR} value={rr} onChange={e => redondea(parseFloat(e.target.value) || 0)} style={{ ...btn, width: 64 }} /></label>
-                  </>);
-                })()}
-                {<label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><input type="checkbox" checked={!!objSel.luzZ} onChange={e => cambiar(objSel.id, { luzZ: e.target.checked ? '#ffd9a0' : undefined })} /><span>Luz LED en el borde</span>{objSel.luzZ && <input type="color" value={objSel.luzZ} onChange={e => cambiar(objSel.id, { luzZ: e.target.value })} style={{ marginLeft: 6 }} />}</label>}
               </div>
             );
           })()}
