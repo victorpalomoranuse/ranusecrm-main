@@ -485,6 +485,23 @@ function nombreParte(grupo, malla) {
   grupo.traverse(x => { if (!x.isMesh || x.userData.overlay || x.userData.hit || x.userData.parte !== undefined) return; if (x === malla) res = 'i' + n; n++; });
   return res;
 }
+// la región «pieza» pinta lo que mira hacia el mismo lado que su triángulo de partida: se parte de seis (uno por dirección) para cubrir toda la pieza
+function semillasPieza(geo) {
+  regionTriangulos(geo, 0, 25); const nn = geo.userData.adj && geo.userData.adj.normales; if (!nn) return [0];
+  const out = new Set();
+  [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].forEach(([x, y, z]) => { let mejor = -1, bi = 0; for (let i = 0; i < nn.length; i++) { const d = nn[i].x * x + nn[i].y * y + nn[i].z * z; if (d > mejor) { mejor = d; bi = i; } } if (mejor > 0.3) out.add(bi); });
+  return out.size ? [...out] : [0];
+}
+// todas las piezas de todas las máquinas que tienen el mismo color original que la pieza tocada: [clave de región, triángulo de partida]
+function regionesMismoColor(raiz, hit) {
+  const mt = Array.isArray(hit.object.material) ? hit.object.material[hit.face?.materialIndex || 0] : hit.object.material; if (!mt || !mt.color) return [];
+  const hexMin = mt.color.getHexString(), sets = [];
+  raiz.traverse(eq => {
+    const e = eq.userData && eq.userData.equipo; if (!e || eq.userData.capa !== 'equipos') return;
+    eq.traverse(m => { if (!m.isMesh || m.userData.overlay || m.userData.hit || m.userData.parte === undefined) return; const mm = Array.isArray(m.material) ? m.material[0] : m.material; if (mm && mm.color && mm.color.getHexString() === hexMin) semillasPieza(m.geometry).forEach(sd => sets.push(['e:' + e.id + ':' + m.userData.parte, sd])); });
+  });
+  return sets;
+}
 function claveRegion(hit) {
   const x = hit.object; if (!x.isMesh || x.userData.overlay || x.userData.hit || hit.faceIndex == null) return null;
   const u = x.userData;
@@ -2811,6 +2828,13 @@ export default function Visor3D({ cliente = false }) {
       const mat = matSelRef.current; if (!mat) return;
       const valor = mat.conMapa ? 'tinte:' + (mat.tinte || '#ffffff') : (mat.hex || ('tex:' + mat.id));
       const u = hit.object.userData;
+      if (todos) { // en una pieza de máquina, «todas» = todas las piezas con ese mismo color de todas las máquinas (antes solo cambiaba el cuerpo oculto)
+        const ck0 = claveRegion(hit);
+        if (ck0 && ck0.startsWith('e:')) {
+          const sets0 = regionesMismoColor(raiz, hit);
+          if (sets0.length) { setAcab(a => { const reg = { ...(a.regiones || {}) }; sets0.forEach(([k, tri]) => { reg[k] = [...(reg[k] || []).filter(q => !(q.ang === 181 && q.tri === tri)), { tri, valor, ang: 181 }]; }); return { ...a, regiones: reg }; }); return; }
+        }
+      }
       {
         const clave = (modoPincelRef.current === 'cara' || modoPincelRef.current === 'pieza') && !todos ? claveRegion(hit) : null;
         if (clave && (modoPincelRef.current === 'cara' || clave.startsWith('e:'))) {
@@ -6934,6 +6958,9 @@ export default function Visor3D({ cliente = false }) {
             </>}
 
             {pestanaRender === 'inspector' && <>
+              {matSel && (matSel.hex || matSel.id || matSel.conMapa) && <div style={{ display: 'flex', gap: 6, margin: '8px 0' }}>
+                <button style={{ ...btn, flex: 1, fontSize: 12 }} onClick={() => { setHerr('pincel'); setGuardado('Pincel con este material: clic en una pieza la pinta · Mayús + clic = todas las piezas de ese mismo color de todas las máquinas · Alt + clic coge otro material'); }} title="Deja de coger materiales y pasa al pincel: lo que toques se pinta con este material">🖌 Pintar con este material</button>
+              </div>}
               {matSel?.conMapa && (() => {
                 const base = /^#[0-9a-f]{6}$/i.test(matSel.tinte || '') ? matSel.tinte : '#ffffff', rgb = [1, 3, 5].map(i => parseInt(base.slice(i, i + 2), 16)), mx = Math.max(...rgb, 1);
                 const luz = Math.round((mx / 255) * 100) / 100, aHex = r => '#' + r.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
