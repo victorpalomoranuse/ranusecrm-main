@@ -431,9 +431,17 @@ router.post('/chat', async (req, res) => {
       return { r, j: await r.json().catch(() => ({})) };
     };
     const errAjuste = j => /action|size|tool_choice|background|output_format|quality|input_fidelity|image_generation/i.test(JSON.stringify(j?.error || {})) && !/does not exist|model_not_found/i.test(JSON.stringify(j?.error || {}));
+    // fallos temporales de OpenAI («An error occurred while processing your request», 5xx, sobrecarga): se reintenta solo, hasta 3 veces, mientras quede tiempo
+    const transitorio = o => !o.r.ok && (o.r.status >= 500 || /server_error|An error occurred while processing|overloaded|temporarily/i.test(JSON.stringify(o.j?.error || {})));
     const unaVez = async (modelo, extra, textoUsuario) => {
-      let o = await llama(modelo, extra, false, textoUsuario);
-      if (!o.r.ok && errAjuste(o.j)) o = await llama(modelo, extra, true, textoUsuario); // si esta versión de la API no admite esos ajustes, se reintenta sin ellos
+      const t0 = Date.now(); let o;
+      for (let intento = 0; intento < 3; intento++) {
+        o = await llama(modelo, extra, false, textoUsuario);
+        if (!o.r.ok && errAjuste(o.j)) o = await llama(modelo, extra, true, textoUsuario); // si esta versión de la API no admite esos ajustes, se reintenta sin ellos
+        if (!transitorio(o) || Date.now() - t0 > 150000) break;
+        console.warn('estudio-ideas: fallo temporal de OpenAI, reintento', intento + 1, o.j?.error?.message?.slice(0, 80));
+        await new Promise(ok => setTimeout(ok, 2500 * (intento + 1)));
+      }
       return o;
     };
     const lee = (j, modelo) => {
@@ -456,7 +464,7 @@ router.post('/chat', async (req, res) => {
       if (otro) { modelo = otro; modeloElegido = otro; console.log('estudio-ideas: modelo de chat →', otro); res1 = await lanzar(); }
     }
     const buenas = res1.filter(o => o.r.ok);
-    if (!buenas.length) { const j = res1[0].j; console.error('estudio-ideas', res1[0].r.status, j?.error?.message); return res.status(502).json({ error: 'ChatGPT no ha podido contestar' + (j?.error?.message ? ': ' + String(j.error.message).slice(0, 260) : '') }); }
+    if (!buenas.length) { const j = res1[0].j; console.error('estudio-ideas', res1[0].r.status, j?.error?.message); return res.status(502).json({ error: /An error occurred while processing|server_error/i.test(JSON.stringify(j?.error || {})) ? 'OpenAI ha tenido un fallo temporal (se ha reintentado y sigue fallando). Pulsa enviar otra vez en un minuto.' : 'ChatGPT no ha podido contestar' + (j?.error?.message ? ': ' + String(j.error.message).slice(0, 260) : '') }); }
     const lecturas = buenas.map(o => lee(o.j, modelo));
     if (sorprende) return res.json({ propuestas: lecturas, id: lecturas[0].id, modelo: lecturas[0].modelo });
     res.json(lecturas[0]);

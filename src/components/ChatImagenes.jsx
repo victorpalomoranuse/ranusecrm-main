@@ -168,7 +168,7 @@ export default function ChatImagenes({ compacto = false, capturarVista = null, o
 
   const enviar = async (textoForzado) => {
     const t = (textoForzado ?? texto).trim(); if ((!t && !adj.length) || trabajando) return;
-    const etiquetas = Object.fromEntries(adj.map((a, i) => [i, a.et]));
+    const etiquetas = Object.fromEntries(adj.map((a, i) => [i, a.et])), adjPrevios = adj;
     const lista = adj.length ? 'Imágenes adjuntas en este mensaje: ' + adj.map((a, i) => (i + 1) + ' = ' + NOMBRE_ET[a.et]).join('; ') + '.' : '';
     const delUsuario = { id: uid(), rol: 'yo', texto: t, imagenes: adj.map(a => a.url), etiquetas };
     const nuevos = [...mensajes, delUsuario];
@@ -193,6 +193,7 @@ export default function ChatImagenes({ compacto = false, capturarVista = null, o
       console.error('chat imágenes:', e);
       const det = e.response ? 'el servidor respondió ' + e.response.status + (e.response.status === 504 || e.response.status === 502 ? ' (tardó demasiado: prueba con una imagen más pequeña o en dos pasos)' : '') : e.code === 'ECONNABORTED' ? 'tardó más de 5 minutos' : e.message === 'Network Error' ? 'se cortó la conexión con el servidor (suele ser por tiempo: prueba otra vez o en dos pasos)' : String(e.message || 'error desconocido').slice(0, 120);
       setError(e.response?.data?.error || 'No se pudo contestar: ' + det + '.'); setTrabajando(false);
+      setMensajes(mensajes); setTexto(t); setAdj(adjPrevios); // vuelve todo a la caja para reenviar sin volver a escribir
     }
   };
 
