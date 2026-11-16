@@ -22,9 +22,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import EditorPlanta2D from '../components/EditorPlanta2D';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
@@ -2183,43 +2181,18 @@ export default function Visor3D({ cliente = false }) {
   useEffect(() => { hdrisRef.current = hdris; }, [hdris]);
   useEffect(() => { if (renderAbierto && !hdris.length) api.get('/medicion/hdri-ranuse').then(r => setHdris(r.data?.hdri || [])).catch(() => {}); }, [renderAbierto]); // eslint-disable-line react-hooks/exhaustive-deps
   // Refinado con trazado de rayos (three-gpu-pathtracer): al parar la cámara la imagen se va afinando. Desactivado por defecto; solo en gráficas que lo aguantan
-  const [refinar, setRefinar] = useState(() => { try { return localStorage.getItem('visor3dRefinar') === '1'; } catch { return false; } });
-  const [ptMsg, setPtMsg] = useState('');
-  const [ptMax, setPtMax] = useState(200);
   const gpuApta = () => {
     const r = api3d.current.renderer; if (!r) return false;
     if (GL_SOFTWARE) return false;
     const gl = r.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'), n = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '');
     return /NVIDIA|GeForce|RTX|GTX|Radeon (RX|Pro)|Apple M\d/i.test(n) && !!gl.getExtension('EXT_color_buffer_float') && r.capabilities.maxTextureSize >= 8192;
   };
-  useEffect(() => { api3d.current.ptMax = ptMax; }, [ptMax]);
   // Primera vez en un ordenador sin tarjeta gráfica potente (portátiles con gráfica Intel, etc.): se empieza en calidad baja y sin modo realista, para que no se cuelgue. Después cada uno lo cambia a su gusto.
   useEffect(() => {
     if (estado !== 'listo' || cliente) return;
     try { if (localStorage.getItem('visor3dAuto') === '1') return; localStorage.setItem('visor3dAuto', '1'); } catch { return; }
-    if (!gpuApta()) { setCalidad('baja'); setRealista(false); setRefinar(false); setAviso('Tu ordenador no tiene tarjeta gráfica potente: he puesto la calidad baja y quitado el modo realista para que vaya fluido. Puedes subirlos en la barra de arriba.'); }
+    if (!gpuApta()) { setCalidad('baja'); setRealista(false); setAviso('Tu ordenador no tiene tarjeta gráfica potente: he puesto la calidad baja y quitado el modo realista para que vaya fluido. Puedes subirlos en la barra de arriba.'); }
   }, [estado]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    const a = api3d.current; if (!a.scene || estado !== 'listo') return;
-    try { localStorage.setItem('visor3dRefinar', refinar ? '1' : '0'); } catch { /* sin almacenamiento */ }
-    if (!refinar) { if (a.pt) { try { a.pt.dispose?.(); } catch { /* ya liberado */ } a.pt = null; a.ptReady = false; a.ptReconstruir = null; a.ptDesactivar = null; setPtMsg(''); } return; }
-    if (!gpuApta()) { setRefinar(false); setPtMsg('Tu gráfica no es apta para el trazado de rayos (hace falta una NVIDIA, AMD o Apple reciente con la aceleración activada).'); return; }
-    let vivo = true; setPtMsg('Preparando el refinado…');
-    if (!realista) setRealista(true);
-    a.ptDesactivar = (msg) => { setRefinar(false); setPtMsg(msg || ''); };
-    import('three-gpu-pathtracer').then(async ({ WebGLPathTracer }) => {
-      if (!vivo) return;
-      const pt = new WebGLPathTracer(a.renderer);
-      pt.tiles.set(2, 2); pt.bounces = 4; pt.filterGlossyFactor = 0.5; pt.renderDelay = 300; pt.minSamples = 3; pt.dynamicLowRes = true; pt.lowResScale = 0.3;
-      const construir = async () => { const restaura = ocultarAyudas(); try { await pt.setSceneAsync(a.scene, a.cam); } finally { restaura(); } };
-      await construir();
-      if (!vivo) { pt.dispose?.(); return; }
-      a.pt = pt; a.ptReady = true;
-      a.ptReconstruir = async () => { if (a.ptConstruyendo) return; a.ptConstruyendo = true; try { await construir(); } catch (e) { console.warn('refinado', e); } a.ptConstruyendo = false; };
-      setPtMsg('Refinado activo: la imagen se afina cuando dejas quieta la cámara.'); a.despierta = performance.now() + 500;
-    }).catch(e => { console.warn('refinado', e); if (vivo) { setRefinar(false); setPtMsg('No se pudo activar el trazado de rayos en este equipo.'); } });
-    return () => { vivo = false; };
-  }, [refinar, estado]); // eslint-disable-line react-hooks/exhaustive-deps
   const [pestanaRender, setPestanaRender] = useState('ambiente');
   const [modoAmb, setModoAmb] = useState(null); // geo | custom | hdri (si no se ha elegido, se deduce del entorno)
   // Modo edición ligero: calidad baja, sin efectos ni aristas y solo la planta que estás mirando; al apagarlo vuelve todo a como estaba
@@ -2229,13 +2202,13 @@ export default function Visor3D({ cliente = false }) {
     if (!ligero) {
       const m = A.modelo, pls = m?.plantas || (m ? [m] : []), c = A.ctrl?.target;
       const ip = m && c ? plantaDeCamara(m, A.offsPl, [], c.x, c.z, c.y) : 0;
-      antesLigero.current = { realista, calidad, aristas, refinar, ocultas: ocultas.filter(x => x.startsWith('planta:')) };
-      setRealista(false); setCalidad('baja'); setAristas(false); setRefinar(false);
+      antesLigero.current = { realista, calidad, aristas, ocultas: ocultas.filter(x => x.startsWith('planta:')) };
+      setRealista(false); setCalidad('baja'); setAristas(false);
       if (pls.length > 1) setOcultas(o => [...o.filter(x => !x.startsWith('planta:')), ...pls.map((_, j) => j).filter(j => j !== ip).map(j => 'planta:' + j)]);
       setLigero(true); setAviso('Modo ligero: calidad baja, sin efectos ni aristas' + (pls.length > 1 ? ' y solo la planta que estás mirando' : '') + '. Pulsa «Ligero» otra vez para volver a como estaba.');
     } else {
       const p = antesLigero.current; antesLigero.current = null;
-      if (p) { setRealista(p.realista); setCalidad(p.calidad); setAristas(p.aristas); setRefinar(p.refinar); setOcultas(o => [...o.filter(x => !x.startsWith('planta:')), ...p.ocultas]); }
+      if (p) { setRealista(p.realista); setCalidad(p.calidad); setAristas(p.aristas); setOcultas(o => [...o.filter(x => !x.startsWith('planta:')), ...p.ocultas]); }
       setLigero(false); setAviso('Modo ligero apagado: todo vuelve a como estaba.');
     }
   };
@@ -2259,11 +2232,10 @@ export default function Visor3D({ cliente = false }) {
   const [resRender, setResRender] = useState(() => { try { return parseInt(localStorage.getItem('visor3dRes') || '3200', 10) || 3200; } catch { return 3200; } });
   const [formatoRender, setFormatoRender] = useState('jpg');
   const [sombraSuave, setSombraSuave] = useState(true);
-  const fxActivo = fx.contraste !== 1 || fx.saturacion !== 1 || fx.calidez !== 0 || fx.vineta > 0 || fx.bloom > 0 || fx.exp !== 0 || fx.realce !== 0 || fx.sombra !== 0 || fx.bb !== 6500 || fx.tinte !== 0;
+  const fxActivo = fx.contraste !== 1 || fx.saturacion !== 1 || fx.calidez !== 0 || fx.vineta > 0 || fx.exp !== 0 || fx.realce !== 0 || fx.sombra !== 0 || fx.bb !== 6500 || fx.tinte !== 0;
   useEffect(() => { try { localStorage.setItem('visor3dFx', JSON.stringify(fx)); localStorage.setItem('visor3dRes', String(resRender)); } catch { /* sin almacenamiento */ } }, [fx, resRender]);
   useEffect(() => {
     const a = api3d.current; if (a.gradeU) { const u = a.gradeU; u.contraste.value = fx.contraste; u.saturacion.value = fx.saturacion; u.calidez.value = fx.calidez; u.vineta.value = fx.vineta; u.exposure.value = fx.exp; u.highlights.value = fx.realce; u.shadows.value = fx.sombra; u.wb.value = wbVec(fx.bb, fx.tinte); }
-    if (a.bloomPass) a.bloomPass.strength = fx.bloom;
   }, [fx, realista, estado]);
   // Óptica: ángulo de visión vertical de la cámara (como el objetivo de una cámara). Menos grados = más zoom y menos deformación; más grados = gran angular
   const [lente, setLente] = useState(() => lenteGuardada());
@@ -2440,7 +2412,6 @@ export default function Visor3D({ cliente = false }) {
   const [modosEq, setModosEq] = useState({});               // cómo se ajusta el modelo 3D de cada máquina del plano
   const [mtick, setMtick] = useState(0);
   const [huecosCfg, setHuecosCfg] = useState({});          // apertura, bisagra y sentido de cada puerta y ventana (solo 3D)
-  useEffect(() => { const a = api3d.current; if (a.pt) a.ptRebuild = performance.now() + 800; }, [objs, acab, texturas, ocultas, rev, hora, ambiente, modosEq, entorno, entRot, entInt, huecosCfg]); // la escena cambió: se vuelve a preparar
   const [tapetas, setTapetas] = useState({});              // tapetas de puertas y ventanas, por hueco
   const [escenas, setEscenas] = useState([]);              // escenas guardadas: vista + capas + hora + textos de IA
   const [escAbierta, setEscAbierta] = useState(false);
@@ -2603,10 +2574,8 @@ export default function Visor3D({ cliente = false }) {
       { const lpz = api3d.current.luzPool; if (lpz && ahora - lpz.t > 250) { lpz.t = ahora; if (lpz.ult.distanceToSquared(cam.position) > 0.25) { lpz.ult.copy(cam.position); lpz.asigna(cam.position); } } }
       if (!movi && ahora - ultSombra > 500) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
       if (espejoSucio && ahora - (a0.ultEsp || 0) > 250) { espejoSucio = false; a0.ultEsp = ahora; aplicaEspejos(scene); }
-      if (ctrl.update()) { a0.despierta = ahora + 400; a0.pt?.updateCamera?.(); }
-      if (a0.ptRebuild && ahora >= a0.ptRebuild && a0.ptReconstruir) { a0.ptRebuild = 0; a0.ptReconstruir(); }
-      const refinando = !!(a0.pt && a0.ptReady && a0.pt.samples < (a0.ptMax || 200));
-      if (!(movi || ahora < (a0.despierta || 0) || refinando)) {
+      if (ctrl.update()) { a0.despierta = ahora + 400; }
+      if (!(movi || ahora < (a0.despierta || 0))) {
         // espejos reales: cuando la cámara se para en modo Realista, los espejos y metales reflejan la sala de verdad (máquinas, paredes, luces) y no un estudio genérico
         if (a0.composer && hayEspejos && ahora - (a0.ultEnvEsp || 0) > 1200 && (!a0.envEspPos || a0.envEspPos.distanceTo(cam.position) > 0.25)) {
           a0.ultEnvEsp = ahora; a0.envEspPos = cam.position.clone();
@@ -2620,14 +2589,8 @@ export default function Visor3D({ cliente = false }) {
         if (!(ahora < (a0.despierta || 0))) { a0.reposo = true; return; }
       } // nada ha cambiado: no se dibuja y la tarjeta gráfica descansa
       a0.reposo = false; renderer.info.reset();
-      if (a0.pt && a0.ptReady && !(cliente && movi)) {
-        a0.pt.renderSample();
-        a0.ptLento = ema > 450 ? (a0.ptLento || 0) + 1 : 0; // si va muy lento se desactiva solo
-        if (a0.ptLento > 90) a0.ptDesactivar?.('Tu gráfica va justa para el trazado de rayos: lo he desactivado.');
-      } else if (a0.composer) {
+        if (a0.composer) {
         const sz = renderer.getSize(vR2); if (a0.compW !== sz.x || a0.compH !== sz.y || a0.compPr !== renderer.getPixelRatio()) { a0.compW = sz.x; a0.compH = sz.y; a0.compPr = renderer.getPixelRatio(); a0.composer.setPixelRatio(a0.compPr); a0.composer.setSize(sz.x, sz.y); }
-        // calidad progresiva (como D5): mientras te mueves se dibuja sin oclusión ambiental ni resplandor, que son lo que más pesa; al parar vuelven y la imagen se completa
-        if (a0.aoPass) a0.aoPass.enabled = !movi; if (a0.bloomPass) a0.bloomPass.enabled = !movi;
         a0.composer.render();
       } else renderer.render(scene, cam);
       if (a0.pedirFoto) { const cb = a0.pedirFoto; a0.pedirFoto = null; let u = null; try { u = renderer.domElement.toDataURL('image/jpeg', 0.9); } catch { /* sin imagen */ } cb(u); } // foto del fotograma recién dibujado, tal como se ve
@@ -2638,7 +2601,7 @@ export default function Visor3D({ cliente = false }) {
         else if (ema > 42 && !a0.sinSombrasMaq) { a0.sinSombrasMaq = true; scene.traverse(o => { if (o.isMesh && o.castShadow && o.parent?.userData?.modeloEq) o.castShadow = false; else if (o.isMesh && o.castShadow) { let q = o.parent, esMaq = false; while (q) { if (q.userData?.modeloEq) { esMaq = true; break; } q = q.parent; } if (esMaq) o.castShadow = false; } }); } // primero se quitan las sombras de las máquinas (lo que más pesa); las del local se mantienen
         else if (ema > 42 && !sinSombras) { sinSombras = true; renderer.shadowMap.enabled = false; sol.castShadow = false; scene.traverse(o => { if (o.material) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.needsUpdate = true; }); } }); }
         else if (ema < 22 && escala < 1) { escala = Math.min(1, escala + 0.1); renderer.setPixelRatio(base * escala); }
-        hud.textContent = Math.round(1000 / Math.max(1, ema)) + ' fps · ' + Math.round(renderer.info.render.triangles / 1000) + 'k triáng. · ' + renderer.info.render.calls + ' llamadas' + (escala < 1 ? ' · res ' + Math.round(escala * 100) + '%' : '') + (sinSombras ? ' · sin sombras' : '') + (a0.composer ? ' · con efectos' : '') + (a0.pt && a0.ptReady ? ' · refinado ' + a0.pt.samples + '/' + (a0.ptMax || 200) : '') + ' · ' + (gpuNombre || 'gpu ?') + ' · px ' + renderer.getPixelRatio().toFixed(1);
+        hud.textContent = Math.round(1000 / Math.max(1, ema)) + ' fps · ' + Math.round(renderer.info.render.triangles / 1000) + 'k triáng. · ' + renderer.info.render.calls + ' llamadas' + (escala < 1 ? ' · res ' + Math.round(escala * 100) + '%' : '') + (sinSombras ? ' · sin sombras' : '') + (a0.composer ? ' · con efectos' : '') + ' · ' + (gpuNombre || 'gpu ?') + ' · px ' + renderer.getPixelRatio().toFixed(1);
       }
     };
     const enCampo = e => { const t = (e.target?.tagName || '').toLowerCase(); return t === 'input' || t === 'textarea' || t === 'select' || e.target?.isContentEditable; };
@@ -3667,7 +3630,7 @@ export default function Visor3D({ cliente = false }) {
     }
     setPersona(true);
     if (!esTactil) { setRealista(true); setCalidad('alta'); }
-    if (!esTactil && gpuApta()) setRefinar(true); else setGpuFlojaCli(true);
+    if (esTactil || !gpuApta()) setGpuFlojaCli(true);
   }, [cliente, estado]); // eslint-disable-line react-hooks/exhaustive-deps
   // Modo persona: la cámara se queda a la altura de los ojos y solo gira sobre sí misma; se anda con W A S D (despacio) y la rueda cambia el zoom de la lente
   useEffect(() => {
@@ -3715,7 +3678,7 @@ export default function Visor3D({ cliente = false }) {
     if (a.composer) { a.composer.dispose?.(); a.composer = null; }
     if (a.envTex) { a.envTex.dispose(); a.envTex = null; }
     a.scene.environment = null;
-    a.gradeU = null; a.bloomPass = null; a.aoPass = null;
+    a.gradeU = null;
     if (!realista && !fxActivo) return;
     try {
       if (realista) {
@@ -3744,13 +3707,6 @@ export default function Visor3D({ cliente = false }) {
       const rt = new THREE.WebGLRenderTarget(sz.x, sz.y, { type: THREE.HalfFloatType, samples: 4 });
       const comp = new EffectComposer(a.renderer, rt);
       comp.addPass(new RenderPass(a.scene, a.cam));
-      if (realista) {
-        const ao = new GTAOPass(a.scene, a.cam, sz.x, sz.y);
-        ao.updateGtaoMaterial({ radius: 0.3, distanceExponent: 1.5, thickness: 1, scale: 1.2, samples: 12 });
-        ao.blendIntensity = 0.9;
-        comp.addPass(ao); a.aoPass = ao;
-      }
-      if (fx.bloom > 0) { const bp = new UnrealBloomPass(new THREE.Vector2(sz.x, sz.y), fx.bloom, 0.6, 0.85); comp.addPass(bp); a.bloomPass = bp; }
       comp.addPass(new OutputPass());
       // corrección de color final: contraste, saturación, calidez y viñeta
       const U = { contraste: { value: fx.contraste }, saturacion: { value: fx.saturacion }, calidez: { value: fx.calidez }, vineta: { value: fx.vineta }, exposure: { value: fx.exp }, highlights: { value: fx.realce }, shadows: { value: fx.sombra }, wb: { value: wbVec(fx.bb, fx.tinte) } };
@@ -3759,7 +3715,7 @@ export default function Visor3D({ cliente = false }) {
       a.gradeU = U;
       a.composer = comp; a.compW = null;
     } catch (e) { console.warn('modo realista', e); setRealista(false); }
-  }, [realista, estado, fxActivo, fx.bloom > 0, entorno, hdris]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [realista, estado, fxActivo, entorno, hdris]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Varias plantas: se pueden ocultar por separado
   useEffect(() => {
@@ -6428,7 +6384,6 @@ export default function Visor3D({ cliente = false }) {
             <div style={{ fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', color: '#c9a46c' }}>Ranuse Design</div>
             <div style={{ fontSize: 20, fontWeight: 700 }}>{titulo}</div>
             <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>{esTactil ? 'Arrastra para mirar · usa el joystick para andar' : 'Arrastra para mirar · W A S D o las flechas para andar · Shift para ir más rápido'}</div>
-            {!esTactil && refinar && <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>Al quedarte quieto, la imagen se afina a calidad de render.</div>}
           </div>
           {(estado === 'cargando' || estado === 'error' || sinGpu) && (
             <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 'min(420px, 88vw)', textAlign: 'center', background: 'rgba(0,0,0,0.65)', borderRadius: 14, padding: '16px 18px', fontSize: 14, pointerEvents: 'auto', textShadow: 'none' }}>
@@ -6445,8 +6400,8 @@ export default function Visor3D({ cliente = false }) {
             </div>
           )}
           {paradasCli.length > 0 && (
-            <button style={{ position: 'absolute', right: 14, top: 14, pointerEvents: 'auto', background: (gpuFlojaCli || /no es apta|No se pudo/.test(ptMsg)) ? '#c9a46c' : 'rgba(0,0,0,0.55)', color: (gpuFlojaCli || /no es apta|No se pudo/.test(ptMsg)) ? '#000' : '#fff', border: 'none', borderRadius: 20, padding: '8px 14px', cursor: 'pointer', fontSize: 13, textShadow: 'none' }}
-              onClick={() => navigate('/tour/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma))}>{(gpuFlojaCli || /no es apta|No se pudo/.test(ptMsg)) ? 'Ver el tour de panorámicas (recomendado en este dispositivo)' : 'Ver el tour de panorámicas'}</button>
+            <button style={{ position: 'absolute', right: 14, top: 14, pointerEvents: 'auto', background: gpuFlojaCli ? '#c9a46c' : 'rgba(0,0,0,0.55)', color: gpuFlojaCli ? '#000' : '#fff', border: 'none', borderRadius: 20, padding: '8px 14px', cursor: 'pointer', fontSize: 13, textShadow: 'none' }}
+              onClick={() => navigate('/tour/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma))}>{gpuFlojaCli ? 'Ver el tour de panorámicas (recomendado en este dispositivo)' : 'Ver el tour de panorámicas'}</button>
           )}
           {esTactil && (
             <div style={{ position: 'absolute', left: 24, bottom: 28, width: 120, height: 120, borderRadius: '50%', background: 'rgba(0,0,0,0.35)', border: '2px solid rgba(255,255,255,0.5)', pointerEvents: 'auto', touchAction: 'none' }}
@@ -7232,7 +7187,6 @@ export default function Visor3D({ cliente = false }) {
                 {fila('Saturación', fx.saturacion, 0, 2, 0.05, v => setFx(x => ({ ...x, saturacion: v })), fx.saturacion.toFixed(2))}
                 {fila('Balance de blancos', fx.bb, 2500, 10000, 100, v => setFx(x => ({ ...x, bb: v })), fx.bb + ' K')}
                 {fila('Tinte', fx.tinte, -1, 1, 0.05, v => setFx(x => ({ ...x, tinte: v })), (fx.tinte > 0 ? '+' : '') + fx.tinte.toFixed(2))}
-                {fila('Bloom (resplandor)', fx.bloom, 0, 1.5, 0.05, v => setFx(x => ({ ...x, bloom: v })), fx.bloom.toFixed(2))}
                 {fila('Viñeta', fx.vineta, 0, 1, 0.05, v => setFx(x => ({ ...x, vineta: v })), fx.vineta.toFixed(2))}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 112, opacity: 0.75, fontSize: 12 }}>Tono (cámara)</span><select value={tono} onChange={e => setTono(e.target.value)} style={{ ...btn, flex: 1 }} title="Cómo se pasa la luz a la imagen"><option value="aces">ACES (cinematográfico)</option><option value="agx">AgX (suave, realista)</option><option value="neutral">Neutro (colores fieles)</option><option value="lineal">Lineal</option></select></label>
                 <button style={btn} onClick={() => setFx(FX0)}>Restablecer efectos</button>
@@ -7314,12 +7268,6 @@ export default function Visor3D({ cliente = false }) {
             </>}
 
             {pestanaRender === 'salida' && <>
-              {sec('Refinado (trazado de rayos)', <>
-                <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={refinar} onChange={e => { setPtMsg(''); setRefinar(e.target.checked); }} /> Refinar al parar la cámara</label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0' }}><span style={{ width: 92, opacity: 0.75 }}>Calidad</span><select value={ptMax} onChange={e => setPtMax(parseInt(e.target.value, 10))} style={{ ...btn, flex: 1 }}><option value="60">Rápida (60 muestras)</option><option value="200">Normal (200)</option><option value="500">Alta (500)</option></select></label>
-                {ptMsg && <div style={{ fontSize: 11, color: '#d4c9bb', marginBottom: 4 }}>{ptMsg}</div>}
-                <div style={{ opacity: 0.55, fontSize: 11 }}>Calcula la luz real (rebotes, sombras suaves y reflejos). Solo para gráficas NVIDIA, AMD o Apple recientes. Al mover la cámara vuelve a la vista rápida.</div>
-              </>)}
               {sec('Postproducción con IA', <>
                 <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12, marginBottom: 3 }}><input type="checkbox" checked={mejoraOpc.nitidez} onChange={e => setMejoraOpc(o => ({ ...o, nitidez: e.target.checked }))} /> Más nitidez y menos ruido</label>
                 <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12, marginBottom: 6 }}><input type="checkbox" checked={mejoraOpc.luz} onChange={e => setMejoraOpc(o => ({ ...o, luz: e.target.checked }))} /> Retocar luz y contraste (suave)</label>
