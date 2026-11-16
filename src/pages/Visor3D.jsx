@@ -109,6 +109,33 @@ function frenaMuros(modelo, pos, mov, offs) {
 // Visor 3D de un plano de Planos (lee su modelo3d). Pensado para gimnasios: paredes con puertas y ventanas,
 // suelos por sala, pilares y máquinas como bloques con sus medidas. Las medidas del plano van en cm.
 const CM = 0.01;
+// ── vista de zonas (axonométrica con muros cortados, zonas de color en el suelo y rótulos); los mismos colores que la lámina del cliente ──
+const ZON_COLOR = { cardio: '#2a9d8f', pin: '#7a64c4', discos: '#d9774f', poleas: '#3f84c9', libre: '#d9a232', funcional: '#c9628f' };
+const ZON_NOMBRE = { cardio: 'Cardio', pin: 'Máquinas de pin', discos: 'Discos y palanca', poleas: 'Poleas', libre: 'Peso libre', funcional: 'Funcional' };
+const zonClave = (nm) => String(nm || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 120);
+function zonMezcla(hex, k) { const h = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)); return '#' + h.map(v => Math.round(v * (1 - k) + 255 * k).toString(16).padStart(2, '0')).join(''); }
+function zonHull(pts) {
+  const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (p.length < 3) return p;
+  const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = [];
+  p.forEach(q => { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); });
+  [...p].reverse().forEach(q => { while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); });
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
+// fondo de estudio: luz cálida en el centro que se apaga hacia los bordes (en lugar del blanco plano)
+function zonFondo() {
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 512; const cx = cv.getContext('2d'), g = cx.createRadialGradient(256, 230, 40, 256, 256, 420);
+  g.addColorStop(0, '#fcfaf6'); g.addColorStop(0.55, '#efeae2'); g.addColorStop(1, '#d9d1c5'); cx.fillStyle = g; cx.fillRect(0, 0, 512, 512);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function zonEtiqueta(texto, color, grande) {
+  const cv = document.createElement('canvas'), cx = cv.getContext('2d'), fs = grande ? 56 : 38, fuente = '600 ' + fs + 'px Montserrat, Arial, sans-serif';
+  cx.font = fuente; const w = Math.ceil(cx.measureText(texto).width + fs * 1.3), h = Math.ceil(fs * 1.7); cv.width = w; cv.height = h; cx.font = fuente;
+  cx.fillStyle = color; cx.beginPath(); const R = h / 2; cx.moveTo(R, 0); cx.lineTo(w - R, 0); cx.arc(w - R, R, R, -Math.PI / 2, Math.PI / 2); cx.lineTo(R, h); cx.arc(R, R, R, Math.PI / 2, Math.PI * 1.5); cx.fill();
+  cx.fillStyle = grande ? '#ffffff' : '#2b2723'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(texto, w / 2, h / 2 + 2);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true })); sp.renderOrder = 20; sp.raycast = () => {};
+  const ancho = grande ? 3.2 : 1.8; sp.scale.set(ancho, ancho * h / w, 1); return sp;
+}
 
 // Texturas subidas: se descargan una vez y se reutilizan; la repetición se ajusta al tamaño real (cm) de cada textura
 const cacheTex = new Map();
@@ -5153,7 +5180,7 @@ export default function Visor3D({ cliente = false }) {
   const entrarAxo = () => {
     if (axo) return; liberarCamara();
     if (!colocarAxo(45, true)) { setAviso('Este plano no tiene salas ni muros que ver'); return; }
-    const a = api3d.current; a.scene.background = new THREE.Color(0xffffff); if (a.base) a.base.visible = false;
+    const a = api3d.current; a.scene.background = zonFondo(); if (a.base) a.base.visible = false;
     setAxo({ az: 45, ocultasAntes: ocultas, sinTecho: true }); setOcultas(o => (o.includes('techos') ? o : [...o, 'techos'])); setSelObj(null); setSelAcab(null);
   };
   const girarAxo = d => { const az = (axo.az + d + 360) % 360; colocarAxo(az, false); setAxo(x => ({ ...x, az })); };
@@ -5162,7 +5189,70 @@ export default function Visor3D({ cliente = false }) {
     const a = api3d.current, p = a.alzPrev;
     if (p) { a.cam.fov = p.fov; a.shiftY = p.shift; a.cam.updateProjectionMatrix(); a.cam.position.copy(p.pos); a.ctrl.target.copy(p.target); a.scene.background = p.bg; }
     if (a.base) a.base.visible = true; a.alzPrev = null; a.ctrl.update(); setOcultas(axo?.ocultasAntes || []); setAxo(null);
+    setZon({ on: false, corte: false }); if (zonRealPrev.current) { zonRealPrev.current = false; setRealista(true); }
   };
+  // Vista de zonas: muros cortados a ~1,1 m, máquinas teñidas por tipo, zonas de color en el suelo y rótulos
+  const [zon, setZon] = useState({ on: false, corte: false }), [zonInfo, setZonInfo] = useState(null), zonDatos = useRef(null), zonRealPrev = useRef(false);
+  const entrarZonas = () => { if (!axo) entrarAxo(); setZon({ on: true, corte: true }); if (realista) { zonRealPrev.current = true; setRealista(false); } };
+  const apagaZonas = () => { setZon(z => ({ ...z, on: false })); if (zonRealPrev.current) { zonRealPrev.current = false; setRealista(true); } };
+  useEffect(() => {
+    const a = api3d.current; if (!a.scene || !a.raiz) return;
+    const L = { muros: [], mats: [], extras: [] };
+    const limpia = () => {
+      L.muros.forEach(([m, sy]) => { m.scale.y = sy; }); L.mats.forEach(([m, mt]) => { m.material = mt; });
+      L.extras.forEach(o => { a.scene.remove(o); o.geometry?.dispose?.(); o.material?.map?.dispose?.(); o.material?.dispose?.(); });
+      L.muros = []; L.mats = []; L.extras = []; if (a.renderer?.shadowMap) a.renderer.shadowMap.needsUpdate = true;
+    };
+    const cortar = !!axo && zon.corte, zonas = !!axo && zon.on;
+    if (!cortar && !zonas) { setZonInfo(null); return; }
+    let vivo = true;
+    if (cortar) a.raiz.traverse(o => {
+      if (!o.isMesh || o.userData.capa !== 'muros' || !o.userData.muroId || o.userData.overlay || String(o.userData.muroId).startsWith('rc-') || (o.parent && o.parent.userData && o.parent.userData.muroId)) return;
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); const hm = o.geometry.boundingBox.max.y - o.geometry.boundingBox.min.y;
+      if (hm > 1.3) { L.muros.push([o, o.scale.y]); o.scale.y = o.scale.y * 1.1 / hm; }
+    });
+    if (a.renderer?.shadowMap) a.renderer.shadowMap.needsUpdate = true;
+    if (zonas) (async () => {
+      let datos = zonDatos.current;
+      if (!datos) { try { datos = (await api.get('/lamina-zonas/' + id, { timeout: 180000 })).data; zonDatos.current = datos; } catch (e) { if (vivo) { setAviso('No se pudo leer la clasificación de las máquinas: ' + (e?.response?.data?.error || e.message)); setZon(z => ({ ...z, on: false })); } return; } }
+      if (!vivo) return;
+      const mapa = {}; datos.maquinas.forEach(m => { mapa[m.clave] = m; });
+      const maq = [];
+      a.raiz.traverse(o => {
+        const e = o.userData && o.userData.equipo; if (!e || o.userData.capa !== 'equipos' || !o.visible) return;
+        const info = mapa[zonClave(e.nombre)]; if (!info || !ZON_COLOR[info.tipo]) return;
+        const p = new THREE.Vector3(); o.getWorldPosition(p); const th = o.rotation.y, c = Math.cos(th), sn = Math.sin(th), hw = (e.w || 60) * CM / 2, hd = (e.d || 60) * CM / 2;
+        const pts = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(([x, z]) => [p.x + x * c + z * sn, p.z - x * sn + z * c]), xs = pts.map(q => q[0]), zs = pts.map(q => q[1]);
+        maq.push({ o, info, p, pts, bb: [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)], top: new THREE.Box3().setFromObject(o).max.y });
+      });
+      const tonos = {}; maq.forEach(m => { const t = (tonos[m.info.tipo] = tonos[m.info.tipo] || []); if (!t.includes(m.info.grupo)) t.push(m.info.grupo); });
+      const cache = {}, matDe = (hex) => cache[hex] || (cache[hex] = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.55, metalness: 0.05 }));
+      maq.forEach(m => { const gs = tonos[m.info.tipo], k = gs.length > 1 ? gs.indexOf(m.info.grupo) / (gs.length - 1) * 0.42 : 0, mt = matDe(zonMezcla(ZON_COLOR[m.info.tipo], k)); m.o.traverse(x => { if (x.isMesh && x.visible && !x.userData.hit) { L.mats.push([x, x.material]); x.material = mt; } }); });
+      const dBox = (A, B) => Math.hypot(Math.max(0, Math.max(A[0], B[0]) - Math.min(A[2], B[2])), Math.max(0, Math.max(A[1], B[1]) - Math.min(A[3], B[3]))), resumen = [];
+      Object.keys(ZON_COLOR).forEach(tipo => {
+        const l = maq.filter(m => m.info.tipo === tipo); if (!l.length) return; const padre = l.map((_, i) => i), raiz = (i) => (padre[i] === i ? i : (padre[i] = raiz(padre[i])));
+        for (let i = 0; i < l.length; i++) for (let j = i + 1; j < l.length; j++) if (dBox(l[i].bb, l[j].bb) <= 2.0) padre[raiz(i)] = raiz(j);
+        const gr = {}; l.forEach((m, i) => { (gr[raiz(i)] = gr[raiz(i)] || []).push(m); });
+        resumen.push({ tipo, nombre: ZON_NOMBRE[tipo], color: ZON_COLOR[tipo], n: l.length });
+        Object.values(gr).forEach(ms => {
+          const base = zonHull(ms.flatMap(m => m.pts)), pts2 = []; base.forEach(([x, z]) => { for (let i = 0; i < 12; i++) { const t = i / 12 * Math.PI * 2; pts2.push([x + Math.cos(t) * 0.4, z + Math.sin(t) * 0.4]); } });
+          const poly = zonHull(pts2), geo = new THREE.ShapeGeometry(new THREE.Shape(poly.map(([x, z]) => new THREE.Vector2(x, -z)))); geo.rotateX(-Math.PI / 2);
+          const parche = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: ZON_COLOR[tipo], transparent: true, opacity: 0.34, depthWrite: false, side: THREE.DoubleSide }));
+          parche.position.y = Math.min(...ms.map(m => m.p.y)) + 0.02; parche.renderOrder = 2; parche.raycast = () => {}; a.scene.add(parche); L.extras.push(parche);
+          const cx0 = ms.reduce((q, m) => q + m.p.x, 0) / ms.length, cz0 = ms.reduce((q, m) => q + m.p.z, 0) / ms.length, top = Math.max(...ms.map(m => m.top));
+          const et = zonEtiqueta(ZON_NOMBRE[tipo], ZON_COLOR[tipo], true); et.position.set(cx0, top + 0.7, cz0); a.scene.add(et); L.extras.push(et);
+          const g2 = {}; ms.forEach(m => { (g2[m.info.grupo] = g2[m.info.grupo] || []).push(m); });
+          if (Object.keys(g2).length > 1) Object.entries(g2).forEach(([nom, mm]) => { const sp = zonEtiqueta(nom, ZON_COLOR[tipo], false); sp.position.set(mm.reduce((q, m) => q + m.p.x, 0) / mm.length, Math.max(...mm.map(m => m.top)) + 0.2, mm.reduce((q, m) => q + m.p.z, 0) / mm.length); a.scene.add(sp); L.extras.push(sp); });
+        });
+      });
+      // base de maqueta bajo el edificio, para que no flote sobre el fondo
+      const bb = new THREE.Box3(); a.raiz.traverse(o => { if (o.isMesh && o.userData.capa === 'muros' && o.visible) bb.expandByObject(o); });
+      if (!bb.isEmpty()) { const w = bb.max.x - bb.min.x + 3, d = bb.max.z - bb.min.z + 3, pl = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, d), new THREE.MeshStandardMaterial({ color: 0xefeae2, roughness: 1 })); pl.position.set((bb.min.x + bb.max.x) / 2, bb.min.y - 0.07, (bb.min.z + bb.max.z) / 2); pl.receiveShadow = true; pl.raycast = () => {}; a.scene.add(pl); L.extras.push(pl); }
+      if (a.renderer?.shadowMap) a.renderer.shadowMap.needsUpdate = true;
+      setZonInfo(resumen);
+    })();
+    return () => { vivo = false; limpia(); };
+  }, [!!axo, zon.on, zon.corte, rev, estado]);
   // Zona por medidas: se escriben posición y tamaño exactos (cm) y se crea sobre el muro, el suelo o el techo que se está viendo
   const crearZonaMedidas = () => {
     const a = api3d.current, m = a.modelo, ipZ = m && alz ? plantaAlz(m, alz.tipo, alz.id) : 0, pl0 = m && (m.plantas || [m])[ipZ], [oxZ, oyZ] = (a.offsPl || [])[ipZ] || [0, 0]; if (!alz || !pl0) return;
@@ -5603,6 +5693,10 @@ export default function Visor3D({ cliente = false }) {
       <button style={bTop} onClick={() => girarAxo(-90)} title="Gira la vista 90° a la izquierda">⟲ 90°</button>
       <button style={bTop} onClick={() => girarAxo(90)} title="Gira la vista 90° a la derecha">⟳ 90°</button>
       <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" checked={axo.sinTecho} onChange={techosAxo} />Sin techos</label>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" checked={zon.corte} onChange={e => setZon(z => ({ ...z, corte: e.target.checked }))} />Muros cortados</label>
+      {!cliente && <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" checked={zon.on} onChange={e => (e.target.checked ? entrarZonas() : apagaZonas())} />Zonas</label>}
+      {zon.on && !zonInfo && <span style={{ opacity: 0.7 }}>Leyendo las máquinas…</span>}
+      {zon.on && zonInfo && zonInfo.map(z => <span key={z.tipo} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><i style={{ width: 10, height: 10, borderRadius: 3, background: z.color, display: 'inline-block' }} />{z.nombre} · {z.n}</span>)}
       <button style={bTop} onClick={salirAxo}>Salir</button>
       <span style={{ opacity: 0.6, width: '100%' }}>Rueda = zoom · arrastrar = girar libre · botón derecho = mover · Exportar la imagen con 📷 / Render HD</span>
     </div>
@@ -5940,6 +6034,7 @@ export default function Visor3D({ cliente = false }) {
           ['Perspectiva', () => vista('persp'), false, false, 'Vista en perspectiva de todo el plano', '0'],
           ['Planta', () => vista('planta'), false, false, 'Vista desde arriba', '9'],
           ['Axonométrica', () => (axo ? salirAxo() : entrarAxo()), !!axo, estado !== 'listo' || !!alz || !!planta2d, 'Vista isométrica, sin perspectiva', '8'],
+          ['Zonas de equipamiento', () => (axo && zon.on ? apagaZonas() : entrarZonas()), !!axo && zon.on, estado !== 'listo' || !!alz || !!planta2d || cliente, 'Vista isométrica con los muros cortados y las máquinas agrupadas por zonas de color (pin, discos, cardio…)', ''],
           ['Planta 2D', () => (planta2d ? salirPlanta2d() : entrarPlanta2d()), !!planta2d, estado !== 'listo' || !!alz || !!axo, 'Vista desde arriba en 2D para dibujar zonas y pintar salas', '7'],
           ...(pendientesN > 0 && !cargarModelos ? [['Cargar 3 modelos más (' + pendientesN + ' sin cargar)', () => setCargaN(n => n + 3), false, false, 'Hay muchas máquinas distintas: los modelos no se cargan solos al abrir para que la página no se quede colgada. Hasta entonces se ven como cajas. Pueden tardar un poco, se van poniendo de uno en uno', '']] : []),
           ...(pesadosN > 0 && !cargarPesados ? [['Cargar modelos pesados (' + pesadosN + ')', () => setCargarPesados(true), false, false, 'Modelos de más de 12 MB: tardan y pueden bloquear la página unos segundos. Hasta entonces esas máquinas se ven como cajas', '']] : []),
