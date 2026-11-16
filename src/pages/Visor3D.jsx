@@ -4498,6 +4498,7 @@ export default function Visor3D({ cliente = false }) {
     } catch (e) { setGuardado(e.response?.data?.error || 'No se pudo usar el material'); }
   };
   const [subiendoTex, setSubiendoTex] = useState('');
+  const [texContinua, setTexContinua] = useState(false);
   const [texTam, setTexTam] = useState(60), [texAlto, setTexAlto] = useState(0); // alto 0 = igual que el ancho (baldosa cuadrada)
   const subirMisTexturas = async (archivos) => {
     const todos = Array.from(archivos || []), zips = todos.filter(f => /\.zip$/i.test(f.name || '')), lista = todos.filter(f => String(f.type).startsWith('image'));
@@ -4505,7 +4506,7 @@ export default function Visor3D({ cliente = false }) {
     // una carpeta de texturas comprimida (p. ej. la de Drive): se crean todas de una vez
     for (const z of zips) {
       setSubiendoTex('Subiendo y creando las texturas de «' + z.name + '»… puede tardar un minuto');
-      try { const fd = new FormData(); fd.append('file', z); fd.append('tam', String(texTam)); if (texAlto > 0) fd.append('tamH', String(texAlto)); const r = await api.post('/biblioteca3d/mis-texturas/zip', fd, { timeout: 280000 }); setB3d(b => ({ ...(b || {}), mistex: [...(r.data.texturas || []), ...((b?.mistex) || [])] })); setB3dTab('mistex'); setB3dCat(''); setSubiendoTex((r.data.texturas || []).length + ' texturas añadidas desde el .zip ✓' + (r.data.omitidas ? ' (' + r.data.omitidas + ' omitidas)' : '')); }
+      try { const fd = new FormData(); fd.append('file', z); fd.append('tam', String(texTam)); if (texAlto > 0) fd.append('tamH', String(texAlto)); if (texContinua) fd.append('continua', '1'); const r = await api.post('/biblioteca3d/mis-texturas/zip', fd, { timeout: 280000 }); setB3d(b => ({ ...(b || {}), mistex: [...(r.data.texturas || []), ...((b?.mistex) || [])] })); setB3dTab('mistex'); setB3dCat(''); setSubiendoTex((r.data.texturas || []).length + ' texturas añadidas desde el .zip ✓' + (r.data.omitidas ? ' (' + r.data.omitidas + ' omitidas)' : '')); }
       catch (e) { setSubiendoTex('«' + z.name + '»: ' + (e.response?.data?.error || 'no se pudo subir')); return; }
     }
     if (!lista.length) return;
@@ -4513,7 +4514,7 @@ export default function Visor3D({ cliente = false }) {
     for (let i = 0; i < lista.length; i++) {
       setSubiendoTex('Subiendo ' + (lista.length > 1 ? (i + 1) + '/' + lista.length + ' · ' : '') + '«' + lista[i].name + '»…');
       try {
-        const fd = new FormData(); fd.append('file', lista[i]); fd.append('tam', String(texTam)); if (texAlto > 0) fd.append('tamH', String(texAlto));
+        const fd = new FormData(); fd.append('file', lista[i]); fd.append('tam', String(texTam)); if (texAlto > 0) fd.append('tamH', String(texAlto)); if (texContinua) fd.append('continua', '1');
         const r = await api.post('/biblioteca3d/mis-texturas', fd);
         setB3d(b => ({ ...(b || {}), mistex: [r.data.textura, ...((b?.mistex) || [])] })); ok++;
       } catch (e) { setSubiendoTex('«' + lista[i].name + '»: ' + (e.response?.data?.error || 'no se pudo subir')); return; }
@@ -8304,6 +8305,7 @@ export default function Visor3D({ cliente = false }) {
                       <input type="file" multiple accept="image/*,.zip" style={{ display: 'none' }} onChange={e => { subirMisTexturas(e.target.files); e.target.value = ''; }} />
                     </label>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 12, flexWrap: 'wrap' }}><span style={{ opacity: 0.7 }}>Lo que mide la imagen (cm)</span><input type="number" min="5" max="1000" value={texTam} onChange={e => setTexTam(parseFloat(e.target.value) || 60)} style={{ ...btn, width: 58, padding: '2px 5px' }} /><span style={{ opacity: 0.6 }}>×</span><input type="number" min="0" max="1000" value={texAlto || ''} placeholder="igual" onChange={e => setTexAlto(parseFloat(e.target.value) || 0)} style={{ ...btn, width: 58, padding: '2px 5px' }} /></label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 12, cursor: 'pointer' }} title="Para microcemento, mortero, lino, hormigón: quita las manchas grandes y hace que los bordes encajen, así al repetirla no se ven rectángulos"><input type="checkbox" checked={texContinua} onChange={e => setTexContinua(e.target.checked)} /> Hacerla continua (sin juntas ni rectángulos)</label>
                     <div style={{ display: 'flex', gap: 4, marginTop: 4 }}><button style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => { setTexTam(240); setTexAlto(120); }} title="Tablero de melamina o MDF: la imagen es una pieza entera de 240 × 120 cm">Tablero 240 × 120</button><button style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => { setTexTam(60); setTexAlto(0); }}>Baldosa 60</button></div>
                     <div style={{ opacity: 0.55, fontSize: 11, marginTop: 3 }}>Pon el ancho real que cubre la foto (una baldosa de 60 cm = 60). Quedan guardadas en «Mis texturas» para todos tus planos.</div>
                     {subiendoTex && <div style={{ fontSize: 11, marginTop: 4, color: '#d4c9bb' }}>{subiendoTex}</div>}
@@ -8314,6 +8316,7 @@ export default function Visor3D({ cliente = false }) {
                       <div key={t.id} onClick={() => usarTexturaB3d(t)} title={t.nombre + ' · ' + t.categoria + (t.tam ? ' · ' + t.tam + ' cm' : '')} style={{ cursor: 'pointer', border: '1px solid #555', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
                         <img src={t.url} alt={t.nombre} loading="lazy" style={{ width: '100%', height: 56, objectFit: 'cover', display: 'block' }} />
                         <div style={{ fontSize: 10, padding: '1px 3px', background: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.nombre}</div>
+                        {t.mia && <span onClick={e => { e.stopPropagation(); setSubiendoTex('Haciendo continua «' + t.nombre + '»…'); api.post('/biblioteca3d/mis-texturas/' + t.id + '/continua', {}, { timeout: 120000 }).then(r => { setB3d(b => ({ ...b, mistex: [r.data.textura, ...(b.mistex || [])] })); setSubiendoTex('Copia continua creada ✓ («' + r.data.textura.nombre + '»)'); }).catch(er => setSubiendoTex(er.response?.data?.error || 'No se pudo hacer continua')); }} title="Crear una copia continua (sin juntas) de esta textura" style={{ position: 'absolute', bottom: 14, right: 1, background: '#000b', borderRadius: 8, padding: '0 5px', fontSize: 10 }}>∞</span>}
                         {t.mia && <span onClick={e => { e.stopPropagation(); if (window.confirm('¿Quitar «' + t.nombre + '» de Mis texturas? Los planos que ya la usan la conservan.')) api.delete('/biblioteca3d/mis-texturas/' + t.id).then(() => setB3d(b => ({ ...b, mistex: (b.mistex || []).filter(x => x.id !== t.id) }))).catch(() => setSubiendoTex('No se pudo quitar')); }} title="Quitar de Mis texturas" style={{ position: 'absolute', top: 1, right: 1, background: '#000b', borderRadius: 8, padding: '0 5px', fontSize: 10 }}>✕</span>}
                         {t.mia && <span onClick={e => { e.stopPropagation(); const n = window.prompt('Nombre de la textura:', t.nombre); if (n === null) return; const tm = window.prompt('Lo que mide la imagen en la realidad (cm):', String(t.tam || 60)); api.put('/biblioteca3d/mis-texturas/' + t.id, { nombre: (n || '').trim() || t.nombre, tam: parseFloat(tm) || t.tam }).then(r => setB3d(b => ({ ...b, mistex: (b.mistex || []).map(x => (x.id === t.id ? r.data.textura : x)) }))).catch(() => setSubiendoTex('No se pudo cambiar')); }} title="Cambiar el nombre y el tamaño real" style={{ position: 'absolute', top: 1, left: 1, background: '#000b', borderRadius: 8, padding: '0 5px', fontSize: 10 }}>✎</span>}
                       </div>

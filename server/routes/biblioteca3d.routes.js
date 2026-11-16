@@ -178,12 +178,30 @@ const RUTA_TEX_MIAS = 'modelos-3d/_texturas.json';
 export async function leerTexturasMias() {
   try { const { data, error } = await supabase.storage.from(BUCKET).download(RUTA_TEX_MIAS); if (error || !data) return []; const j = JSON.parse(await data.text()); return Array.isArray(j) ? j : []; } catch { return []; }
 }
+// Hace continua una textura (microcemento, mortero, lino…): 1) quita las variaciones grandes de claro y oscuro (lo que más delata los rectángulos al repetirla) y
+// 2) mezcla los bordes con la misma imagen desplazada media pieza, de modo que el borde derecho encaja con el izquierdo y el de abajo con el de arriba
+export async function hazContinua(buf, lado = 2048) {
+  const base = await sharp(buf).rotate().resize({ width: lado, height: lado, fit: 'inside', withoutEnlargement: true }).removeAlpha().toColourspace('srgb').raw().toBuffer({ resolveWithObject: true });
+  const { width: W, height: H } = base.info, C = 3, d = base.data;
+  const sigma = Math.max(8, Math.min(W, H) / 6);
+  const desenfoque = await sharp(d, { raw: { width: W, height: H, channels: C } }).blur(sigma).raw().toBuffer();
+  const media = [0, 0, 0]; for (let i = 0; i < d.length; i += C) { media[0] += d[i]; media[1] += d[i + 1]; media[2] += d[i + 2]; } const n = W * H; media[0] /= n; media[1] /= n; media[2] /= n;
+  const plano = new Float32Array(d.length); // imagen sin las manchas grandes
+  for (let i = 0; i < d.length; i += C) for (let c = 0; c < C; c++) plano[i + c] = Math.max(0, Math.min(255, d[i + c] - 0.85 * (desenfoque[i + c] - media[c])));
+  const ss = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const wx = new Float32Array(W), wy = new Float32Array(H);
+  for (let x = 0; x < W; x++) { const t = (x + 0.5) / W; wx[x] = ss(0, 0.38, t) * ss(0, 0.38, 1 - t); }
+  for (let y = 0; y < H; y++) { const t = (y + 0.5) / H; wy[y] = ss(0, 0.38, t) * ss(0, 0.38, 1 - t); }
+  const out = Buffer.alloc(d.length), hx = W >> 1, hy = H >> 1;
+  for (let y = 0; y < H; y++) { const sy = (y + hy) % H; for (let x = 0; x < W; x++) { const sx = (x + hx) % W, m = wx[x] * wy[y], a = (y * W + x) * C, b = (sy * W + sx) * C; for (let c = 0; c < C; c++) out[a + c] = Math.round(plano[a + c] * m + plano[b + c] * (1 - m)); } }
+  return sharp(out, { raw: { width: W, height: H, channels: C } }).jpeg({ quality: 92 }).toBuffer();
+}
 const guardarTexturasMias = lista => supabase.storage.from(BUCKET).upload(RUTA_TEX_MIAS, Buffer.from(JSON.stringify(lista)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
 router.post('/mis-texturas', uploadReferenceImageFile, handleMulterError, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Falta la imagen' });
     const id = 'mt-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), ruta = 'biblioteca3d/mis-texturas/' + id + '.jpg';
-    const buf = await sharp(req.file.buffer).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+    const buf = req.body?.continua === '1' ? await hazContinua(req.file.buffer) : await sharp(req.file.buffer).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
     const { error: eUp } = await supabase.storage.from(BUCKET).upload(ruta, buf, { contentType: 'image/jpeg', upsert: true });
     if (eUp) throw eUp;
     const tam = Math.max(5, Math.min(1000, parseFloat(req.body?.tam) || 60)), tamH = parseFloat(req.body?.tamH) > 0 ? Math.max(5, Math.min(1000, parseFloat(req.body.tamH))) : undefined;
@@ -206,7 +224,7 @@ router.post('/mis-texturas/zip', uploadZipTexturas, handleMulterError, async (re
       try {
         const buf = await e.async('nodebuffer'); if (buf.length < 3000) { omitidas++; continue; }
         const id = 'mt-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + nuevas.length, ruta = 'biblioteca3d/mis-texturas/' + id + '.jpg';
-        const out = await sharp(buf).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+        const out = req.body?.continua === '1' ? await hazContinua(buf) : await sharp(buf).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
         const { error: eUp } = await supabase.storage.from(BUCKET).upload(ruta, out, { contentType: 'image/jpeg', upsert: true }); if (eUp) throw eUp;
         const base = e.name.split('/').pop().replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Mi textura';
         nuevas.push({ id, nombre: base, categoria: 'Mis texturas', url: supabase.storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl, tam, ...(tamH ? { tamH } : {}), mia: true });
@@ -216,6 +234,18 @@ router.post('/mis-texturas/zip', uploadZipTexturas, handleMulterError, async (re
     const { error } = await guardarTexturasMias([...lista, ...nuevas]); if (error) throw error;
     res.status(201).json({ texturas: nuevas, omitidas });
   } catch (e) { console.error('biblioteca3d mis-texturas zip:', e); res.status(500).json({ error: 'No se pudo leer el .zip: ' + String(e.message || '').slice(0, 120) }); }
+});
+router.post('/mis-texturas/:id/continua', async (req, res) => {
+  try {
+    const lista = await leerTexturasMias(), t = lista.find(x => x.id === req.params.id); if (!t) return res.status(404).json({ error: 'No encontrada' });
+    const rf = await fetch(t.url); if (!rf.ok) throw new Error('No se pudo leer la imagen');
+    const buf = await hazContinua(Buffer.from(await rf.arrayBuffer()));
+    const id = 'mt-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), ruta = 'biblioteca3d/mis-texturas/' + id + '.jpg';
+    const { error: eUp } = await supabase.storage.from(BUCKET).upload(ruta, buf, { contentType: 'image/jpeg', upsert: true }); if (eUp) throw eUp;
+    const nueva = { ...t, id, nombre: (t.nombre.replace(/ \(continua\)$/, '') + ' (continua)').slice(0, 60), url: supabase.storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl };
+    const { error } = await guardarTexturasMias([...lista, nueva]); if (error) throw error;
+    res.status(201).json({ textura: nueva });
+  } catch (e) { console.error('biblioteca3d continua:', e); res.status(500).json({ error: 'No se pudo hacer continua: ' + String(e.message || '').slice(0, 100) }); }
 });
 router.put('/mis-texturas/:id', async (req, res) => {
   try {
