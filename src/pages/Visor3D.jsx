@@ -2543,7 +2543,7 @@ export default function Visor3D({ cliente = false }) {
       const inf = renderer.info, filas = [...cuenta.entries()].sort((a, b) => b[1].m - a[1].m).map(([k, v]) => k.padEnd(12) + String(v.m).padStart(6) + ' piezas ' + String(Math.round(v.t / 1000)).padStart(6) + 'k triáng.').join('\n');
       const luces = {}; scene.traverse(o => { if (o.isLight && o.visible && o.intensity > 0) { const k = o.isSpotLight ? 'focos' : o.isRectAreaLight ? 'luces de área' : o.isPointLight ? 'puntuales' : o.isDirectionalLight ? 'sol' : 'otras'; luces[k] = (luces[k] || 0) + 1; } });
       const txtLuces = Object.entries(luces).map(([k, v]) => v + ' ' + k).join(' · ') || 'ninguna', progs = (inf.programs || []).length;
-      det.textContent = 'QUÉ PESA (lo que se ve ahora)\n' + filas + '\nTotal: ' + llamadas + ' piezas · ' + Math.round(tri / 1000) + 'k triángulos · ' + mats.size + ' materiales\nVersión de movimiento: ' + ((api3d.current.proxyLista || []).length) + ' máquinas preparadas, ' + ((api3d.current.proxyCola || []).length) + ' en cola, ' + (api3d.current.proxyOn ? 'ACTIVA ahora' : 'inactiva') + ' · ' + (api3d.current.composer ? 'con efectos' : 'directo') + '\nLuces encendidas: ' + txtLuces + ' · ' + progs + ' programas de sombreado\nEn la tarjeta: ' + inf.memory.textures + ' texturas · ' + inf.memory.geometries + ' geometrías' + '\nPulsa para cerrar';
+      det.textContent = 'QUÉ PESA (lo que se ve ahora)\n' + filas + '\nTotal: ' + llamadas + ' piezas · ' + Math.round(tri / 1000) + 'k triángulos · ' + mats.size + ' materiales\nVersión de movimiento: ' + ((api3d.current.proxyLista || []).length) + ' máquinas preparadas, ' + ((api3d.current.proxyCola || []).length) + ' en cola, ' + (api3d.current.proxyOn ? 'ACTIVA ahora' : 'inactiva') + (api3d.current.movStats ? '\nÚltimo movimiento de cámara: ' + api3d.current.movStats.calls + ' llamadas · ' + Math.round(1000 / Math.max(1, api3d.current.movStats.ms)) + ' fps · versión de movimiento ' + (api3d.current.movStats.prox ? 'USADA' : 'no usada') : '') + ' · ' + (api3d.current.composer ? 'con efectos' : 'directo') + '\nLuces encendidas: ' + txtLuces + ' · ' + progs + ' programas de sombreado\nEn la tarjeta: ' + inf.memory.textures + ' texturas · ' + inf.memory.geometries + ' geometrías' + '\nPulsa para cerrar';
       det.style.display = 'block';
     };
     const vF = new THREE.Vector3(), vR = new THREE.Vector3(), vM = new THREE.Vector3(), ARRIBA = new THREE.Vector3(0, 1, 0);
@@ -2600,7 +2600,7 @@ export default function Visor3D({ cliente = false }) {
         }
         if (!(ahora < (a0.despierta || 0))) { a0.reposo = true; return; }
       } // nada ha cambiado: no se dibuja y la tarjeta gráfica descansa
-      a0.reposo = false; renderer.info.reset();
+      a0.reposo = false; if (a0.ultInfoCalls !== undefined) { const ci = renderer.info.render.calls; if (movi && ci > 0) a0.movStats = { calls: ci, ms: Math.round(ema), prox: !!a0.proxyOn, t: Date.now() }; } renderer.info.reset(); a0.ultInfoCalls = 1;
       if (a0.pt && a0.ptReady && !(cliente && movi)) {
         a0.pt.renderSample();
         a0.ptLento = ema > 450 ? (a0.ptLento || 0) + 1 : 0; // si va muy lento se desactiva solo
