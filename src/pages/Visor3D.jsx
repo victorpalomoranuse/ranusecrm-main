@@ -6937,6 +6937,25 @@ export default function Visor3D({ cliente = false }) {
                     if (normal) { const fd = new FormData(); fd.append('tipo', 'normal'); fd.append('file', normal); nueva = (await api.post('/medicion/' + id + '/textura/' + nueva.id + '/mapa', fd)).data.textura; }
                     setTexturas(x => (x.some(y => y.id === nueva.id) ? x : [...x, nueva]));
                     const g = api3d.current.ultimoGoteo; matSelRef.current = { id: nueva.id }; g?.aplicar?.(g.hit, true);
+                    // piezas de una máquina del modelo (el blanco de un remo, el negro de un tapizado…): se pintan por piezas; antes el cambio iba al cuerpo de la máquina y no se veía.
+                    // Por defecto se cambian todas las piezas de las máquinas que tengan ese mismo color; con «solo esta superficie», únicamente la que cogiste.
+                    try {
+                      const ck = g?.hit ? claveRegion(g.hit) : null;
+                      if (ck && ck.startsWith('e:')) {
+                        const nuevoV = 'tex:' + nueva.id, hexMin = hexL.slice(1).toLowerCase(), sets = [];
+                        // la región «pieza» pinta lo que mira hacia el mismo lado que su triángulo de partida: se parte de seis triángulos (arriba, abajo y los cuatro lados) para cubrir toda la pieza
+                        const semillas = (geo) => { regionTriangulos(geo, 0, 25); const nn = geo.userData.adj && geo.userData.adj.normales; if (!nn) return [0]; const out = new Set(); [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].forEach(([x, y, z]) => { let mejor = -1, bi = 0; for (let i = 0; i < nn.length; i++) { const d = nn[i].x * x + nn[i].y * y + nn[i].z * z; if (d > mejor) { mejor = d; bi = i; } } if (mejor > 0.3) out.add(bi); }); return out.size ? [...out] : [0]; };
+                        if (soloEsta) sets.push([ck, g.hit.faceIndex]);
+                        else api3d.current.raiz.traverse(eq => {
+                          const e = eq.userData && eq.userData.equipo; if (!e || eq.userData.capa !== 'equipos') return;
+                          eq.traverse(m => {
+                            if (!m.isMesh || m.userData.overlay || m.userData.hit || m.userData.parte === undefined) return;
+                            const mt = Array.isArray(m.material) ? m.material[0] : m.material; if (mt && mt.color && mt.color.getHexString() === hexMin) semillas(m.geometry).forEach(sd => sets.push(['e:' + e.id + ':' + m.userData.parte, sd]));
+                          });
+                        });
+                        if (sets.length) setAcab(a => { const reg = { ...(a.regiones || {}) }; sets.forEach(([k, tri]) => { reg[k] = [...(reg[k] || []).filter(q => !(q.ang === 181 && q.tri === tri)), { tri, valor: nuevoV, ang: 181 }]; }); return { ...a, regiones: reg }; });
+                      }
+                    } catch { /* si algo falla, queda el material creado y se puede pintar con el pincel */ }
                     if (!soloEsta && matSel.hex) { const v0 = hexL.toLowerCase(), v1 = 'tex:' + nueva.id; setAcab(a => reemplazaValor(a, v0, v1)); setObjs(p => reemplazaValor(p, v0, v1)); }
                     setMatSel({ id: nueva.id }); setGuardado('Material propio creado: ya puedes ajustarlo');
                   } catch (e) { setAviso(e.response?.data?.error || 'No se pudo crear el material'); }
