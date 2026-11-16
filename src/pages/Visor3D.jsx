@@ -3292,14 +3292,18 @@ export default function Visor3D({ cliente = false }) {
     };
     const altDe = (kid, Hc) => ({ foco: Hc - 1, plaf: Hc - 1, colg: Hc - 60, aplq: 180, pie: 120, suel: 5, esp: 160, mue: 90, spot: Hc - 6, spotl: Hc - 6 })[kid];
     const matNegro = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.5, metalness: 0.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); // el desplazamiento evita que parpadee donde roza el techo
-    let nLuces = 0; const cand = [], nSp = lucesPl.slice(0, 120).filter(x => ['spot', 'spotl', 'foco', 'plaf'].includes(x.kid) && !x.vs).length, POOL = Math.min(nSp, 16); a.luzPool = null;
+    // focos y spots: se encienden TODOS mientras la tarjeta gráfica lo aguante (el tope sube con la calidad y se limita por lo que admite la tarjeta);
+    // solo si hay más de los que caben, los reales se reparten entre los más cercanos a la cámara
+    let nLuces = 0; const cand = [], nSp = lucesPl.slice(0, 120).filter(x => ['spot', 'spotl', 'foco', 'plaf'].includes(x.kid) && !x.vs).length;
+    const gl0 = a.renderer && a.renderer.getContext ? a.renderer.getContext() : null, maxVec = gl0 ? (gl0.getParameter(gl0.MAX_FRAGMENT_UNIFORM_VECTORS) || 224) : 224;
+    const porUnif = Math.max(8, Math.floor((maxVec - 200) / 8) - 24), porCal = { baja: 12, media: 40, alta: 64 }[calidad] || 24, POOL = Math.min(nSp, porCal, porUnif); a.luzPool = null;
     lucesPl.slice(0, 120).forEach(l0 => {
       const l = { ...l0, ...(luzOver[l0.id] || {}) };
       const cat = lumCat.find(c => c.id === l.lid), lm = lucesAj[l.id]?.lm ?? (l.lm || cat?.lm || 800), K = lucesAj[l.id]?.k ?? (cat?.k || 3000);
       const col = colorK(K), aj = lucesAj[l.id] || {};
       const ap = aj.ap ?? l.ap ?? (l.kid === 'spotl' ? 80 : 60);
       const inten = Math.max(5, lm / 12.57) * 0.22 * ambiente.luces;
-      const puede = () => nLuces < 24 - POOL && (nLuces++, true);
+      const puede = () => nLuces < 24 && (nLuces++, true);
       // carriles, tiras LED y luminarias lineales: se modelan a lo largo de su recorrido
       if (l.vs) {
         const esC = l.kid === 'carril', esL = l.kid === 'led';
@@ -3407,7 +3411,7 @@ export default function Visor3D({ cliente = false }) {
       asigna(a.cam.position); a.luzPool = { asigna, ult: a.cam.position.clone(), t: 0 };
     }
     a.scene.add(g); a.luzG = g;
-  }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas, ambiente.luces, ambiente.kLuces, luzOver, rev]);
+  }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas, ambiente.luces, ambiente.kLuces, luzOver, rev, calidad]);
 
   // Sol según la hora y exposición de la cámara
   useEffect(() => {
