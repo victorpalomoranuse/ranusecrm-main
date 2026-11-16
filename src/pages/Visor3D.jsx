@@ -649,6 +649,8 @@ function gestorTexturas() {
   };
   return g;
 }
+// contador de modelos en descarga: alimenta la pantalla de carga inicial
+const cargaModelos = { pend: 0, total: 0 };
 function cargarModelo(m) {
   if (cacheModelos.has(m.url)) return cacheModelos.get(m.url);
   const t = String(m.tipo || '').toLowerCase();
@@ -659,6 +661,7 @@ function cargarModelo(m) {
     else nuevoGLTFLoader().load(m.url, r => ok(repararMateriales(fusionarModelo(r.scene))), undefined, mal);
   });
   p.then(() => { try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } }, () => {}); p.catch(() => cacheModelos.delete(m.url));
+  cargaModelos.pend++; cargaModelos.total++; const finCarga = () => { cargaModelos.pend = Math.max(0, cargaModelos.pend - 1); try { window.dispatchEvent(new Event('visor3d-carga')); } catch { /* sin ventana */ } }; p.then(finCarga, finCarga);
   cacheModelos.set(m.url, p);
   return p;
 }
@@ -2001,6 +2004,21 @@ export default function Visor3D({ cliente = false }) {
   const navigate = useNavigate();
   const caja = useRef(null);
   const [estado, setEstado] = useState('cargando');
+  // pantalla de carga inicial: tapa el visor hasta que el espacio y los modelos de las máquinas están listos (así no se toca nada mientras se monta)
+  const [cargaIni, setCargaIni] = useState({ on: true, pct: 0 });
+  useEffect(() => {
+    let fin = false, t = null; const t0 = Date.now();
+    const mira = () => {
+      if (fin) return; const { pend, total } = cargaModelos, listo = estado === 'listo';
+      const pct = !listo ? 8 : total ? Math.round(15 + 85 * ((total - pend) / total)) : 100;
+      setCargaIni(c => (c.on ? { on: true, pct } : c));
+      if (t) { clearTimeout(t); t = null; }
+      if (listo && pend === 0) t = setTimeout(() => { if (!fin && cargaModelos.pend === 0) { fin = true; setCargaIni({ on: false, pct: 100 }); } }, 900);
+      else if (Date.now() - t0 > 90000) { fin = true; setCargaIni({ on: false, pct: 100 }); }
+    };
+    mira(); const iv = setInterval(mira, 400); window.addEventListener('visor3d-carga', mira);
+    return () => { fin = true; clearInterval(iv); if (t) clearTimeout(t); window.removeEventListener('visor3d-carga', mira); };
+  }, [estado]);
   const [realista, setRealista] = useState(() => { try { return localStorage.getItem('visor3dRealista') === '1'; } catch { return false; } });
   const [titulo, setTitulo] = useState('');
   // Modo render (el «Realista»): el modelo queda BLOQUEADO. No se mueve, gira, borra, dibuja ni modela nada; solo se ajustan materiales y luces (y la cámara y el ambiente).
@@ -9167,6 +9185,14 @@ export default function Visor3D({ cliente = false }) {
         </div>
       )}
       {estado === 'cargando' && <p style={{ position: 'absolute', top: '45%', width: '100%', textAlign: 'center', color: '#555' }}>Cargando…</p>}
+      {cargaIni.on && estado !== 'error' && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(30,27,24,0.82)', backdropFilter: 'blur(3px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'Montserrat, Arial, sans-serif' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>Preparando tu espacio…</div>
+          <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 14 }}>{cargaModelos.pend > 0 ? 'Cargando máquinas y materiales (' + (cargaModelos.total - cargaModelos.pend) + ' de ' + cargaModelos.total + ')' : 'Casi listo'}</div>
+          <div style={{ width: 260, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.2)', overflow: 'hidden' }}><div style={{ width: cargaIni.pct + '%', height: '100%', background: '#d9c7b0', transition: 'width .4s' }} /></div>
+          <div style={{ fontSize: 11, opacity: 0.55, marginTop: 12 }}>No hace falta tocar nada: se abre solo.</div>
+        </div>
+      )}
       {estado === 'sin-modelo' && <p style={{ position: 'absolute', top: '45%', width: '100%', textAlign: 'center', color: '#555' }}>Este plano todavía no tiene modelo 3D: ábrelo en Planos, dibuja algo y se guarda solo.</p>}
       {estado === 'error' && <p style={{ position: 'absolute', top: '45%', width: '100%', textAlign: 'center', color: '#a33' }}>No se ha podido cargar el plano.</p>}
     </div>
