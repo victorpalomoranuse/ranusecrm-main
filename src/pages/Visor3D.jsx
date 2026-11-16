@@ -136,7 +136,7 @@ function zonEtiqueta(texto, color, grande) {
   cx.fillStyle = grande ? '#ffffff' : '#2b2723'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(texto, w / 2, h / 2 + 2);
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true })); sp.renderOrder = 20; sp.raycast = () => {};
-  const ancho = grande ? 3.2 : 1.8; sp.scale.set(ancho, ancho * h / w, 1); return sp;
+  const ancho = grande ? 2.3 : 1.5; sp.scale.set(ancho, ancho * h / w, 1); return sp;
 }
 
 // Texturas subidas: se descargan una vez y se reutilizan; la repetición se ajusta al tamaño real (cm) de cada textura
@@ -5369,14 +5369,40 @@ export default function Visor3D({ cliente = false }) {
     setZon({ on: false, corte: false }); if (zonRealPrev.current) { zonRealPrev.current = false; setRealista(true); }
   };
   // Vista de zonas: muros cortados a ~1,1 m, máquinas teñidas por tipo, zonas de color en el suelo y rótulos
-  const [zon, setZon] = useState({ on: false, corte: false }), [zonInfo, setZonInfo] = useState(null), zonDatos = useRef(null), zonRealPrev = useRef(false), [zonEditar, setZonEditar] = useState(false), [zonRev, setZonRev] = useState(0), zonasOnRef = useRef(false); zonasOnRef.current = !!axo && zon.on;
+  const [zon, setZon] = useState({ on: false, corte: false }), [zonInfo, setZonInfo] = useState(null), zonDatos = useRef(null), zonRealPrev = useRef(false), [zonEditar, setZonEditar] = useState(false), [zonRev, setZonRev] = useState(0), [zonGrupos, setZonGrupos] = useState(false), zonasOnRef = useRef(false); zonasOnRef.current = !!axo && zon.on;
+  // Lámina de zonas para el cliente: la vista 3D en alta resolución con cabecera de marca, título y leyenda por zonas y grupos; se guarda en la galería y se ofrece publicarla en la historia
+  const exportaZonas = async () => {
+    if (!zonInfo || !zonDatos.current) { setAviso('Espera a que se pinten las zonas'); return; }
+    try {
+      setAviso('Preparando la lámina…');
+      const url = await renderHDurl({ ancho: 2200, fmt: 'png' });
+      const img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = url; });
+      const W = 2400, M = 80, hCab = 150, ah = Math.round((W - 2 * M) * img.height / img.width), filas = Math.ceil(zonInfo.length / 3), H = hCab + 50 + ah + 50 + filas * 150 + 90;
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d'), F = 'Montserrat, Helvetica, Arial, sans-serif';
+      g.fillStyle = '#f6f3ee'; g.fillRect(0, 0, W, H); g.fillStyle = '#1e1b18'; g.fillRect(0, 0, W, hCab);
+      g.textBaseline = 'middle'; g.fillStyle = '#c9a46c'; g.font = '700 36px ' + F; g.fillText('RANUSE DESIGN', M, hCab / 2);
+      g.textAlign = 'right'; g.fillStyle = '#ffffff'; g.font = '300 46px ' + F; g.fillText('Distribución por zonas', W - M, hCab / 2 - 18); g.fillStyle = '#b9b3ab'; g.font = '26px ' + F; g.fillText(String(titulo || '').slice(0, 60), W - M, hCab / 2 + 30); g.textAlign = 'left';
+      const y0 = hCab + 50; g.save(); g.beginPath(); g.roundRect(M, y0, W - 2 * M, ah, 26); g.clip(); g.drawImage(img, M, y0, W - 2 * M, ah); g.restore();
+      const colW = (W - 2 * M) / 3; zonInfo.forEach((z, i) => {
+        const x = M + (i % 3) * colW, y = y0 + ah + 50 + Math.floor(i / 3) * 150, gr = {};
+        zonDatos.current.maquinas.filter(m => m.tipo === z.tipo).forEach(m => { gr[m.grupo] = (gr[m.grupo] || 0) + (m.cantidad || 1); });
+        g.fillStyle = z.color; g.beginPath(); g.roundRect(x, y - 16, 34, 34, 8); g.fill();
+        g.fillStyle = '#1e1b18'; g.font = '700 36px ' + F; g.fillText(z.nombre + ' · ' + z.n, x + 52, y);
+        g.fillStyle = '#6b6560'; g.font = '26px ' + F; g.fillText(Object.entries(gr).map(([k, v]) => k + ' (' + v + ')').join('   ').slice(0, 64), x + 52, y + 50);
+      });
+      g.fillStyle = '#9a948d'; g.font = '22px ' + F; g.textAlign = 'center'; g.fillText('Ranuse Design · esquema orientativo de la distribución por zonas', W / 2, H - 38);
+      const rd = await guardarRender('hd', cv.toDataURL('image/png'), metaActual(), 'Distribución por zonas');
+      if (rd) abrirPublicar(rd);
+    } catch (e) { setAviso('No se pudo preparar la lámina: ' + (e.message || '')); }
+  };
   const cambiaZon = (clave, k, v) => { const d = zonDatos.current; if (!d) return; d.maquinas = d.maquinas.map(m => (m.clave === clave ? { ...m, [k]: v } : m)); setZonRev(x => x + 1); clearTimeout(window.__zonT); window.__zonT = setTimeout(() => api.put('/lamina-zonas/' + id, { maquinas: zonDatos.current.maquinas }).catch(() => setAviso('No se pudo guardar la corrección')), 700); };
   const entrarZonas = () => { if (!axo) entrarAxo(); setZon({ on: true, corte: true }); if (realista) { zonRealPrev.current = true; setRealista(false); } };
   const apagaZonas = () => { setZon(z => ({ ...z, on: false })); if (zonRealPrev.current) { zonRealPrev.current = false; setRealista(true); } };
   useEffect(() => {
     const a = api3d.current; if (!a.scene || !a.raiz) return;
-    const L = { muros: [], mats: [], extras: [], vis: [] };
+    const L = { muros: [], mats: [], extras: [], vis: [], timer: null, n: undefined };
     const limpia = () => {
+      if (L.timer) { clearInterval(L.timer); L.timer = null; }
       L.vis.forEach(([o, v]) => { o.visible = v; }); L.vis = [];
       L.muros.forEach(([m, sy]) => { m.scale.y = sy; }); L.mats.forEach(([m, mt]) => { m.material = mt; });
       L.extras.forEach(o => { a.scene.remove(o); o.geometry?.dispose?.(); o.material?.map?.dispose?.(); o.material?.dispose?.(); });
@@ -5424,7 +5450,7 @@ export default function Visor3D({ cliente = false }) {
           const cx0 = ms.reduce((q, m) => q + m.p.x, 0) / ms.length, cz0 = ms.reduce((q, m) => q + m.p.z, 0) / ms.length, top = Math.max(...ms.map(m => m.top));
           const et = zonEtiqueta(ZON_NOMBRE[tipo], ZON_COLOR[tipo], true); et.position.set(cx0, top + 0.7, cz0); a.scene.add(et); L.extras.push(et);
           const g2 = {}; ms.forEach(m => { (g2[m.info.grupo] = g2[m.info.grupo] || []).push(m); });
-          if (Object.keys(g2).length > 1) Object.entries(g2).forEach(([nom, mm]) => { const sp = zonEtiqueta(nom, ZON_COLOR[tipo], false); sp.position.set(mm.reduce((q, m) => q + m.p.x, 0) / mm.length, Math.max(...mm.map(m => m.top)) + 0.2, mm.reduce((q, m) => q + m.p.z, 0) / mm.length); a.scene.add(sp); L.extras.push(sp); });
+          if (zonGrupos && Object.keys(g2).length > 1) Object.entries(g2).forEach(([nom, mm]) => { const sp = zonEtiqueta(nom, ZON_COLOR[tipo], false); sp.position.set(mm.reduce((q, m) => q + m.p.x, 0) / mm.length, Math.max(...mm.map(m => m.top)) + 0.2, mm.reduce((q, m) => q + m.p.z, 0) / mm.length); a.scene.add(sp); L.extras.push(sp); });
         });
       });
       // base de maqueta bajo el edificio, para que no flote sobre el fondo
@@ -5432,9 +5458,11 @@ export default function Visor3D({ cliente = false }) {
       if (!bb.isEmpty()) { const w = bb.max.x - bb.min.x + 3, d = bb.max.z - bb.min.z + 3, pl = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, d), new THREE.MeshStandardMaterial({ color: 0xefeae2, roughness: 1 })); pl.position.set((bb.min.x + bb.max.x) / 2, bb.min.y - 0.07, (bb.min.z + bb.max.z) / 2); pl.receiveShadow = true; pl.raycast = () => {}; a.scene.add(pl); L.extras.push(pl); }
       if (a.renderer?.shadowMap) a.renderer.shadowMap.needsUpdate = true;
       setZonInfo(resumen);
+      // los modelos de las máquinas se cargan poco a poco: cuando llegan piezas nuevas, se vuelve a pintar
+      L.timer = setInterval(() => { let n = 0; a.raiz.traverse(o => { if (o.userData && o.userData.capa === 'equipos') o.traverse(m => { if (m.isMesh && !m.userData.overlay && !m.userData.hit) n++; }); }); if (L.n !== undefined && n !== L.n) { L.n = n; setZonRev(x => x + 1); } else L.n = n; }, 1500);
     })();
     return () => { vivo = false; limpia(); };
-  }, [!!axo, zon.on, zon.corte, rev, estado, zonRev]);
+  }, [!!axo, zon.on, zon.corte, rev, estado, zonRev, zonGrupos]);
   // Zona por medidas: se escriben posición y tamaño exactos (cm) y se crea sobre el muro, el suelo o el techo que se está viendo
   const crearZonaMedidas = () => {
     const a = api3d.current, m = a.modelo, ipZ = m && alz ? plantaAlz(m, alz.tipo, alz.id) : 0, pl0 = m && (m.plantas || [m])[ipZ], [oxZ, oyZ] = (a.offsPl || [])[ipZ] || [0, 0]; if (!alz || !pl0) return;
@@ -5878,6 +5906,8 @@ export default function Visor3D({ cliente = false }) {
       <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" checked={zon.corte} onChange={e => setZon(z => ({ ...z, corte: e.target.checked }))} />Muros cortados</label>
       {!cliente && <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" checked={zon.on} onChange={e => (e.target.checked ? entrarZonas() : apagaZonas())} />Zonas</label>}
       {zon.on && !zonInfo && <span style={{ opacity: 0.7 }}>Leyendo las máquinas…</span>}
+      {zon.on && zonInfo && <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" checked={zonGrupos} onChange={e => setZonGrupos(e.target.checked)} />Rótulos de grupos</label>}
+      {zon.on && zonInfo && <button style={bTop} onClick={exportaZonas} title="Prepara una lámina con la marca (imagen, leyenda y títulos), la guarda en la galería y te deja publicarla en la historia del cliente">📤 Lámina para el cliente</button>}
       {zon.on && zonInfo && <button style={bTop} onClick={() => setZonEditar(v => !v)} title="Cambia el tipo o el grupo de una máquina si la IA se ha equivocado">✏ Corregir zonas</button>}
       {zon.on && zonInfo && zonInfo.map(z => <span key={z.tipo} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><i style={{ width: 10, height: 10, borderRadius: 3, background: z.color, display: 'inline-block' }} />{z.nombre} · {z.n}</span>)}
       <button style={bTop} onClick={salirAxo}>Salir</button>
