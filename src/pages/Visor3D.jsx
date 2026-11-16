@@ -3951,7 +3951,7 @@ export default function Visor3D({ cliente = false }) {
             if (/^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) { const ledM = new THREE.MeshBasicMaterial({ color: o.luzZ }); o.pts.forEach((p, i) => { const q = o.pts[(i + 1) % o.pts.length], Ls = Math.hypot(q[0] - p[0], q[1] - p[1]); if (Ls < 2) return; const b = new THREE.Mesh(new THREE.BoxGeometry(Ls * CM, 0.012, 0.01), ledM); b.position.set(((p[0] + q[0]) / 2) * CM, ((p[1] + q[1]) / 2) * CM, lado * (tCm / 2) * CM + lado * 0.004); b.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); holder.add(b); }); }
           } else if (prof < 0) { // nicho: el muro se abre con esa forma y la zona hace de fondo, dentro del grosor del muro
             const dd = Math.min(Math.abs(prof), tCm - 1);
-            mesh.position.z = lado * ((tCm / 2 - dd) * CM); holder.add(mesh);
+            mesh.position.z = lado * ((tCm / 2 - dd) * CM); if (mesh.material && mesh.material.color) { mesh.material = mesh.material.clone(); mesh.material.color.multiplyScalar(0.72); } holder.add(mesh); // el fondo del nicho se oscurece para que se lea el hueco
             if (/^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) { const ledM = new THREE.MeshBasicMaterial({ color: o.luzZ }); o.pts.forEach((p, i) => { const q = o.pts[(i + 1) % o.pts.length], Ls = Math.hypot(q[0] - p[0], q[1] - p[1]); if (Ls < 2) return; const b = new THREE.Mesh(new THREE.BoxGeometry(Ls * CM, 0.014, 0.014), ledM); b.position.set(((p[0] + q[0]) / 2) * CM, ((p[1] + q[1]) / 2) * CM, lado * ((tCm / 2 - dd) * CM + 0.008)); b.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); holder.add(b); }); }
           } else {
             mesh.position.z = lado * ((tCm / 2) * CM + 0.004); holder.add(mesh);
@@ -8341,7 +8341,7 @@ export default function Visor3D({ cliente = false }) {
           })()}
           {objSel.tipo === 'zona' && objSel.plano === 'pared' && (() => {
             const pr = Number(objSel.prof) || 0, modo = pr > 0 ? 'resalte' : pr < 0 ? 'nicho' : 'plana';
-            const poner = (m, p) => cambiar(objSel.id, { prof: m === 'plana' ? 0 : m === 'resalte' ? Math.max(1, p || 5) : -Math.max(1, p || 8) });
+            const poner = (m, p) => cambiar(objSel.id, { prof: m === 'plana' ? 0 : m === 'resalte' ? Math.max(1, p || 5) : -Math.max(1, p || 8), ...(m !== 'plana' && !objSel.luzZ ? { luzZ: '#ffd9a0' } : {}) });
             return (
               <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>Forma en la pared</div>
