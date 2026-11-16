@@ -1889,16 +1889,40 @@ function suelo(s, i) {
 }
 
 // Techo de una sala: una sola cara que mira hacia abajo, así desde arriba se ve el interior y desde dentro se ve el techo
+// Canal de luz perimetral: la franja entre la pared y el borde interior del techo sube «p» cm y lleva el LED. Medidas en cm; sale en metros y con y=0 en el techo
+function canalTecho(outer, inner, p, luz) {
+  const g = new THREE.Group(), P = p * CM, mt = new THREE.MeshStandardMaterial({ color: 0xf2efea, roughness: 0.95, side: THREE.DoubleSide });
+  const sh = new THREE.Shape(outer.map(q => new THREE.Vector2(q[0] * CM, q[1] * CM))); sh.holes.push(new THREE.Path(inner.map(q => new THREE.Vector2(q[0] * CM, q[1] * CM))));
+  const geo = new THREE.ShapeGeometry(sh); geo.rotateX(Math.PI / 2); const placa = new THREE.Mesh(geo, mt); placa.position.y = P; g.add(placa);
+  const pared = (pts) => {
+    const pos = []; for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length], x1 = a[0] * CM, z1 = a[1] * CM, x2 = b[0] * CM, z2 = b[1] * CM; pos.push(x1, 0, z1, x2, 0, z2, x2, P, z2, x1, 0, z1, x2, P, z2, x1, P, z1); }
+    const gw = new THREE.BufferGeometry(); gw.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gw.computeVertexNormals(); return new THREE.Mesh(gw, mt);
+  };
+  g.add(pared(outer)); g.add(pared(inner));
+  if (luz) {
+    const col = new THREE.Color(luz), led = new THREE.MeshBasicMaterial({ color: col }), pasoLed = inner.length > 10 ? Math.ceil(inner.length / 8) : 1, presup = { n: 16 };
+    for (let i = 0; i < inner.length; i++) {
+      const a = inner[i], b = inner[(i + 1) % inner.length], Ls = Math.hypot(b[0] - a[0], b[1] - a[1]); if (Ls < 2) continue;
+      const mx = ((a[0] + b[0]) / 2) * CM, mz = ((a[1] + b[1]) / 2) * CM, ang = -Math.atan2(b[1] - a[1], b[0] - a[0]);
+      const tira = new THREE.Mesh(new THREE.BoxGeometry(Ls * CM, 0.012, 0.012), led); tira.position.set(mx, P * 0.3, mz); tira.rotation.y = ang; g.add(tira);
+      if (i % pasoLed === 0) luzArea(g, new THREE.Vector3(mx, P * 0.3 + 0.01, mz), new THREE.Vector3(0, 1, 0), Ls * pasoLed * CM, 0.06, col, 5, presup, new THREE.Vector3((b[0] - a[0]) / Ls, 0, (b[1] - a[1]) / Ls));
+    }
+  }
+  return g;
+}
 function techo(s, i, alto) {
   const pts = (s.pts || []).map(p => new THREE.Vector2(p[0] * CM, p[1] * CM));
   if (pts.length < 3) return null;
-  const g = new THREE.ShapeGeometry(new THREE.Shape(pts));
+  // con canal perimetral, el techo del centro solo llega hasta el borde interior del canal
+  const can = s.techo && s.techo.canal && s.techo.canal.w > 0 && s.techo.canal.p > 0 ? s.techo.canal : null, ptsCm = (s.pts || []).map(p => [p[0], p[1]]), innerCm = can ? insetPoligono(ptsCm, can.w) : null;
+  const g = new THREE.ShapeGeometry(new THREE.Shape(innerCm && innerCm.length >= 3 ? innerCm.map(p => new THREE.Vector2(p[0] * CM, p[1] * CM)) : pts));
   g.rotateX(Math.PI / 2);
   const h = ((s.techo && s.techo.h) || alto || 260) * CM;
   const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: color(s.techo?.c, '#f6f4f1'), roughness: 0.95, side: THREE.FrontSide }));
   mesh.position.y = h;
   mesh.receiveShadow = true;
   mesh.userData = { capa: 'techos', techoKey: s.idT || ('s' + i), ptsSala: pts.map(p => [p.x / CM, p.y / CM]), hSala: h / CM };
+  if (can && innerCm && innerCm.length >= 3) { mesh.userData.ptsTecho = innerCm; mesh.add(canalTecho(ptsCm, innerCm, can.p, can.luz !== false ? '#ffd9a0' : null)); }
   return mesh;
 }
 
@@ -3311,7 +3335,7 @@ export default function Visor3D({ cliente = false }) {
       const clave = JSON.stringify(mios.map(o => [o.cx, o.cy, o.pts])) + ox + ',' + oy;
       if ((m.userData.hKey || '') === (mios.length ? clave : '')) return;
       m.userData.hKey = mios.length ? clave : '';
-      const sh = new THREE.Shape(P.map(p => new THREE.Vector2(p[0] * CM, p[1] * CM)));
+      const sh = new THREE.Shape((m.userData.ptsTecho || P).map(p => new THREE.Vector2(p[0] * CM, p[1] * CM)));
       mios.forEach(o => sh.holes.push(new THREE.Path(o.pts.map(p => new THREE.Vector2((p[0] + o.cx - ox) * CM, (p[1] + o.cy - oy) * CM)))));
       const g2 = new THREE.ShapeGeometry(sh); g2.rotateX(Math.PI / 2); m.geometry.dispose(); m.geometry = g2;
     });

@@ -3908,6 +3908,23 @@ function spLedSvg(C,px,sel,o){
   });
   return h;
 }
+/* canal de luz perimetral del techo de la sala: la franja entre el techo y la pared. En techos se marca el borde interior (línea discontinua); en iluminación, como tira luminosa con sus metros */
+function canalSvg(C,px,view,o){
+  var h='';
+  roomFaces('techos').forEach(function(f){
+    var z=zoneIn(f,'t');if(!z||!z.canal||!(z.canal.w>0)||!f.inner||f.inner.length<3)return;
+    var lazo=polyOffset(f.inner,-z.canal.w);if(!lazo||!lazo.every(function(q){return isFinite(q.x)&&isFinite(q.y)}))return;
+    var pts=lazo.map(function(p){return f2(p.x)+','+f2(p.y)}).join(' ');
+    if(view==='ilum'){
+      if(z.canal.luz===false)return;
+      var per=0,i;for(i=0;i<lazo.length;i++){var a=lazo[i],b=lazo[(i+1)%lazo.length];per+=Math.hypot(b.x-a.x,b.y-a.y)}
+      var c=polyCentro(lazo);
+      h+='<polygon points="'+pts+'" style="fill:none;stroke:'+C.warn+';stroke-width:'+f2(2*px)+';stroke-dasharray:'+f2(5*px)+' '+f2(3*px)+';stroke-linejoin:round"/>';
+      if(!o.nonum)h+=txt(C,px,c.x,c.y+4*px,'LED canal · '+m2(per/100)+' ml',C.warn,11,700);
+    }else h+='<polygon points="'+pts+'" style="fill:none;stroke:'+C.accent+';stroke-width:'+f2(1.4*px)+';stroke-dasharray:'+f2(6*px)+' '+f2(4*px)+';stroke-linejoin:round"/>';
+  });
+  return h;
+}
 function scene(C,k,view,o){
   var prev=ADJ,zprev=ZOOMF,zsprev=ZSYM;ADJ={view:view,adj:!!o.adj&&!o.flat,hits:[],sel:o.adjSel||null,px:1/k};
   ZOOMF=1; /* los textos y etiquetas no cambian de tamaño con el zoom */
@@ -3983,6 +4000,7 @@ function scene0(C,k,view,o){
   }
   if(view==='interv'){var mmi=mmSvg(C,px,sel,o,function(m){return mmOf(m)==='obra'},C.nw);h+=mmi.h;zlab+=mmi.z}
   if(view==='ilum'){var mml=mmSvg(C,px,sel,o,function(m){return !!m.luz});h+=mml.h;zlab+=mml.z;h+=spLedSvg(C,px,sel,o)}
+  if(view==='ilum'||view==='techos')h+=canalSvg(C,px,view,o);
   if(view==='acab'){var mma=mmSvg(C,px,sel,o,function(m){return m.k==='pan'||!!m.mat});h+=mma.h;zlab+=mma.z}
   if(rcVis(view)){
     (v.rc||[]).forEach(function(rc){
@@ -7113,6 +7131,11 @@ function panelSel(focus){
     h+='<label class="fld"><span>Nombre de la sala</span><input data-t="zn_nm" value="'+esc(z.nm||'')+'" placeholder="Sala de entreno" autocomplete="off"></label>';
     h+='<label class="fld"><span>Material</span><select data-t="zn_mat">'+matOpts(zv,z.mat)+'</select></label>'+codColorHtml(z,zv)+sisSelHtml(zv,z.sis,'zn_sis');
     if(z.k==='t'){h+=fld('zn_h','Altura libre bajo el techo (cm)',z.h,String(fmt(num(st.v.altura)||260)));if(z.h>0)h+='<div class="btns"><button data-a="znmuros" title="Pone los muros que rodean SOLO a esta sala a esa altura (los compartidos con otra sala no se tocan)">Muros de esta sala a ese alto</button></div>'}
+    if(z.k==='t'){
+      var cn=z.canal||null;
+      h+='<label class="fld chk"><input type="checkbox" data-t="zn_canal"'+(cn?' checked':'')+'><span><b>Canal de luz perimetral</b> (foseado): la franja entre el techo y la pared sube y lleva el LED dentro; el techo del centro se queda como está</span></label>';
+      if(cn)h+=fld('zn_canw','Ancho del canal (cm)',cn.w)+fld('zn_canp','Cuánto sube el canal (cm)',cn.p)+'<label class="fld chk"><input type="checkbox" data-t="zn_canluz"'+(cn.luz!==false?' checked':'')+'><span>Luz LED dentro del canal</span></label>';
+    }
     if(z.k==='t')h+=techoPanel(z,zf);
     if(zf)h+='<div class="rowh" style="gap:6px;align-items:center;flex-wrap:wrap"><button data-a="znoffset" title="Crea una parte paralela al contorno de la sala, a esa distancia (como Offset en AutoCAD): para foseados, candilejas y bordes">⇲ Offset del contorno</button><input id="sp-off" type="text" inputmode="decimal" autocomplete="off" value="'+esc(String(st.spOff!=null?st.spOff:-10))+'" style="width:70px"><span class="muted">cm · negativo = hacia dentro, positivo = hacia fuera</span></div>';
     if(zf&&z.k==='s')h+='<p class="note">Rodapié: '+m2(Math.max(0,zf.per-zf.doorW)/100)+' ml (perímetro menos puertas). Los m² son útiles, descontando el grosor de los muros.</p>';
@@ -7448,7 +7471,7 @@ function applyField(key,val,adv,raw){
     snap();if(key==='eqa_x')qa.x=n;else if(key==='eqa_w')qa.w=Math.max(5,n);else qa.h=Math.max(5,n);commit(false);
   }else if(s.t==='zn'||(s.t==='sp'&&/^zn_/.test(key))){
     var zq=znDe(s.id);if(!zq)return;
-    var RZ={zn_ha:[100,2000,'altura'],zn_hc:[100,2000,'altura'],zn_vgs:[20,500,'separación'],zn_vgw:[2,60,'ancho'],zn_vgh:[4,100,'canto'],zn_crs:[30,500,'separación']};
+    var RZ={zn_canw:[2,100,'ancho del canal'],zn_canp:[2,200,'altura del canal'],zn_ha:[100,2000,'altura'],zn_hc:[100,2000,'altura'],zn_vgs:[20,500,'separación'],zn_vgw:[2,60,'ancho'],zn_vgh:[4,100,'canto'],zn_crs:[30,500,'separación']};
     if(key==='zn_elpos'&&st.sel&&st.sel.el&&st.sel.el.k!=='tl'){
       var fE=techoFaceDe(zq),TE=fE&&techoLin(zq,fE.inner,st.sel.el.k),cE=st.sel.el.k==='vg'?zq.vg:zq.cr;
       if(!TE||!cE)return;
@@ -7470,6 +7493,7 @@ function applyField(key,val,adv,raw){
       var rg=RZ[key];if(!(n>=rg[0]&&n<=rg[1])){toast('Escribe un valor de '+rg[2]+' entre '+rg[0]+' y '+rg[1]+' cm');return}
       snap();
       if(key==='zn_ha')zq.ha=n;else if(key==='zn_hc')zq.hc=n;
+      else if(key==='zn_canw'||key==='zn_canp'){zq.canal=zq.canal||{w:10,p:20,luz:true};if(key==='zn_canw')zq.canal.w=n;else zq.canal.p=n}
       else if(key==='zn_crs'){zq.cr=zq.cr||{};if(zq.cr.s!==n){delete zq.cr.mv;delete zq.cr.del}zq.cr.s=n}
       else{zq.vg=zq.vg||{};if(key==='zn_vgs'&&zq.vg.s!==n){delete zq.vg.mv;delete zq.vg.del}zq.vg[key==='zn_vgs'?'s':key==='zn_vgw'?'w':'h']=n}
       commit(false);panelSel();return;
@@ -7951,6 +7975,8 @@ $('side').addEventListener('change',function(e){
     snap();
     if(t==='zn_fo'){var vfo=e.target.value;techoReset(z);if(vfo==='plano'){delete z.fo}else{z.fo=vfo;var Hh=num(st.v.altura)||260;if(z.ha==null)z.ha=Hh;if(z.hc==null)z.hc=Hh+150;if(!z.ej)z.ej='h'}}
     else if(t==='zn_inv'){if(e.target.checked)z.inv=true;else delete z.inv}
+    else if(t==='zn_canal'){if(e.target.checked)z.canal=z.canal||{w:10,p:20,luz:true};else delete z.canal}
+    else if(t==='zn_canluz'){if(z.canal)z.canal.luz=!!e.target.checked}
     else if(t==='zn_vg'){if(e.target.checked)z.vg=z.vg||{s:60,w:10,h:20,d:'h'};else delete z.vg}
     else if(t==='zn_cr'){if(e.target.checked)z.cr=z.cr||{s:100};else delete z.cr}
     else if(t==='zn_nm')z.nm=e.target.value.trim();else if(t==='zn_mat'){var vzn=z.k==='s'?'suelos':'techos',czn=matOf(vzn,z.mat);z.mat=czn.cod?colorDe(vzn,e.target.value,czn.cod,codigoHex(czn.cod)||czn.c):e.target.value}
@@ -10751,7 +10777,7 @@ function buildModelo3d1(){
   roomFaces('distrib').forEach(function(f){
     var zs=zoneIn(f,'s'),zt=zoneIn(f,'t'),ms=zs?matOf('suelos',zs.mat):null,mt=zt?matOf('techos',zt.mat):null;
     out.salas.push({idS:zs?zs.id:null,idT:zt?zt.id:null,nombre:(zs&&zs.nm)||(zt&&zt.nm)||'',pts:f.inner.map(function(p){return [f2(p.x),f2(p.y)]}),
-      suelo:ms?{n:ms.n,c:ms.c}:null,techo:mt?{n:mt.n,c:mt.c,h:(zt&&num(zt.h)>0)?num(zt.h):null}:null});
+      suelo:ms?{n:ms.n,c:ms.c}:null,techo:(mt||(zt&&zt.canal))?{n:mt?mt.n:'',c:mt?mt.c:'#f6f4f1',h:(zt&&num(zt.h)>0)?num(zt.h):null,canal:(zt&&zt.canal&&zt.canal.w>0&&zt.canal.p>0)?{w:num(zt.canal.w),p:num(zt.canal.p),luz:zt.canal.luz!==false}:null}:null});
   });
   out.techos=[];
   techoZonas().forEach(function(it){
