@@ -23,6 +23,11 @@ const comprimir = (file, maxLado = 1800) => new Promise((ok, ko) => {
   };
   fr.readAsDataURL(file);
 });
+const reducir = (dataUrl, maxLado = 1600) => new Promise(ok => {
+  const img = new Image(); img.onerror = () => ok(dataUrl);
+  img.onload = () => { const k = Math.min(1, maxLado / Math.max(img.width, img.height)); if (k >= 1) return ok(dataUrl); const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); ok(c.toDataURL('image/jpeg', 0.88)); };
+  img.src = dataUrl;
+});
 const aDataUrl = async (url) => {
   const b = await (await fetch(url)).blob();
   return new Promise((ok, ko) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = ko; fr.readAsDataURL(b); });
@@ -148,7 +153,7 @@ export default function ChatImagenes({ compacto = false, capturarVista = null, o
       if (nuevas.length) setAdj(a => [...a, ...nuevas].slice(0, 4));
     } catch (e) { setError(e.message); }
   };
-  const usaVista = async () => { try { const u = await capturarVista(); if (u) setAdj(a => [...a, { id: uid(), url: u, et: 'vista' }].slice(0, 4)); else setError('No se pudo coger la vista del 3D'); } catch { setError('No se pudo coger la vista del 3D'); } };
+  const usaVista = async () => { try { const u0 = await capturarVista(), u = u0 ? await reducir(u0) : null; if (u) setAdj(a => [...a, { id: uid(), url: u, et: 'vista' }].slice(0, 4)); else setError('No se pudo coger la vista del 3D'); } catch { setError('No se pudo coger la vista del 3D'); } };
   const alPegar = (e) => { const fs = Array.from(e.clipboardData?.files || []).filter(f => /^image\//.test(f.type)); if (fs.length) { e.preventDefault(); adjunta(fs); } };
   const alSoltar = (e) => { e.preventDefault(); setArrastra(false); adjunta(e.dataTransfer?.files); };
 
@@ -184,7 +189,11 @@ export default function ChatImagenes({ compacto = false, capturarVista = null, o
       const prev = nuevosIa[0].id || previo, todos = [...nuevos, ...ia];
       setMensajes(todos); setPrevio(prev); setTrabajando(false);
       await guarda(todos, prev, chatId, titulo);
-    } catch (e) { setError(e.response?.data?.error || 'No se pudo contestar. Prueba otra vez.'); setTrabajando(false); }
+    } catch (e) {
+      console.error('chat imágenes:', e);
+      const det = e.response ? 'el servidor respondió ' + e.response.status + (e.response.status === 504 || e.response.status === 502 ? ' (tardó demasiado: prueba con una imagen más pequeña o en dos pasos)' : '') : e.code === 'ECONNABORTED' ? 'tardó más de 5 minutos' : e.message === 'Network Error' ? 'se cortó la conexión con el servidor (suele ser por tiempo: prueba otra vez o en dos pasos)' : String(e.message || 'error desconocido').slice(0, 120);
+      setError(e.response?.data?.error || 'No se pudo contestar: ' + det + '.'); setTrabajando(false);
+    }
   };
 
   const aGaleria = async (url) => {
