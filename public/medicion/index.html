@@ -3893,6 +3893,21 @@ function mmSvg(C,px,sel,o,filtro,colBase){
   });
   return {h:h,z:z};
 }
+/* partes de techo con luz LED (candileja, foseado, hueco que sube): en la vista de iluminación salen como una tira luminosa alrededor de su forma, con sus metros */
+function spLedSvg(C,px,sel,o){
+  var h='';
+  (st.v.sp||[]).forEach(function(r){
+    if(r.k!=='t'||!r.luz||!(r.h>0)||r.s==='dem')return;
+    var pp=spPts(r);if(!pp||pp.length<3)return;
+    var H0=num(st.v.altura)||260,lazo=pp,per=0,i;
+    if(r.fos>0&&r.h<H0){var po=polyOffset(pp,-r.fos);if(po&&po.every(function(q){return isFinite(q.x)&&isFinite(q.y)}))lazo=po}
+    for(i=0;i<lazo.length;i++){var a=lazo[i],b=lazo[(i+1)%lazo.length];per+=Math.hypot(b.x-a.x,b.y-a.y)}
+    var sl=sel&&sel.t==='sp'&&sel.id===r.id,pts=lazo.map(function(p){return f2(p.x)+','+f2(p.y)}).join(' '),c=polyCentro(lazo);
+    h+='<polygon points="'+pts+'" style="fill:'+C.warn+';fill-opacity:.08;stroke:'+C.warn+';stroke-width:'+f2((sl?3:2)*px)+';stroke-dasharray:'+f2(5*px)+' '+f2(3*px)+';stroke-linejoin:round"/>';
+    if(!o.nonum)h+=txt(C,px,c.x,c.y+4*px,'LED '+(r.nm?r.nm+' · ':'')+m2(per/100)+' ml',C.warn,11,700);
+  });
+  return h;
+}
 function scene(C,k,view,o){
   var prev=ADJ,zprev=ZOOMF,zsprev=ZSYM;ADJ={view:view,adj:!!o.adj&&!o.flat,hits:[],sel:o.adjSel||null,px:1/k};
   ZOOMF=1; /* los textos y etiquetas no cambian de tamaño con el zoom */
@@ -3967,7 +3982,7 @@ function scene0(C,k,view,o){
     });
   }
   if(view==='interv'){var mmi=mmSvg(C,px,sel,o,function(m){return mmOf(m)==='obra'},C.nw);h+=mmi.h;zlab+=mmi.z}
-  if(view==='ilum'){var mml=mmSvg(C,px,sel,o,function(m){return !!m.luz});h+=mml.h;zlab+=mml.z}
+  if(view==='ilum'){var mml=mmSvg(C,px,sel,o,function(m){return !!m.luz});h+=mml.h;zlab+=mml.z;h+=spLedSvg(C,px,sel,o)}
   if(view==='acab'){var mma=mmSvg(C,px,sel,o,function(m){return m.k==='pan'||!!m.mat});h+=mma.h;zlab+=mma.z}
   if(rcVis(view)){
     (v.rc||[]).forEach(function(rc){
