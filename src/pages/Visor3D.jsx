@@ -1068,6 +1068,23 @@ function luzArea(g, pos, dir, w, h, col, inten, presup, u) {
   if (Math.abs(dir.y) > 0.5) rl.up.copy(u ? new THREE.Vector3().crossVectors(dir.clone().negate(), u) : new THREE.Vector3(0, 0, 1)); else rl.up.set(0, 1, 0);
   rl.lookAt(pos.clone().add(dir)); g.add(rl);
 }
+// Borde luminoso de una forma en la pared (cm, plano de la pared): cinta visible + luces de área reales. hacia fuera=true: halo que baña la pared alrededor (resalte/plana); false: baña el interior del nicho
+function ledPerimetro(holder, pts, hex, zLed, lado, haciaFuera) {
+  const col = new THREE.Color(hex), mat = new THREE.MeshBasicMaterial({ color: col }), n = pts.length, c = pts.reduce((q, p) => [q[0] + p[0] / n, q[1] + p[1] / n], [0, 0]), paso = Math.max(1, Math.ceil(n / 12));
+  let luces = 0;
+  for (let i = 0; i < n; i++) {
+    const p = pts[i], q = pts[(i + 1) % n], Ls = Math.hypot(q[0] - p[0], q[1] - p[1]); if (Ls < 1) continue;
+    const mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2, ex = (q[0] - p[0]) / Ls, ey = (q[1] - p[1]) / Ls;
+    let ix = c[0] - mx, iy = c[1] - my; const il = Math.hypot(ix, iy) || 1; ix /= il; iy /= il;
+    const sg = haciaFuera ? -1 : 1, px = mx + sg * ix * 0.4, py = my + sg * iy * 0.4;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(Ls * CM * 1.02, 0.022, 0.02), mat); b.position.set(px * CM, py * CM, zLed); b.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); holder.add(b);
+    if (i % paso === 0 && luces < 12) {
+      luces++;
+      const dir = new THREE.Vector3(sg * ix * 0.55, sg * iy * 0.55, lado * 0.85).normalize(), rl = new THREE.RectAreaLight(col, 6, Math.max(0.05, Ls * paso * CM), 0.05);
+      rl.position.set(px * CM, py * CM, zLed); rl.up.copy(new THREE.Vector3().crossVectors(dir.clone().negate(), new THREE.Vector3(ex, ey, 0))); rl.lookAt(rl.position.clone().add(dir)); holder.add(rl);
+    }
+  }
+}
 function luzLedObjeto(g, o, presup, amb) {
   if (!esLed(o.color) || o.tipo !== 'caja') return;
   const w = o.w * CM, d = o.d * CM, h = o.alto * CM, y0 = (o.z0 || 0) * CM, col = new THREE.Color(o.color.slice(0, 7));
@@ -3948,14 +3965,14 @@ export default function Visor3D({ cliente = false }) {
           if (prof > 0) { // resalte: un volumen con la forma de la zona que sale del muro hacia la sala
             const prisma = new THREE.Mesh(new THREE.ExtrudeGeometry(new THREE.Shape(o.pts.map(p => new THREE.Vector2(p[0] * CM, p[1] * CM))), { depth: Math.max(0.5, prof) * CM, bevelEnabled: false }), mt);
             prisma.position.z = lado * (tCm / 2) * CM; prisma.scale.z = lado; prisma.castShadow = prisma.receiveShadow = true; holder.add(prisma);
-            if (/^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) { const ledM = new THREE.MeshBasicMaterial({ color: o.luzZ }); o.pts.forEach((p, i) => { const q = o.pts[(i + 1) % o.pts.length], Ls = Math.hypot(q[0] - p[0], q[1] - p[1]); if (Ls < 2) return; const b = new THREE.Mesh(new THREE.BoxGeometry(Ls * CM, 0.012, 0.01), ledM); b.position.set(((p[0] + q[0]) / 2) * CM, ((p[1] + q[1]) / 2) * CM, lado * (tCm / 2) * CM + lado * 0.004); b.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); holder.add(b); }); }
+            if (/^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) ledPerimetro(holder, o.pts, o.luzZ, lado * ((tCm / 2) * CM + 0.006), lado, true);
           } else if (prof < 0) { // nicho: el muro se abre con esa forma y la zona hace de fondo, dentro del grosor del muro
             const dd = Math.min(Math.abs(prof), tCm - 1);
             mesh.position.z = lado * ((tCm / 2 - dd) * CM); if (mesh.material && mesh.material.color) { mesh.material = mesh.material.clone(); mesh.material.color.multiplyScalar(0.72); } holder.add(mesh); // el fondo del nicho se oscurece para que se lea el hueco
-            if (/^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) { const ledM = new THREE.MeshBasicMaterial({ color: o.luzZ }); o.pts.forEach((p, i) => { const q = o.pts[(i + 1) % o.pts.length], Ls = Math.hypot(q[0] - p[0], q[1] - p[1]); if (Ls < 2) return; const b = new THREE.Mesh(new THREE.BoxGeometry(Ls * CM, 0.014, 0.014), ledM); b.position.set(((p[0] + q[0]) / 2) * CM, ((p[1] + q[1]) / 2) * CM, lado * ((tCm / 2 - dd) * CM + 0.008)); b.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); holder.add(b); }); }
+            if (/^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) ledPerimetro(holder, o.pts, o.luzZ, lado * ((tCm / 2 - dd) * CM + 0.012), lado, false);
           } else {
             mesh.position.z = lado * ((tCm / 2) * CM + 0.004); holder.add(mesh);
-            if (/^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) { const ledM = new THREE.MeshBasicMaterial({ color: o.luzZ }); o.pts.forEach((p, i) => { const q = o.pts[(i + 1) % o.pts.length], Ls = Math.hypot(q[0] - p[0], q[1] - p[1]); if (Ls < 2) return; const b = new THREE.Mesh(new THREE.BoxGeometry(Ls * CM, 0.012, 0.01), ledM); b.position.set(((p[0] + q[0]) / 2) * CM, ((p[1] + q[1]) / 2) * CM, lado * ((tCm / 2) * CM + 0.009)); b.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); holder.add(b); }); }
+            if (/^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) ledPerimetro(holder, o.pts, o.luzZ, lado * ((tCm / 2) * CM + 0.01), lado, true);
           }
           gz.add(holder);
           gz.userData.sinArrastre = true;
