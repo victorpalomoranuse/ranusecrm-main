@@ -9,7 +9,6 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import opentype from 'opentype.js';
-import EstudioIdeas from '../components/EstudioIdeas';
 import { PRESETS_REVEST, PERFILES_MOLDURA, construirRevest, colocaEnMuro, normalizaRevest, preset as presetRevest, cajaRevest, espesorRevest } from '../components/revestimientos';
 import { construirDeco, KINDS_DECO, MEDIDAS_DECO, KINDS_PERSONAS, KINDS_MOBILIARIO } from '../components/deco3d';
 import { construirRack, rackPorDefecto, normalizaRack, calculosRack, textoRack, dimRack, TIPOS_RACK, TIPOS_BAHIA, ACCESORIOS, PERFILES_RACK, COLORES_RACK, bahiaPorDefecto } from '../components/rack3d';
@@ -4652,7 +4651,6 @@ export default function Visor3D({ cliente = false }) {
     } catch (e) { setGuardado(''); setAviso(e.response?.data?.error || e.message || 'No se pudo subir la imagen'); }
   };
   const [textoDlg, setTextoDlg] = useState(null);
-  const [ideasAbierto, setIdeasAbierto] = useState(false);
   const crearTexto = async () => {
     const dlg = textoDlg; if (!dlg || !dlg.texto.trim()) return;
     try {
@@ -5594,13 +5592,6 @@ export default function Visor3D({ cliente = false }) {
   const ocultarAyudas = () => { const a = api3d.current, gs = [a.gizmoG, a.cotasG, a.nodoG, a.guiaG], v = gs.map(x => x && x.visible); gs.forEach(x => { if (x) x.visible = false; }); return () => gs.forEach((x, i) => { if (x) x.visible = v[i]; }); };
   const soltarSeleccion = async () => { setSelObj(null); setSelAcab(null); setSelHueco(null); setLuzSel(null); setSeleccion(null); api3d.current.limpiarSel?.(); await esperar(150); };
   // Foto de lo que se ve ahora (para el Estudio de ideas): se dibuja un fotograma tal cual está la vista, sin cambiar tamaño, sombras ni la selección
-  const capturaVista = () => new Promise(ok => {
-    const a = api3d.current, restaura = ocultarAyudas();
-    const fin = u => { restaura(); ok(u); };
-    const t = setTimeout(() => { if (a.pedirFoto) { a.pedirFoto = null; fin(null); } }, 2500);
-    a.pedirFoto = u => { clearTimeout(t); fin(u); };
-    a.despierta = performance.now() + 400; // despierta el dibujo: el siguiente fotograma se guarda tal cual se ve
-  });
   const renderHDurl = async (opc = {}) => {
     await soltarSeleccion();
     const { renderer, scene, cam, sol } = api3d.current, el = caja.current, w0 = el.clientWidth, h0 = el.clientHeight, pr0 = renderer.getPixelRatio();
@@ -6525,7 +6516,6 @@ export default function Visor3D({ cliente = false }) {
         ], false, 'Objetos')}
         {!modoRender && grupoRail([
           railBtn(revAbierto || herr === 'revest', 'revest', 'Revestimientos', 'Palillería, lamas acústicas, panelados, paneles 3D y molduras: eliges un modelo y pulsas el muro', () => { setRevAbierto(v => !v); if (revAbierto && herr === 'revest') setHerr('sel'); }),
-          railBtn(ideasAbierto, 'ideas', 'Ideas', 'Chat con ChatGPT: comparte una imagen o la vista actual, pide una idea (un mural, un ambiente…) y descarga solo la imagen', () => setIdeasAbierto(v => !v)),
           railBtn(false, 'imagen', 'Imagen', 'Sube una imagen (PNG con transparencia, o con fondo liso que se quita) y se coloca en el 3D como en SketchUp; después la escalas', () => imagenInput.current?.click()),
           railBtn(false, 'texto', 'Texto 3D', 'Escribe una palabra y elige la fuente: se convierte en letras 3D', () => setTextoDlg({ texto: '', fuente: 'Montserrat-Regular', disp: 'horizontal' })),
           railBtn(false, 'logo', 'Logo', 'Sube un logo en SVG (o DXF con contornos cerrados) y se convierte en 3D', () => logoInput.current?.click()),
@@ -6679,11 +6669,6 @@ export default function Visor3D({ cliente = false }) {
           </div>
         );
       })()}
-      {ideasAbierto && (
-        <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 460, maxWidth: 'calc(100% - 24px)', zIndex: 9 }}>
-          <EstudioIdeas oscuro capturarVista={capturaVista} obtenerContexto={contextoModelo} onCerrar={() => setIdeasAbierto(false)} />
-        </div>
-      )}
       {textoDlg && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setTextoDlg(null)}>
           <div style={{ width: 380, background: 'rgb(22,20,18)', color: '#fff', borderRadius: 10, padding: 16, fontSize: 13 }} onClick={e => e.stopPropagation()}>
