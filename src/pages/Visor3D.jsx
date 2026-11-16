@@ -2009,9 +2009,9 @@ export default function Visor3D({ cliente = false }) {
       if (fin) return; const { pend, total } = cargaModelos, listo = estado === 'listo';
       const pct = !listo ? 8 : total ? Math.round(15 + 85 * ((total - pend) / total)) : 100;
       setCargaIni(c => (c.on ? { on: true, pct } : c));
-      if (t) { clearTimeout(t); t = null; }
-      if (listo && pend === 0) t = setTimeout(() => { if (!fin && cargaModelos.pend === 0) { fin = true; setCargaIni({ on: false, pct: 100 }); } }, 900);
-      else if (Date.now() - t0 > 90000) { fin = true; setCargaIni({ on: false, pct: 100 }); }
+      if (!(listo && pend === 0) && t) { clearTimeout(t); t = null; }
+      if (listo && pend === 0 && !t) t = setTimeout(() => { if (!fin && cargaModelos.pend === 0) { fin = true; setCargaIni({ on: false, pct: 100 }); } }, 900);
+      else if (Date.now() - t0 > 25000) { fin = true; setCargaIni({ on: false, pct: 100 }); }
     };
     mira(); const iv = setInterval(mira, 400); window.addEventListener('visor3d-carga', mira);
     return () => { fin = true; clearInterval(iv); if (t) clearTimeout(t); window.removeEventListener('visor3d-carga', mira); };
