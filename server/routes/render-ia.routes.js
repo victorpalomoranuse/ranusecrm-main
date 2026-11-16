@@ -1,6 +1,7 @@
 import express from 'express';
 import sharp from 'sharp';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
+import { callClaude } from '../utils/anthropic.js';
 
 // Render fotorrealista con IA de imágenes (Gemini, «Nano Banana»): recibe la imagen del visor 3D
 // (render limpio con materiales y luz) más la paleta de colores y devuelve la imagen mejorada.
@@ -58,13 +59,37 @@ router.get('/estado', async (req, res) => {
   }
 });
 
+// Mejora el texto del diseñador: lo convierte en una instrucción precisa (dónde, qué y con qué escala) para que la IA del render no invente ni cambie nada más
+router.post('/mejorar', async (req, res) => {
+  try {
+    const texto = String(req.body?.texto || '').trim().slice(0, 900); if (!texto) return res.status(400).json({ error: 'Escribe primero qué quieres añadir' });
+    const estancia = String(req.body?.estancia || '').slice(0, 80), inv = (Array.isArray(req.body?.inventario) ? req.body.inventario : []).slice(0, 30).map(v => String(v).slice(0, 80));
+    const im = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(String(req.body?.imagen || ''));
+    const img64 = im ? (await sharp(Buffer.from(im[2], 'base64')).resize({ width: 1200, withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer()).toString('base64') : null;
+    const sistema = 'Eres director de arte de interiorismo deportivo (gimnasios, estudios y espacios de lujo). Reescribes la petición de un diseñador para una IA que edita un render 3D. Devuelve SOLO la instrucción final en español, en 2 a 4 frases, sin comillas ni títulos. Debe decir: (1) DÓNDE exacto: si dice «este mueble» o «esa pared», identifícalo en la imagen y descríbelo (posición izquierda/centro/derecha, material, tamaño aproximado); (2) QUÉ se añade: objetos concretos y creíbles con cantidad, tamaño real en cm y materiales y colores coherentes con el espacio (decoración sobria y realista, nada recargado); (3) que todo lo demás queda IDÉNTICO. Desarrolla con buen gusto lo que pidió el diseñador; no añadas nada que no haya pedido.';
+    const pedido = 'Petición del diseñador: ' + texto + (estancia ? '\nEstancia: ' + estancia : '') + (inv.length ? '\nElementos que existen en el modelo: ' + inv.join('; ') : '');
+    let salida = '';
+    try {
+      const rc = await callClaude({ system: sistema, maxTokens: 600, messages: [{ role: 'user', content: [...(img64 ? [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: img64 } }] : []), { type: 'text', text: pedido }] }] });
+      salida = (rc.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    } catch (e1) {
+      if (!process.env.OPENAI_API_KEY) throw e1;
+      const rr = await fetch('https://api.openai.com/v1/responses', { method: 'POST', headers: { Authorization: 'Bearer ' + process.env.OPENAI_API_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: process.env.OPENAI_CHAT_MODEL || 'gpt-5', instructions: sistema, input: [{ role: 'user', content: [{ type: 'input_text', text: pedido }, ...(img64 ? [{ type: 'input_image', image_url: 'data:image/jpeg;base64,' + img64 }] : [])] }] }) });
+      const jj = await rr.json().catch(() => ({})); if (!rr.ok) throw new Error(jj?.error?.message || 'No se pudo mejorar el texto');
+      salida = (jj.output || []).filter(o => o.type === 'message').flatMap(o => o.content || []).filter(c => c.type === 'output_text').map(c => c.text).join('\n').trim();
+    }
+    if (!salida) return res.status(502).json({ error: 'La IA no ha devuelto ningún texto' });
+    res.json({ texto: salida.replace(/^["«]|["»]$/g, '').slice(0, 900) });
+  } catch (e) { console.error('render-ia mejorar:', e); res.status(500).json({ error: 'No se pudo mejorar el texto: ' + String(e.message || '').slice(0, 140) }); }
+});
+
 router.post('/', async (req, res) => {
   const { proveedor } = req.body || {};
   const prov = proveedor === 'gemini' ? 'gemini' : proveedor === 'openai' ? 'openai' : (process.env.OPENAI_API_KEY ? 'openai' : 'gemini');
   const clave = prov === 'openai' ? process.env.OPENAI_API_KEY : process.env.GEMINI_API_KEY;
   if (!clave) return res.status(503).json({ error: 'Falta configurar ' + (prov === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY') + ' en el servidor' });
   try {
-    const { imagen, estancia, estilo, paleta, extra, libertad, materiales, inventario, modo, ajustes, iluminacion, aspecto } = req.body || {};
+    const { imagen, estancia, estilo, paleta, extra, libertad, materiales, inventario, modo, ajustes, iluminacion, aspecto, anadir } = req.body || {};
     const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(String(imagen || ''));
     if (!m) return res.status(400).json({ error: 'Falta la imagen del visor (png, jpg o webp)' });
     const colores = Array.isArray(paleta) ? paleta.filter(p => p && p.nombre).slice(0, 12).map(p => `${String(p.nombre).slice(0, 40)}${p.hex ? ' (' + String(p.hex).slice(0, 9) + ')' : ''}`) : [];
@@ -102,6 +127,7 @@ router.post('/', async (req, res) => {
       txtDominantes,
       txtLuz,
       NIVELES[nivel],
+      anadir && String(anadir).trim() ? 'AÑADIDOS PEDIDOS POR EL USUARIO (es la única excepción a la regla de no añadir objetos): añade SOLO lo que se describe aquí, con realismo, escala correcta y bien integrado en la luz y las sombras de la escena. Todo lo demás se queda idéntico a la imagen: ' + String(anadir).trim().slice(0, 800) : '',
       colores.length ? 'Respeta con la máxima fidelidad estos colores y acabados: ' + colores.join('; ') + '.' : 'Mantén los colores de los materiales tal y como aparecen en la imagen.',
       txtMateriales,
       txtInventario,

@@ -5191,7 +5191,15 @@ export default function Visor3D({ cliente = false }) {
   // Render fotorrealista con IA: se manda la vista actual y vuelve mejorada
   const [ia, setIa] = useState(null); // { estado: 'trabajando' | 'listo' | 'error', imagen, mensaje, estancia, estilo, extra }
   const [iaForm, setIaForm] = useState(false);
-  const [iaTxt, setIaTxt] = useState({ estancia: '', estilo: '', extra: '', libertad: 'fiel', proveedor: 'openai', aspecto: 'realista' });
+  const [iaTxt, setIaTxt] = useState({ estancia: '', estilo: '', extra: '', anadir: '', libertad: 'fiel', proveedor: 'openai', aspecto: 'realista' });
+  const [mejorando, setMejorando] = useState(false);
+  // la IA convierte lo que escribes («añade decoración en este mueble») en una instrucción precisa que ve el modelo; se puede editar antes de renderizar
+  const mejoraTexto = async () => {
+    if (!iaTxt.anadir?.trim() || mejorando) return; setMejorando(true);
+    try { const imagen = await capturaVista(); const r = await api.post('/render-ia/mejorar', { texto: iaTxt.anadir, estancia: iaTxt.estancia, imagen }, { timeout: 90000 }); setIaTxt(t => ({ ...t, anadir: r.data.texto })); }
+    catch (e) { setAviso(e.response?.data?.error || 'No se pudo mejorar el texto. Prueba otra vez.'); }
+    setMejorando(false);
+  };
   const metaActual = (txt = iaTxt) => {
     const { cam, ctrl } = api3d.current;
     return { camara: { px: cam.position.x, py: cam.position.y, pz: cam.position.z, tx: ctrl.target.x, ty: ctrl.target.y, tz: ctrl.target.z, fov: cam.fov }, shift: api3d.current.shiftY || 0, hora, exposicion: ambiente.exposicion, luces: ambiente.luces, estancia: txt.estancia, estilo: txt.estilo, extra: txt.extra, libertad: txt.libertad };
@@ -6581,6 +6589,12 @@ export default function Visor3D({ cliente = false }) {
             {[['estancia', 'Estancia (ej. salón, gimnasio privado)'], ['estilo', 'Estilo (ej. moderno, cálido, minimalista)'], ['extra', 'Algo más (ej. luz de tarde, suelo de roble claro)']].map(([k, ph]) => (
               <input key={k} value={iaTxt[k]} onChange={e => setIaTxt(t => ({ ...t, [k]: e.target.value }))} placeholder={ph} style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 6 }} />
             ))}
+            <div style={{ margin: '8px 0 6px', padding: '8px 10px', background: 'rgba(201,164,108,0.1)', border: '1px solid rgba(201,164,108,0.35)', borderRadius: 8 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>✨ Añadir o decorar <span style={{ opacity: 0.55, fontWeight: 400 }}>(opcional)</span></div>
+              <textarea value={iaTxt.anadir || ''} onChange={e => setIaTxt(t => ({ ...t, anadir: e.target.value }))} rows={3} placeholder="Ej.: añade decoración en el mueble de madera de la derecha: libros, una planta y una vela" style={{ ...btn, width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', marginBottom: 6 }} />
+              <button style={{ ...btn, background: '#8a6d4d' }} disabled={mejorando || !(iaTxt.anadir || '').trim()} onClick={mejoraTexto} title="La IA mira la vista, entiende «este mueble» y lo convierte en una instrucción precisa que puedes editar">{mejorando ? 'Mejorando…' : '✨ Mejorar mi texto con IA'}</button>
+              <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>El render respeta tu modelo y añade solo esto.</div>
+            </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
               <span style={{ opacity: 0.7 }}>Libertad de la IA</span>
               <select value={iaTxt.libertad} onChange={e => setIaTxt(t => ({ ...t, libertad: e.target.value }))} style={btn}>
