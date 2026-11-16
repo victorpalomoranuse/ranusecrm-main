@@ -1,7 +1,7 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
-import { uploadModelo3dFile, uploadFotosProducto, uploadReferenceImageFile, handleMulterError } from '../middleware/upload.middleware.js';
+import { uploadModelo3dFile, uploadFotosProducto, uploadReferenceImageFile, uploadZipTexturas, handleMulterError } from '../middleware/upload.middleware.js';
 import sharp from 'sharp';
 import JSZip from 'jszip';
 import { glbConChatGPT } from '../utils/modelo3d-openai.js';
@@ -193,6 +193,29 @@ router.post('/mis-texturas', uploadReferenceImageFile, handleMulterError, async 
     const { error } = await guardarTexturasMias(lista); if (error) throw error;
     res.status(201).json({ textura: t });
   } catch (e) { console.error('biblioteca3d mis-texturas:', e); res.status(500).json({ error: 'No se pudo guardar la textura' }); }
+});
+// Una carpeta entera de texturas en un .zip (p. ej. la carpeta «Alvic» de Drive descargada): se crean todas de una vez, con el nombre del archivo
+router.post('/mis-texturas/zip', uploadZipTexturas, handleMulterError, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Falta el archivo .zip' });
+    const zip = await JSZip.loadAsync(req.file.buffer), tam = Math.max(5, Math.min(1000, parseFloat(req.body?.tam) || 60));
+    const entradas = Object.values(zip.files).filter(e => !e.dir && /\.(jpe?g|png|webp)$/i.test(e.name) && !/(^|\/)(__MACOSX|\.)/.test(e.name)).slice(0, 150);
+    if (!entradas.length) return res.status(400).json({ error: 'El .zip no tiene imágenes (jpg, png o webp)' });
+    const lista = await leerTexturasMias(), nuevas = []; let omitidas = 0;
+    for (const e of entradas) {
+      try {
+        const buf = await e.async('nodebuffer'); if (buf.length < 3000) { omitidas++; continue; }
+        const id = 'mt-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + nuevas.length, ruta = 'biblioteca3d/mis-texturas/' + id + '.jpg';
+        const out = await sharp(buf).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+        const { error: eUp } = await supabase.storage.from(BUCKET).upload(ruta, out, { contentType: 'image/jpeg', upsert: true }); if (eUp) throw eUp;
+        const base = e.name.split('/').pop().replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Mi textura';
+        nuevas.push({ id, nombre: base, categoria: 'Mis texturas', url: supabase.storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl, tam, mia: true });
+      } catch (err) { omitidas++; console.warn('mis-texturas zip: no se pudo', e.name, err.message); }
+    }
+    if (!nuevas.length) return res.status(500).json({ error: 'No se pudo guardar ninguna textura del .zip' });
+    const { error } = await guardarTexturasMias([...lista, ...nuevas]); if (error) throw error;
+    res.status(201).json({ texturas: nuevas, omitidas });
+  } catch (e) { console.error('biblioteca3d mis-texturas zip:', e); res.status(500).json({ error: 'No se pudo leer el .zip: ' + String(e.message || '').slice(0, 120) }); }
 });
 router.put('/mis-texturas/:id', async (req, res) => {
   try {
