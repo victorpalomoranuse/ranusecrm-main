@@ -6617,6 +6617,7 @@ export default function Visor3D({ cliente = false }) {
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }} title="Realista y neutro: foto de arquitectura, bien iluminada y sin dramatismo. Revista: más cálida y con más ambiente">
               <span style={{ opacity: 0.7 }}>Aspecto</span>
               <select value={iaTxt.aspecto || 'realista'} onChange={e => setIaTxt(t => ({ ...t, aspecto: e.target.value }))} style={btn}>
+                <option value="atmosfera">Atmósfera de revista (luz de tarde, brillos, cinematográfico)</option>
                 <option value="realista">Realista y neutro (sin dramatismo)</option>
                 <option value="revista">Estilo revista (cálido, con ambiente)</option>
               </select>
