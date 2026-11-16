@@ -562,22 +562,28 @@ function aplicaSerie(mm, marca, serie) {
   try {
     const serieMats = matsSerie(marca, serie), clases = (serie && serie.clases) || null;
     mm.updateMatrixWorld(true);
-    const inv = new THREE.Matrix4().copy(mm.matrixWorld).invert(), M = new THREE.Matrix4(), grupos = {}, orig = [];
+    const inv = new THREE.Matrix4().copy(mm.matrixWorld).invert(), M = new THREE.Matrix4(), Mi = new THREE.Matrix4(), grupos = {}, orig = [];
     mm.traverse(x => {
-      if (!x.isMesh || x.userData.hit || x.userData.overlay || x.isSkinnedMesh || x.isInstancedMesh || !x.geometry?.attributes?.position || x.visible === false) return;
+      if (!x.isMesh || x.userData.hit || x.userData.overlay || x.isSkinnedMesh || !x.geometry?.attributes?.position || x.visible === false) return;
       const mt = Array.isArray(x.material) ? x.material[0] : x.material; if (!mt || mt.visible === false || (mt.transparent && (mt.opacity ?? 1) < 0.9)) return; // cristales y similares se dejan como están
-      const g = x.geometry.clone(); g.clearGroups(); g.morphAttributes = {};
-      g.applyMatrix4(M.multiplyMatrices(inv, x.matrixWorld));
-      for (const n of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(n)) g.deleteAttribute(n);
-      if (!g.attributes.normal) g.computeVertexNormals();
-      if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
-      if (!g.index) { const n = g.attributes.position.count, ix = new (n > 65535 ? Uint32Array : Uint16Array)(n); for (let i = 0; i < n; i++) ix[i] = i; g.setIndex(new THREE.BufferAttribute(ix, 1)); }
-      if (x.matrixWorld.determinant() < 0) { const ix = g.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; } }
       const nom = String(x.name || mt.name || 'sin nombre').slice(0, 80), slot = clasificaPieza(mt, nom, clases), k = slot + '|' + nom;
-      (grupos[k] = grupos[k] || { slot, nom, geos: [] }).geos.push(g); orig.push(x);
-      const reg = seriePiezas.get(nom) || { hex: mt.color ? mt.color.getHexString() : '808080', tri: 0, slot, n: 0 }; reg.slot = slot; reg.tri += (g.index ? g.index.count : 0) / 3; reg.n++; seriePiezas.set(nom, reg);
+      // los modelos que vienen de SketchUp traen las piezas repetidas como instancias: se despliegan una a una para poder unirlas
+      const mats = []; if (x.isInstancedMesh) { for (let i = 0; i < x.count; i++) { x.getMatrixAt(i, Mi); mats.push(new THREE.Matrix4().multiplyMatrices(x.matrixWorld, Mi)); } } else mats.push(x.matrixWorld);
+      let tri = 0;
+      for (const mw of mats) {
+        const g = x.geometry.clone(); g.clearGroups(); g.morphAttributes = {};
+        g.applyMatrix4(M.multiplyMatrices(inv, mw));
+        for (const n of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(n)) g.deleteAttribute(n);
+        if (!g.attributes.normal) g.computeVertexNormals();
+        if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+        if (!g.index) { const n = g.attributes.position.count, ix = new (n > 65535 ? Uint32Array : Uint16Array)(n); for (let i = 0; i < n; i++) ix[i] = i; g.setIndex(new THREE.BufferAttribute(ix, 1)); }
+        if (mw.determinant() < 0) { const ix = g.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; } }
+        (grupos[k] = grupos[k] || { slot, nom, geos: [] }).geos.push(g); tri += g.index.count / 3;
+      }
+      orig.push(x);
+      const reg = seriePiezas.get(nom) || { hex: mt.color ? mt.color.getHexString() : '808080', tri: 0, slot, n: 0 }; reg.slot = slot; reg.tri += tri; reg.n++; seriePiezas.set(nom, reg);
     });
-    if (orig.length < 2) return false;
+    if (orig.length < 1) return false;
     const nuevos = [];
     for (const { slot, nom, geos } of Object.values(grupos)) {
       if (!geos.length) continue;
