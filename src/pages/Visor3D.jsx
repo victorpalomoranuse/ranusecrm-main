@@ -3212,6 +3212,28 @@ export default function Visor3D({ cliente = false }) {
     });
   }, [rev, estado]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Partes de suelo o techo con otro material dibujadas en Planos (sin altura): se pintan solas como zonas planas del color de su material
+  useEffect(() => {
+    const A = api3d.current, m = A.modelo; if (!m || estado === 'cargando') return;
+    const pls = m.plantas || [m], offs = A.offsPl || [], deseadas = [];
+    pls.forEach((pl, ip) => (pl.partes || []).forEach(c => {
+      if (!Array.isArray(c.pts) || c.pts.length < 3) return;
+      const [ox, oy] = offs[ip] || [0, 0], H = pl.altura || m.altura || 260, xs = c.pts.map(p => p[0]), ys = c.pts.map(p => p[1]);
+      const cx = Math.round(((Math.min(...xs) + Math.max(...xs)) / 2 + ox) * 10) / 10, cy = Math.round(((Math.min(...ys) + Math.max(...ys)) / 2 + oy) * 10) / 10, techo = c.k === 't';
+      deseadas.push({ id: 'sz:' + ip + ':' + c.id, tipo: 'zona', plano: techo ? 'techo' : 'suelo', h: techo ? H + (pl.z || 0) : undefined, nombre: c.nombre || (techo ? 'Zona de techo' : 'Zona de suelo'), etiqueta: 'Zonas', cx, cy, rot: 0, w: Math.round(Math.max(...xs) - Math.min(...xs)), d: Math.round(Math.max(...ys) - Math.min(...ys)), alto: 1, z0: techo ? 0 : (pl.z || 0), pts: c.pts.map(p => [Math.round((p[0] + ox - cx) * 10) / 10, Math.round((p[1] + oy - cy) * 10) / 10]), c: c.c });
+    }));
+    setObjs(prev => {
+      const propios = prev.filter(o => String(o.id).startsWith('sz:'));
+      let cambia = propios.length !== deseadas.length; const nuevos = [];
+      deseadas.forEach(d => {
+        const ant = propios.find(o => o.id === d.id), { c, ...base } = d, o = { ...base, color: ant?.color || c || '#cccccc' };
+        if (!ant || JSON.stringify([ant.cx, ant.cy, ant.w, ant.d, ant.z0, ant.h, ant.pts, ant.nombre, ant.plano]) !== JSON.stringify([o.cx, o.cy, o.w, o.d, o.z0, o.h, o.pts, o.nombre, o.plano])) cambia = true;
+        nuevos.push(o);
+      });
+      return cambia ? [...prev.filter(o => !String(o.id).startsWith('sz:')), ...nuevos] : prev;
+    });
+  }, [rev, estado]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Techo con huecos: donde una forma de techo «sube», el techo de la sala se abre (el hueco se ve desde dentro y desde abajo)
   useEffect(() => {
     const A = api3d.current; if (!A.raiz) return;
@@ -3237,7 +3259,7 @@ export default function Visor3D({ cliente = false }) {
       if (o.userData.capa) o.visible = !ocultas.includes(o.userData.capa) && !oculto; else if (k && o.userData.equipo) o.visible = !oculto;
     };
     a.raiz.traverse(aplica);
-    a.esc.children.forEach(g => { g.visible = !ocultas.includes('obj:' + (objsRef.current.find(x => x.id === g.userData.oid)?.etiqueta || '')) && !ocultas.includes('id:' + g.userData.oid); });
+    a.esc.children.forEach(g => { const ob = objsRef.current.find(x => x.id === g.userData.oid); g.visible = !ocultas.includes('obj:' + (ob?.etiqueta || '')) && !ocultas.includes('id:' + g.userData.oid) && !(ob && ob.tipo === 'zona' && ob.plano === 'techo' && ocultas.includes('techos')); });
     // Los techos que se ocultan solo mientras estás en Planta 2D o Axonométrica no se recuerdan: si cierras la pestaña en ese modo, el siguiente proyecto no se abre sin techo
     try { localStorage.setItem('visor3dOcultas:' + id, JSON.stringify(planta2d?.ocultasAntes ?? axo?.ocultasAntes ?? ocultas)); } catch {}
   }, [ocultas, rev, objs, estado, modosEq]);
