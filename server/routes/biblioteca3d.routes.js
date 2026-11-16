@@ -186,9 +186,9 @@ router.post('/mis-texturas', uploadReferenceImageFile, handleMulterError, async 
     const buf = await sharp(req.file.buffer).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
     const { error: eUp } = await supabase.storage.from(BUCKET).upload(ruta, buf, { contentType: 'image/jpeg', upsert: true });
     if (eUp) throw eUp;
-    const tam = Math.max(5, Math.min(1000, parseFloat(req.body?.tam) || 60));
+    const tam = Math.max(5, Math.min(1000, parseFloat(req.body?.tam) || 60)), tamH = parseFloat(req.body?.tamH) > 0 ? Math.max(5, Math.min(1000, parseFloat(req.body.tamH))) : undefined;
     const nombre = String(req.body?.nombre || nombreOk(req.file.originalname).replace(/\.[^.]+$/, '')).replace(/[_-]+/g, ' ').trim().slice(0, 60) || 'Mi textura';
-    const t = { id, nombre, categoria: 'Mis texturas', url: supabase.storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl, tam, mia: true };
+    const t = { id, nombre, categoria: 'Mis texturas', url: supabase.storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl, tam, ...(tamH ? { tamH } : {}), mia: true };
     const lista = await leerTexturasMias(); lista.push(t);
     const { error } = await guardarTexturasMias(lista); if (error) throw error;
     res.status(201).json({ textura: t });
@@ -198,7 +198,7 @@ router.post('/mis-texturas', uploadReferenceImageFile, handleMulterError, async 
 router.post('/mis-texturas/zip', uploadZipTexturas, handleMulterError, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Falta el archivo .zip' });
-    const zip = await JSZip.loadAsync(req.file.buffer), tam = Math.max(5, Math.min(1000, parseFloat(req.body?.tam) || 60));
+    const zip = await JSZip.loadAsync(req.file.buffer), tam = Math.max(5, Math.min(1000, parseFloat(req.body?.tam) || 60)), tamH = parseFloat(req.body?.tamH) > 0 ? Math.max(5, Math.min(1000, parseFloat(req.body.tamH))) : undefined;
     const entradas = Object.values(zip.files).filter(e => !e.dir && /\.(jpe?g|png|webp)$/i.test(e.name) && !/(^|\/)(__MACOSX|\.)/.test(e.name)).slice(0, 150);
     if (!entradas.length) return res.status(400).json({ error: 'El .zip no tiene imágenes (jpg, png o webp)' });
     const lista = await leerTexturasMias(), nuevas = []; let omitidas = 0;
@@ -209,7 +209,7 @@ router.post('/mis-texturas/zip', uploadZipTexturas, handleMulterError, async (re
         const out = await sharp(buf).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
         const { error: eUp } = await supabase.storage.from(BUCKET).upload(ruta, out, { contentType: 'image/jpeg', upsert: true }); if (eUp) throw eUp;
         const base = e.name.split('/').pop().replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Mi textura';
-        nuevas.push({ id, nombre: base, categoria: 'Mis texturas', url: supabase.storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl, tam, mia: true });
+        nuevas.push({ id, nombre: base, categoria: 'Mis texturas', url: supabase.storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl, tam, ...(tamH ? { tamH } : {}), mia: true });
       } catch (err) { omitidas++; console.warn('mis-texturas zip: no se pudo', e.name, err.message); }
     }
     if (!nuevas.length) return res.status(500).json({ error: 'No se pudo guardar ninguna textura del .zip' });
