@@ -10,6 +10,7 @@ import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import opentype from 'opentype.js';
 import { PRESETS_REVEST, PERFILES_MOLDURA, construirRevest, colocaEnMuro, normalizaRevest, preset as presetRevest, cajaRevest, espesorRevest } from '../components/revestimientos';
+import ChatImagenes from '../components/ChatImagenes';
 import { construirDeco, KINDS_DECO, MEDIDAS_DECO, KINDS_PERSONAS, KINDS_MOBILIARIO } from '../components/deco3d';
 import { construirRack, rackPorDefecto, normalizaRack, calculosRack, textoRack, dimRack, TIPOS_RACK, TIPOS_BAHIA, ACCESORIOS, PERFILES_RACK, COLORES_RACK, bahiaPorDefecto } from '../components/rack3d';
 import { construirCesped, cespedPorDefecto, normalizaCesped, calculosCesped, textoCesped, PRESETS_CESPED, PRESETS_MARCAJE, aplicaPresetMarcaje, COLORES_CESPED, COLORES_LINEA } from '../components/cesped3d';
@@ -4538,6 +4539,15 @@ export default function Visor3D({ cliente = false }) {
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setMobiliarioMenu(false);
     setAviso('«' + KINDS_DECO[kind] + '» colocado en el centro de la vista. Cambia su color, sus medidas y el color de las patas en el panel.');
   };
+  const [chatAbierto, setChatAbierto] = useState(false);
+  // foto del fotograma que se ve ahora (sin las ayudas del editor) para dársela al chat de imágenes
+  const capturaVista = () => new Promise(ok => {
+    const a = api3d.current, restaura = ocultarAyudas();
+    const fin = u => { restaura(); ok(u); };
+    const t = setTimeout(() => { if (a.pedirFoto) { a.pedirFoto = null; fin(null); } }, 2500);
+    a.pedirFoto = u => { clearTimeout(t); fin(u); };
+    a.despierta = performance.now() + 400; // despierta el dibujo: el siguiente fotograma se guarda tal cual se ve
+  });
   const [rackMenu, setRackMenu] = useState(false);
   const [revSel, setRevSel] = useState(null);
   const revSelRef = useRef(null); revSelRef.current = revSel;
@@ -6516,6 +6526,7 @@ export default function Visor3D({ cliente = false }) {
         ], false, 'Objetos')}
         {!modoRender && grupoRail([
           railBtn(revAbierto || herr === 'revest', 'revest', 'Revestimientos', 'Palillería, lamas acústicas, panelados, paneles 3D y molduras: eliges un modelo y pulsas el muro', () => { setRevAbierto(v => !v); if (revAbierto && herr === 'revest') setHerr('sel'); }),
+          railBtn(chatAbierto, 'chatia', 'Chat IA', 'Chat de imágenes: habla con la IA, adjunta la vista actual del 3D, fotos o el logo; guarda las imágenes en la galería o mándalas a un proyecto', () => setChatAbierto(v => !v)),
           railBtn(false, 'imagen', 'Imagen', 'Sube una imagen (PNG con transparencia, o con fondo liso que se quita) y se coloca en el 3D como en SketchUp; después la escalas', () => imagenInput.current?.click()),
           railBtn(false, 'texto', 'Texto 3D', 'Escribe una palabra y elige la fuente: se convierte en letras 3D', () => setTextoDlg({ texto: '', fuente: 'Montserrat-Regular', disp: 'horizontal' })),
           railBtn(false, 'logo', 'Logo', 'Sube un logo en SVG (o DXF con contornos cerrados) y se convierte en 3D', () => logoInput.current?.click()),
@@ -6669,6 +6680,11 @@ export default function Visor3D({ cliente = false }) {
           </div>
         );
       })()}
+      {chatAbierto && (
+        <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 470, maxWidth: 'calc(100% - 24px)', zIndex: 9 }}>
+          <ChatImagenes compacto capturarVista={capturaVista} obtenerContexto={contextoModelo} onCerrar={() => setChatAbierto(false)} />
+        </div>
+      )}
       {textoDlg && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setTextoDlg(null)}>
           <div style={{ width: 380, background: 'rgb(22,20,18)', color: '#fff', borderRadius: 10, padding: 16, fontSize: 13 }} onClick={e => e.stopPropagation()}>

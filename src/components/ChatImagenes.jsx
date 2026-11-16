@@ -4,8 +4,8 @@ import api from '../services/api';
 // Chat de imágenes: se conversa con la IA como en ChatGPT. Se suben fotos, logos o referencias dentro de la conversación y la IA las entiende;
 // cada imagen que sale se puede descargar, guardar en la galería o enviar a la historia de un proyecto / a la galería de un plano.
 // Las conversaciones se guardan solas y se pueden retomar. Usa el motor de /estudio-ideas/chat.
-const ETIQUETAS = [['foto', 'Foto'], ['logo', 'Logo'], ['ref', 'Referencia'], ['plano', 'Plano']];
-const NOMBRE_ET = { foto: 'la foto del producto o del espacio', logo: 'el LOGO oficial (colócalo exactamente así, sin redibujarlo)', ref: 'una imagen de referencia de estilo', plano: 'un plano' };
+const ETIQUETAS = [['foto', 'Foto'], ['logo', 'Logo'], ['ref', 'Referencia'], ['plano', 'Plano'], ['vista', 'Vista 3D']];
+const NOMBRE_ET = { foto: 'la foto del producto o del espacio', logo: 'el LOGO oficial (colócalo exactamente así, sin redibujarlo)', ref: 'una imagen de referencia de estilo', plano: 'un plano', vista: 'una captura de mi modelo 3D actual (respeta su arquitectura, distribución, objetos y materiales; cambia solo lo que te pida)' };
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 const comprimir = (file, maxLado = 1800) => new Promise((ok, ko) => {
@@ -100,6 +100,11 @@ const CSS = `
 .ci-pen i:nth-child(2){animation-delay:.15s}.ci-pen i:nth-child(3){animation-delay:.3s}
 @keyframes cip{0%,80%,100%{opacity:.25}40%{opacity:1}}
 .ci-err{color:#ff9b8a;font-size:.82rem;margin:6px 0 0}
+.ci.compacto{grid-template-columns:1fr;position:relative;border-radius:14px;background:#1b1815;border:1px solid rgba(255,255,255,.12);overflow:hidden}
+.ci.compacto .ci-lado{position:absolute;z-index:5;left:0;top:0;bottom:0;width:250px;background:#1b1815;display:none;box-shadow:6px 0 24px rgba(0,0,0,.5)}
+.ci.compacto .ci-lado.abierto{display:flex}
+.ci.compacto .ci-cab{padding:10px 12px}.ci.compacto .ci-col{padding:0 12px}.ci.compacto .ci-comp{padding:10px 12px 12px}.ci.compacto .ci-m{max-width:100%}
+.ci.compacto .ci-m.ia .ci-img{width:100%}.ci.compacto .ci-b{font-size:.86rem}.ci.compacto .ci-gal{padding:12px}
 .ci-gal{overflow:auto;padding:22px;min-height:0;flex:1}
 .ci-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
 .ci-gi{border-radius:14px;overflow:hidden;border:1px solid rgba(255,255,255,.1);background:#14171c}
@@ -115,11 +120,11 @@ const CSS = `
 @media(max-width:900px){.ci{grid-template-columns:1fr}.ci-lado{display:none}}
 `;
 
-export default function ChatImagenes() {
+export default function ChatImagenes({ compacto = false, capturarVista = null, obtenerContexto = null, onCerrar = null }) {
   const [chats, setChats] = useState([]), [chatId, setChatId] = useState(null), [titulo, setTitulo] = useState('Conversación nueva'), [mensajes, setMensajes] = useState([]), [previo, setPrevio] = useState(null);
   const [texto, setTexto] = useState(''), [adj, setAdj] = useState([]), [trabajando, setTrabajando] = useState(false), [error, setError] = useState(''), [soloImg, setSoloImg] = useState(false);
   const [marcas, setMarcas] = useState([]), [marcaId, setMarcaId] = useState(''), [vista, setVista] = useState('chats'), [galeria, setGaleria] = useState([]), [grande, setGrande] = useState(null);
-  const [envio, setEnvio] = useState(null), [arrastra, setArrastra] = useState(false), [guardadas, setGuardadas] = useState({});
+  const [envio, setEnvio] = useState(null), [arrastra, setArrastra] = useState(false), [guardadas, setGuardadas] = useState({}), [menu, setMenu] = useState(false), [usarCtx, setUsarCtx] = useState(true);
   const fin = useRef(null), fichero = useRef(null), area = useRef(null);
 
   const cargaChats = () => api.get('/ia-chats').then(r => setChats(r.data?.chats || [])).catch(() => {});
@@ -128,8 +133,9 @@ export default function ChatImagenes() {
   useEffect(() => { fin.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [mensajes, trabajando]);
   useEffect(() => { const t = area.current; if (t) { t.style.height = 'auto'; t.style.height = Math.min(180, t.scrollHeight) + 'px'; } }, [texto]);
 
-  const nueva = () => { setChatId(null); setTitulo('Conversación nueva'); setMensajes([]); setPrevio(null); setAdj([]); setTexto(''); setError(''); setVista('chats'); };
+  const nueva = () => { setMenu(false); setChatId(null); setTitulo('Conversación nueva'); setMensajes([]); setPrevio(null); setAdj([]); setTexto(''); setError(''); setVista('chats'); };
   const abre = async (id) => {
+    setMenu(false);
     try { const r = await api.get('/ia-chats/' + id); setChatId(r.data.id); setTitulo(r.data.titulo); setMensajes((r.data.mensajes || []).map(m => ({ ...m, id: uid() }))); setPrevio(r.data.previo || null); setMarcaId(r.data.marcaId || ''); setError(''); setVista('chats'); }
     catch { setError('No se pudo abrir la conversación'); }
   };
@@ -142,6 +148,7 @@ export default function ChatImagenes() {
       if (nuevas.length) setAdj(a => [...a, ...nuevas].slice(0, 4));
     } catch (e) { setError(e.message); }
   };
+  const usaVista = async () => { try { const u = await capturarVista(); if (u) setAdj(a => [...a, { id: uid(), url: u, et: 'vista' }].slice(0, 4)); else setError('No se pudo coger la vista del 3D'); } catch { setError('No se pudo coger la vista del 3D'); } };
   const alPegar = (e) => { const fs = Array.from(e.clipboardData?.files || []).filter(f => /^image\//.test(f.type)); if (fs.length) { e.preventDefault(); adjunta(fs); } };
   const alSoltar = (e) => { e.preventDefault(); setArrastra(false); adjunta(e.dataTransfer?.files); };
 
@@ -161,7 +168,8 @@ export default function ChatImagenes() {
     const delUsuario = { id: uid(), rol: 'yo', texto: t, imagenes: adj.map(a => a.url), etiquetas };
     const nuevos = [...mensajes, delUsuario];
     setMensajes(nuevos); setTexto(''); setAdj([]); setError(''); setTrabajando(true);
-    const cuerpo = (extra = {}) => ({ texto: [t, lista].filter(Boolean).join('\n\n'), imagenes: delUsuario.imagenes, previousResponseId: previo || undefined, soloDiseno: soloImg, marcaId: marcaId || undefined, modo: 'respetar', ...extra });
+    let contexto; if (obtenerContexto && usarCtx) { try { contexto = (await obtenerContexto())?.texto; } catch { contexto = undefined; } }
+    const cuerpo = (extra = {}) => ({ contexto, texto: [t, lista].filter(Boolean).join('\n\n'), imagenes: delUsuario.imagenes, previousResponseId: previo || undefined, soloDiseno: soloImg, marcaId: marcaId || undefined, modo: 'respetar', ...extra });
     try {
       let r;
       try { r = await api.post('/estudio-ideas/chat', cuerpo(), { timeout: 290000 }); }
@@ -189,9 +197,9 @@ export default function ChatImagenes() {
   const urlsOk = (u) => typeof u === 'string' && u.startsWith('http');
 
   return (
-    <div className="ci">
+    <div className={'ci' + (compacto ? ' compacto' : '')}>
       <style>{CSS}</style>
-      <aside className="ci-lado">
+      <aside className={'ci-lado' + (menu ? ' abierto' : '')}>
         <button type="button" className="ci-nuevo" onClick={nueva}>＋ Nueva conversación</button>
         <div className="ci-tabs">
           <button type="button" className={'ci-tab' + (vista === 'chats' ? ' on' : '')} onClick={() => setVista('chats')}>Conversaciones</button>
@@ -234,8 +242,10 @@ export default function ChatImagenes() {
         ) : (
           <>
             <div className="ci-cab">
+              {compacto && <button type="button" className="ci-btn" onClick={() => setMenu(m => !m)} title="Conversaciones y galería">☰</button>}
               <input className="t" value={titulo} onChange={e => setTitulo(e.target.value)} onBlur={renombra} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} title="Pulsa para cambiar el nombre" />
               <select className="ci-sel" value={marcaId} onChange={e => setMarcaId(e.target.value)} title="La IA aplica los colores, el tono y el logo de esta marca"><option value="">Sin marca</option>{marcas.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}</select>
+              {compacto && onCerrar && <button type="button" className="ci-btn" onClick={onCerrar} title="Cerrar">✕</button>}
             </div>
             <div className="ci-msgs">
               <div className="ci-col">
@@ -296,6 +306,8 @@ export default function ChatImagenes() {
                   <div className="ci-bar">
                     <input ref={fichero} type="file" accept="image/*" multiple hidden onChange={e => { adjunta(e.target.files); e.target.value = ''; }} />
                     <button type="button" className="ci-clip" title="Adjuntar fotos, logo o referencias" onClick={() => fichero.current?.click()}>📎</button>
+                    {capturarVista && <button type="button" className="ci-clip" title="Adjuntar la vista actual del 3D" onClick={usaVista}>🖼</button>}
+                    {obtenerContexto && <label className="ci-chk" title="La IA recibe una descripción de tu modelo (espacio, medidas, acabados y equipos) y no inventa lo que no le pidas"><input type="checkbox" checked={usarCtx} onChange={e => setUsarCtx(e.target.checked)} /> 🧠 Conoce el modelo</label>}
                     <label className="ci-chk" title="La IA devuelve solo el dibujo o producto, sin escena ni fondo de ambiente"><input type="checkbox" checked={soloImg} onChange={e => setSoloImg(e.target.checked)} /> Solo la imagen, sin escena</label>
                     <button type="button" className="ci-env" disabled={trabajando || (!texto.trim() && !adj.length)} onClick={() => enviar()} title="Enviar">↑</button>
                   </div>
