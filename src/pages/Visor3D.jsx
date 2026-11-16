@@ -4533,8 +4533,8 @@ export default function Visor3D({ cliente = false }) {
   const [personasMenu, setPersonasMenu] = useState(false), [mobiliarioMenu, setMobiliarioMenu] = useState(false);
   // Mobiliario moderno de la casa (sofás, mesas, recepción, taquillas, espejos, lámparas…): ligero, con medidas y colores editables
   const crearMobiliario = (kind) => {
-    const { ctrl } = api3d.current, M = MEDIDAS_DECO[kind] || [100, 60, 75], colores = { taquillas: '#2b2f36', mostrador_recepcion: '#1f1f21', banco_vestuario: '#b88a5a', panel_lamas: '#a9774a', alfombra: '#cfc7bb', espejo_pie: '#dcdcdc', espejo_pared: '#dcdcdc', lampara_pie: '#f1e6d0', lampara_colgante: '#ffe2b0' };
-    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'deco', deco: { kind, color2: kind === 'mostrador_recepcion' ? '#c9a46c' : '#222226' }, color: colores[kind] || '#8a8f98', nombre: KINDS_DECO[kind], etiqueta: 'Mobiliario', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: M[0], d: M[1], alto: M[2], z0: kind === 'lampara_colgante' ? Math.max(0, (api3d.current.modelo?.altura || 260) - M[2] - 10) : 0 };
+    const { ctrl } = api3d.current, M = MEDIDAS_DECO[kind] || [100, 60, 75], colores = { taquillas: '#2b2f36', mostrador_recepcion: '#1f1f21', banco_vestuario: '#b88a5a', panel_lamas: '#a9774a', alfombra: '#cfc7bb', espejo_pie: '#dcdcdc', espejo_pared: '#dcdcdc', lampara_pie: '#f1e6d0', lampara_colgante: '#ffe2b0', jardinera_hiedra: '#3a2b22' };
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'deco', deco: { kind, color2: kind === 'mostrador_recepcion' ? '#c9a46c' : kind === 'jardinera_hiedra' ? '#3f7d3a' : '#222226' }, color: colores[kind] || '#8a8f98', nombre: KINDS_DECO[kind], etiqueta: 'Mobiliario', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: M[0], d: M[1], alto: M[2], z0: kind === 'lampara_colgante' ? Math.max(0, (api3d.current.modelo?.altura || 260) - M[2] - 10) : kind === 'jardinera_hiedra' ? 120 : 0 };
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setMobiliarioMenu(false);
     setAviso('«' + KINDS_DECO[kind] + '» colocado en el centro de la vista. Cambia su color, sus medidas y el color de las patas en el panel.');
   };
@@ -8632,6 +8632,19 @@ export default function Visor3D({ cliente = false }) {
                   <span style={{ opacity: 0.6, fontSize: 11 }}>o un color liso</span>
                 </div>
                 <div style={{ opacity: 0.5, fontSize: 11 }}>Descenso negativo = el techo sube (relieve). Cada falso techo tiene su propio descenso: así uno queda más bajo que otro. El foseado es el hueco entre el borde y el falso techo.</div>
+              </div>
+            );
+          })()}
+          {objSel.tipo === 'deco' && objSel.deco?.kind === 'jardinera_hiedra' && (() => {
+            const ponDeco = campos => cambiar(objSel.id, { deco: { ...objSel.deco, ...campos } }), luz = objSel.deco?.luz, dens = parseFloat(objSel.deco?.dens) || 1;
+            return (
+              <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Jardinera con hiedra</div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.7 }}>Densidad de hojas</span><input type="range" min="0.4" max="1.8" step="0.1" value={dens} onChange={e => ponDeco({ dens: parseFloat(e.target.value) })} style={{ flex: 1 }} /><span style={{ width: 34, textAlign: 'right' }}>×{dens.toFixed(1)}</span></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.7 }}>Color de la hoja</span><input type="color" value={/^#[0-9a-fA-F]{6}$/.test(objSel.deco?.color2 || '') ? objSel.deco.color2 : '#3f7d3a'} onChange={e => ponDeco({ color2: e.target.value })} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.7 }}>Color de la caja</span><input type="color" value={/^#[0-9a-fA-F]{6}$/.test(objSel.color || '') ? objSel.color : '#3a2b22'} onChange={e => cambiar(objSel.id, { color: e.target.value })} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}><input type="checkbox" checked={luz !== 'off'} onChange={e => ponDeco({ luz: e.target.checked ? '#ffd9a0' : 'off' })} /><span>Luz LED bajo la caja</span>{luz !== 'off' && <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(luz || '') ? luz : '#ffd9a0'} onChange={e => ponDeco({ luz: e.target.value })} style={{ marginLeft: 6 }} />}</label>
+                <div style={{ opacity: 0.55, fontSize: 11 }}>La caja va arriba; las hojas cuelgan hasta la altura total. Cambia el alto para hacerlas más largas o cortas. Para varias jardineras en vertical, usa «Repetir en fila» o duplica y sube la elevación.</div>
               </div>
             );
           })()}

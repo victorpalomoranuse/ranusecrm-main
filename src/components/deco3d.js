@@ -12,9 +12,10 @@ export const KINDS_DECO = {
   sofa_modular: 'Sofá modular', sofa_esquina: 'Sofá en esquina', butaca: 'Butaca', puf: 'Puf', mesa_centro: 'Mesa de centro', mesa_alta: 'Mesa alta (barra)', taburete_alto: 'Taburete alto',
   banco_vestuario: 'Banco de vestuario', taquillas: 'Taquillas', mostrador_recepcion: 'Mostrador de recepción', estanteria_abierta: 'Estantería abierta', aparador: 'Aparador bajo', escritorio: 'Escritorio',
   espejo_pie: 'Espejo de pie', espejo_pared: 'Espejo de pared', lampara_pie: 'Lámpara de pie', lampara_colgante: 'Lámpara colgante de aro', alfombra: 'Alfombra', panel_lamas: 'Panel de lamas de madera', tv_mural: 'Televisión en pared',
+  jardinera_hiedra: 'Jardinera mural con hiedra y luz',
   persona_sentadilla: 'Persona haciendo sentadilla', persona_sentada: 'Persona sentada', persona_estirando: 'Persona estirando', grupo_hablando: 'Dos personas hablando',
 };
-export const KINDS_MOBILIARIO = ['sofa_modular', 'sofa_esquina', 'butaca', 'puf', 'mesa_centro', 'mesa_alta', 'taburete_alto', 'banco_vestuario', 'taquillas', 'mostrador_recepcion', 'estanteria_abierta', 'aparador', 'escritorio', 'espejo_pie', 'espejo_pared', 'lampara_pie', 'lampara_colgante', 'alfombra', 'panel_lamas', 'tv_mural'];
+export const KINDS_MOBILIARIO = ['jardinera_hiedra', 'sofa_modular', 'sofa_esquina', 'butaca', 'puf', 'mesa_centro', 'mesa_alta', 'taburete_alto', 'banco_vestuario', 'taquillas', 'mostrador_recepcion', 'estanteria_abierta', 'aparador', 'escritorio', 'espejo_pie', 'espejo_pared', 'lampara_pie', 'lampara_colgante', 'alfombra', 'panel_lamas', 'tv_mural'];
 export const KINDS_PERSONAS = ['persona_de_pie', 'persona_andando', 'persona_corriendo', 'persona_mancuernas', 'persona_sentadilla', 'persona_sentada', 'persona_estirando', 'grupo_hablando'];
 // Medidas habituales (cm) para cuando la IA no las da
 export const MEDIDAS_DECO = {
@@ -24,7 +25,7 @@ export const MEDIDAS_DECO = {
   persona_sentadilla: [60, 70, 175], persona_sentada: [55, 70, 130], persona_estirando: [60, 110, 150], grupo_hablando: [65, 110, 175],
   sofa_modular: [220, 92, 76], sofa_esquina: [270, 170, 76], butaca: [82, 82, 78], puf: [60, 60, 40], mesa_centro: [100, 60, 38], mesa_alta: [140, 60, 105], taburete_alto: [40, 40, 75],
   banco_vestuario: [180, 40, 46], taquillas: [150, 50, 190], mostrador_recepcion: [280, 75, 110], estanteria_abierta: [120, 35, 200], aparador: [170, 42, 76], escritorio: [150, 70, 75],
-  espejo_pie: [80, 6, 190], espejo_pared: [140, 4, 180], lampara_pie: [40, 40, 170], lampara_colgante: [70, 70, 110], alfombra: [260, 180, 2], panel_lamas: [120, 6, 240], tv_mural: [140, 6, 82],
+  jardinera_hiedra: [120, 22, 95], espejo_pie: [80, 6, 190], espejo_pared: [140, 4, 180], lampara_pie: [40, 40, 170], lampara_colgante: [70, 70, 110], alfombra: [260, 180, 2], panel_lamas: [120, 6, 240], tv_mural: [140, 6, 82],
 };
 // Poses (ángulos en radianes en el plano lateral): inclinación del tronco, pierna [cadera, rodilla], brazo [hombro, codo]; 0 = colgando recto, positivo = hacia delante
 const POSES = {
@@ -73,6 +74,79 @@ function rectRedondo(w, h, rad) {
   s.moveTo(x + q, y); s.lineTo(x + w - q, y); s.absarc(x + w - q, y + q, q, -Math.PI / 2, 0, false); s.lineTo(x + w, y + h - q); s.absarc(x + w - q, y + h - q, q, 0, Math.PI / 2, false);
   s.lineTo(x + q, y + h); s.absarc(x + q, y + h - q, q, Math.PI / 2, Math.PI, false); s.lineTo(x, y + q); s.absarc(x + q, y + q, q, Math.PI, Math.PI * 1.5, false);
   return s;
+}
+// ── Jardinera mural con hiedra colgante (pothos): caja con luz LED por debajo y hojas generadas por el programa (instancias: pocas llamadas de dibujo).
+// La forma es siempre la misma para el mismo objeto (semilla = su id). Medidas: largo = w, fondo = d, alto total = alto (la caja arriba y la hiedra colgando hasta abajo).
+let _texHoja = null, _texLuz = null, _geoHoja = null;
+function texHoja() {
+  if (_texHoja || typeof document === 'undefined') return _texHoja;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128; const cx = cv.getContext('2d');
+  const gr = cx.createRadialGradient(64, 56, 6, 64, 64, 70); gr.addColorStop(0, '#ffffff'); gr.addColorStop(1, '#cfcfcf'); cx.fillStyle = gr; cx.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 9; i++) { cx.fillStyle = 'rgba(255,250,200,' + (0.18 + Math.random() * 0.25) + ')'; cx.beginPath(); cx.ellipse(30 + Math.random() * 68, 24 + Math.random() * 80, 8 + Math.random() * 14, 6 + Math.random() * 10, Math.random() * 3, 0, 6.3); cx.fill(); }
+  cx.strokeStyle = 'rgba(255,255,255,0.9)'; cx.lineWidth = 3; cx.beginPath(); cx.moveTo(64, 4); cx.lineTo(64, 120); cx.stroke();
+  cx.strokeStyle = 'rgba(150,150,150,0.55)'; cx.lineWidth = 1.2;
+  for (let k = 0; k < 6; k++) { const y = 20 + k * 15; for (const sx of [-1, 1]) { cx.beginPath(); cx.moveTo(64, y); cx.quadraticCurveTo(64 + sx * 22, y - 4, 64 + sx * (40 - k * 3), y + 10); cx.stroke(); } }
+  _texHoja = new THREE.CanvasTexture(cv); _texHoja.colorSpace = THREE.SRGBColorSpace; return _texHoja;
+}
+function texLuzMural() {
+  if (_texLuz || typeof document === 'undefined') return _texLuz;
+  const cv = document.createElement('canvas'); cv.width = 128; cv.height = 256; const cx = cv.getContext('2d');
+  const v = cx.createLinearGradient(0, 0, 0, 256); v.addColorStop(0, 'rgba(255,255,255,0.95)'); v.addColorStop(0.18, 'rgba(255,255,255,0.55)'); v.addColorStop(0.55, 'rgba(255,255,255,0.14)'); v.addColorStop(1, 'rgba(255,255,255,0)'); cx.fillStyle = v; cx.fillRect(0, 0, 128, 256);
+  cx.globalCompositeOperation = 'destination-in'; const hz = cx.createLinearGradient(0, 0, 128, 0); hz.addColorStop(0, 'rgba(255,255,255,0)'); hz.addColorStop(0.12, 'rgba(255,255,255,1)'); hz.addColorStop(0.88, 'rgba(255,255,255,1)'); hz.addColorStop(1, 'rgba(255,255,255,0)'); cx.fillStyle = hz; cx.fillRect(0, 0, 128, 256);
+  _texLuz = new THREE.CanvasTexture(cv); _texLuz.colorSpace = THREE.SRGBColorSpace; return _texLuz;
+}
+function geoHoja() { // corazón con la punta hacia abajo, de unos 2 × 2 unidades; se escala al tamaño de cada hoja
+  if (_geoHoja) return _geoHoja;
+  const pts = []; for (let i = 0; i < 16; i++) { const t = (i / 16) * Math.PI * 2; pts.push(new THREE.Vector2(16 * Math.sin(t) ** 3 / 16, (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) / 16 + 0.18)); }
+  const g = new THREE.ShapeGeometry(new THREE.Shape(pts)), p = g.attributes.position, uv = new Float32Array(p.count * 2);
+  for (let i = 0; i < p.count; i++) { uv[i * 2] = (p.getX(i) + 1) / 2; uv[i * 2 + 1] = (p.getY(i) + 1) / 2; }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); return (_geoHoja = g);
+}
+function jardineraHiedra(o, w, dd, h, c1, c2) {
+  const g = new THREE.Group(), dens = Math.max(0.3, Math.min(2, parseFloat(o.deco?.dens) || 1)), wCm = w / CM;
+  let seed = 7; for (const ch of String(o.id || 'x')) seed = (Math.imul(seed, 31) + ch.charCodeAt(0)) >>> 0;
+  const rnd = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const boxH = Math.min(0.26, h * 0.32), yTop = h, e = new THREE.Euler(), q = new THREE.Quaternion(), M4 = new THREE.Matrix4(), P = new THREE.Vector3(), S = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+  // caja (madera oscura) y tierra
+  const caja = new THREE.Mesh(new RoundedBoxGeometry(w, boxH, dd, 3, 0.008), new THREE.MeshStandardMaterial({ color: c1, roughness: 0.75, metalness: 0.05 })); caja.position.set(0, yTop - boxH / 2, 0); caja.castShadow = caja.receiveShadow = true; g.add(caja);
+  const tierra = new THREE.Mesh(new THREE.BoxGeometry(w * 0.94, 0.02, dd * 0.8), new THREE.MeshStandardMaterial({ color: '#2a211b', roughness: 1 })); tierra.position.set(0, yTop - 0.004, 0); g.add(tierra);
+  // luz LED bajo la caja: cinta fina y baño de luz cálido sobre la pared (efecto, sin luces reales)
+  const luz = o.deco?.luz;
+  if (luz !== 'off') {
+    const lc = new THREE.Color(hexOk(luz, '#ffd9a0'));
+    const cinta = new THREE.Mesh(new THREE.BoxGeometry(w * 0.94, 0.007, 0.012), new THREE.MeshBasicMaterial({ color: lc })); cinta.position.set(0, yTop - boxH - 0.002, dd / 2 - 0.03); g.add(cinta);
+    const tx = texLuzMural(); if (tx) { const baño = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.1, Math.min(0.5, h * 0.55)), new THREE.MeshBasicMaterial({ map: tx, color: lc.clone().multiplyScalar(0.55), transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false })); baño.position.set(0, yTop - boxH - Math.min(0.5, h * 0.55) / 2 + 0.01, -dd / 2 + 0.004); g.add(baño); }
+  }
+  const hojas = [], tallos = [], base = c2.clone();
+  const color = (claro = false) => { const col = base.clone(); col.offsetHSL((rnd() - 0.5) * 0.03 - (claro ? 0.015 : 0), (rnd() - 0.5) * 0.1, (rnd() - 0.5) * 0.12 + (claro ? 0.1 : 0) + (rnd() < 0.16 ? 0.1 : 0)); return col; };
+  const hoja = (x, y, z, s, yaw, tilt, roll, col) => { e.set(tilt, yaw, roll, 'YXZ'); q.setFromEuler(e); hojas.push({ x, y, z, s, q: q.clone(), col }); };
+  const hebra = (x0, z0, L, paso, tam, fina) => {
+    const n = Math.max(3, Math.round(L / paso)), fase = rnd() * 6.3, deriva = (rnd() - 0.5) * 0.05, y0 = yTop - boxH * 0.5; let prev = null;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, x = x0 + Math.sin(t * 3.1 + fase) * 0.012 * (fina ? 1.6 : 1) + deriva * t, y = y0 - t * L, z = z0 + 0.03 * Math.sin(Math.min(1, t * 2.2) * Math.PI * 0.5) + (fina ? 0.01 : 0);
+      if (prev) tallos.push([prev, [x, y, z]]);
+      const lado = i % 2 ? 1 : -1, s = tam * (0.75 + rnd() * 0.5) * (1 - 0.3 * t);
+      hoja(x + lado * 0.011, y, z + 0.012, s, lado * (0.2 + rnd() * 0.9), -0.15 + rnd() * 0.5, (rnd() - 0.5) * 0.7, color(fina));
+      if (!fina && rnd() < 0.3) hoja(x - lado * 0.011, y - paso * 0.5, z + 0.016, s * 0.9, -lado * (0.2 + rnd() * 0.8), -0.1 + rnd() * 0.45, (rnd() - 0.5) * 0.7, color());
+      prev = [x, y, z];
+    }
+  };
+  const N = Math.max(4, Math.round((wCm / 6.5) * dens)), Lmax = Math.max(0.15, h - 0.15);
+  for (let i = 0; i < N; i++) hebra(-w * 0.46 + (i + rnd()) * (w * 0.92) / N, dd / 2 - 0.02 - rnd() * dd * 0.35, Lmax * (0.14 + 0.86 * Math.pow(rnd(), 1.15)), 0.06, 0.05 + rnd() * 0.022, false);
+  const F = Math.round(N * 1.5); for (let i = 0; i < F; i++) hebra(-w * 0.47 + rnd() * w * 0.94, dd / 2 - 0.01 - rnd() * dd * 0.3, Lmax * (0.35 + 0.65 * rnd()), 0.024, 0.013 + rnd() * 0.009, true);
+  const K = Math.round((wCm * 0.95) * dens); for (let i = 0; i < K; i++) hoja(-w * 0.47 + rnd() * w * 0.94, yTop + rnd() * 0.11, (rnd() - 0.5) * dd * 0.8, 0.055 + rnd() * 0.04, (rnd() - 0.5) * 2.6, -(0.35 + rnd() * 0.8), (rnd() - 0.5) * 0.9, color());
+  const tx = texHoja();
+  if (hojas.length) {
+    const im = new THREE.InstancedMesh(geoHoja(), new THREE.MeshStandardMaterial({ map: tx || null, roughness: 0.55, metalness: 0, side: THREE.DoubleSide }), hojas.length);
+    hojas.forEach((l, i) => { P.set(l.x, l.y, l.z); S.set(l.s, l.s, l.s); M4.compose(P, l.q, S); im.setMatrixAt(i, M4); im.setColorAt(i, l.col); });
+    im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; im.frustumCulled = false; g.add(im);
+  }
+  if (tallos.length) {
+    const st = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 5), new THREE.MeshStandardMaterial({ color: '#2f4a2a', roughness: 0.85 }), tallos.length), a = new THREE.Vector3(), b = new THREE.Vector3();
+    tallos.forEach(([p0, p1], i) => { a.set(...p0); b.set(...p1); const d = new THREE.Vector3().subVectors(b, a), L = d.length() || 0.001; q.setFromUnitVectors(UP, d.normalize()); P.copy(a).addScaledVector(d, L / 2); S.set(0.0022, L, 0.0022); M4.compose(P, q, S); st.setMatrixAt(i, M4); });
+    st.instanceMatrix.needsUpdate = true; st.frustumCulled = false; g.add(st);
+  }
+  return g;
 }
 export function construirDeco(o) {
   const w = (o.w || 50) * CM, dd = (o.d || 50) * CM, h = (o.alto || 100) * CM, r = Math.min(w, dd) / 2, kind = o.deco?.kind || 'planta';
@@ -209,6 +283,7 @@ export function construirDeco(o) {
       for (let i = 0; i < 5; i++) { cx.fillStyle = 'rgba(255,255,255,' + (0.05 + i * 0.03) + ')'; cx.beginPath(); cx.arc(cv.width * (0.2 + 0.15 * i), cv.height * (0.3 + 0.1 * ((i * 3) % 4)), cv.width * (0.08 + 0.03 * i), 0, 6.283); cx.fill(); }
       const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; const me = add(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: t, roughness: 0.8 }), 0, h / 2, 0.022); me.castShadow = false; break;
     }
+    case 'jardinera_hiedra': { g.add(jardineraHiedra(o, w, dd, h, c1, c2)); break; }
     default: {
       if (kind === 'grupo_hablando') {
         const a = figuraHumana(h, POSES.persona_de_pie, c1, new THREE.Color(hexOk(o.deco?.color2, '#2a2a3a')), new THREE.Color('#c9a98c')), b = figuraHumana(h * 0.94, POSES.grupo_hablando, c1.clone().offsetHSL(0.12, 0, 0), new THREE.Color('#2f3a4a'), new THREE.Color('#b88f72'));
