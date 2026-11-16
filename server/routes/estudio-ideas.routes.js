@@ -408,16 +408,17 @@ router.post('/chat', async (req, res) => {
     const contexto = String(req.body?.contexto || '').trim().slice(0, 6000);
     const solo = req.body?.soloDiseno === true || PIDE_SOLO.test(texto);
     const preguntar = req.body?.fase === 'preguntar' && !solo;
-    const modo = solo ? 'solo' : (req.body?.modo === 'sorprende' ? 'sorprende' : 'respetar');
+    const modo = solo ? 'solo' : (req.body?.modo === 'libre' ? 'libre' : req.body?.modo === 'sorprende' ? 'sorprende' : 'respetar');
     const marcaId = String(req.body?.marcaId || '');
     let ficha = '', logoUrl = null, marcaNombre = ''; if (marcaId) { const m = (await leerMarcas()).find(x => x.id === marcaId); if (m) { marcaNombre = m.nombre; if (!preguntar) logoUrl = await logoDe(m).catch(() => null); ficha = '\n\nMARCA DEL CLIENTE (obligatoria: toda idea debe ser reconocible como de esta marca, con su paleta, su tono y sus materiales; nunca uses colores o estilos que la marca desaconseje). Marca «' + m.nombre + '»:\n' + m.ficha + (m.logo ? '\n\nEl logo oficial de la marca está guardado y se usará tal cual.' : '\n\nNo hay logo oficial guardado: no inventes uno ni dibujes uno «parecido»; si la idea lo necesita, deja el hueco o pide que lo adjunten.'); } }
     if (logoUrl) { contenido[0].text += '\n\n(Última imagen adjunta = LOGO OFICIAL de ' + (marcaNombre || 'la marca') + '. Si el diseño lleva logo, colócalo EXACTAMENTE así: misma forma, proporciones, letras y colores. Prohibido redibujarlo, deformarlo o inventar otro.)'; contenido.push({ type: 'input_image', image_url: logoUrl }); }
     const hayBase = imagenes.length > 0 || !!previo; // hay un render/imagen sobre el que trabajar
-    const instrucciones = (extra = '') => INSTRUCCIONES + (contexto ? REGLAS_CONTEXTO + contexto + FIN_CONTEXTO : '') + ficha + (modo !== 'solo' && hayBase ? REGLAS_RESPETAR : '') + (modo === 'sorprende' && !preguntar ? CREATIVO : '') + (preguntar ? BRIEFING : '') + extra;
+    // modo «libre»: como escribirle a ChatGPT directamente: casi sin reglas, hace lo que se pide con la mejor calidad (la marca activa sí se aplica)
+    const instrucciones = (extra = '') => modo === 'libre' ? 'Eres un asistente de generación y edición de imágenes de primer nivel. Haz exactamente lo que pide el usuario con la máxima calidad fotográfica, realismo de materiales y luz. Si hay una imagen adjunta, es la base: mantén lo que no te pida cambiar. Responde en español, en una o dos frases.' + ficha : INSTRUCCIONES + (contexto ? REGLAS_CONTEXTO + contexto + FIN_CONTEXTO : '') + ficha + (modo !== 'solo' && hayBase ? REGLAS_RESPETAR : '') + (modo === 'sorprende' && !preguntar ? CREATIVO : '') + (preguntar ? BRIEFING : '') + extra;
     const tam = FORMATOS[String(req.body?.formato || '')] || null;
     // calidad alta por defecto (sin indicarla la API usa «auto» y suele salir más floja); si esta versión de la API no admite algún ajuste, se reintenta con la herramienta mínima
     const minima = { type: 'image_generation', ...(process.env.OPENAI_IMAGE_MODEL ? { model: process.env.OPENAI_IMAGE_MODEL } : {}) };
-    const base = { ...minima, quality: process.env.OPENAI_IMAGE_QUALITY || 'high', ...(hayBase ? { input_fidelity: 'high' } : {}) };
+    const base = { ...minima, quality: process.env.OPENAI_IMAGE_QUALITY || 'high', ...(hayBase && modo !== 'libre' ? { input_fidelity: 'high' } : {}) };
     const transp = solo && req.body?.transparente === true;
     const herramienta = solo ? { ...base, action: 'generate', ...(tam ? { size: tam } : {}), ...(transp ? { background: 'transparent', output_format: 'png' } : {}) } : (hayBase ? { ...base, action: 'edit' } : base);
     if (solo) contenido[0].text += EXTRA_SOLO + (transp ? ' Sin fondo: el fondo debe ser totalmente transparente (solo el dibujo, recortado).' : '');

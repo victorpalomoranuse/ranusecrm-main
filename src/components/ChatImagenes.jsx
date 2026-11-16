@@ -129,7 +129,7 @@ export default function ChatImagenes({ compacto = false, capturarVista = null, o
   const [chats, setChats] = useState([]), [chatId, setChatId] = useState(null), [titulo, setTitulo] = useState('Conversación nueva'), [mensajes, setMensajes] = useState([]), [previo, setPrevio] = useState(null);
   const [texto, setTexto] = useState(''), [adj, setAdj] = useState([]), [trabajando, setTrabajando] = useState(false), [error, setError] = useState(''), [soloImg, setSoloImg] = useState(false);
   const [marcas, setMarcas] = useState([]), [marcaId, setMarcaId] = useState(''), [vista, setVista] = useState('chats'), [galeria, setGaleria] = useState([]), [grande, setGrande] = useState(null);
-  const [envio, setEnvio] = useState(null), [arrastra, setArrastra] = useState(false), [guardadas, setGuardadas] = useState({}), [menu, setMenu] = useState(false), [usarCtx, setUsarCtx] = useState(true);
+  const [envio, setEnvio] = useState(null), [arrastra, setArrastra] = useState(false), [guardadas, setGuardadas] = useState({}), [menu, setMenu] = useState(false), [usarCtx, setUsarCtx] = useState(false), [libre, setLibre] = useState(true);
   const fin = useRef(null), fichero = useRef(null), area = useRef(null);
 
   const cargaChats = () => api.get('/ia-chats').then(r => setChats(r.data?.chats || [])).catch(() => {});
@@ -174,7 +174,7 @@ export default function ChatImagenes({ compacto = false, capturarVista = null, o
     const nuevos = [...mensajes, delUsuario];
     setMensajes(nuevos); setTexto(''); setAdj([]); setError(''); setTrabajando(true);
     let contexto; if (obtenerContexto && usarCtx) { try { contexto = (await obtenerContexto())?.texto; } catch { contexto = undefined; } }
-    const cuerpo = (extra = {}) => ({ contexto, texto: [t, lista].filter(Boolean).join('\n\n'), imagenes: delUsuario.imagenes, previousResponseId: previo || undefined, soloDiseno: soloImg, marcaId: marcaId || undefined, modo: 'respetar', ...extra });
+    const cuerpo = (extra = {}) => ({ contexto, texto: [t, lista].filter(Boolean).join('\n\n'), imagenes: delUsuario.imagenes, previousResponseId: previo || undefined, soloDiseno: soloImg, marcaId: marcaId || undefined, modo: libre ? 'libre' : 'respetar', ...extra });
     try {
       let r;
       try { r = await api.post('/estudio-ideas/chat', cuerpo(), { timeout: 290000 }); }
@@ -317,6 +317,7 @@ export default function ChatImagenes({ compacto = false, capturarVista = null, o
                     <input ref={fichero} type="file" accept="image/*" multiple hidden onChange={e => { adjunta(e.target.files); e.target.value = ''; }} />
                     <button type="button" className="ci-clip" title="Adjuntar fotos, logo o referencias" onClick={() => fichero.current?.click()}>📎</button>
                     {capturarVista && <button type="button" className="ci-clip" title="Adjuntar la vista actual del 3D" onClick={usaVista}>🖼</button>}
+                    <label className="ci-chk" title="Como escribirle a ChatGPT: casi sin reglas, mejor calidad y más libertad. Desmárcalo si quieres que respete al máximo tu diseño"><input type="checkbox" checked={libre} onChange={e => setLibre(e.target.checked)} /> ✨ Libre (como ChatGPT)</label>
                     {obtenerContexto && <label className="ci-chk" title="La IA recibe una descripción de tu modelo (espacio, medidas, acabados y equipos) y no inventa lo que no le pidas"><input type="checkbox" checked={usarCtx} onChange={e => setUsarCtx(e.target.checked)} /> 🧠 Conoce el modelo</label>}
                     <label className="ci-chk" title="La IA devuelve solo el dibujo o producto, sin escena ni fondo de ambiente"><input type="checkbox" checked={soloImg} onChange={e => setSoloImg(e.target.checked)} /> Solo la imagen, sin escena</label>
                     <button type="button" className="ci-env" disabled={trabajando || (!texto.trim() && !adj.length)} onClick={() => enviar()} title="Enviar">↑</button>
