@@ -3307,7 +3307,8 @@ export default function Visor3D({ cliente = false }) {
       const cat = lumCat.find(c => c.id === l.lid), lm = lucesAj[l.id]?.lm ?? (l.lm || cat?.lm || 800), K = lucesAj[l.id]?.k ?? (cat?.k || 3000);
       const col = colorK(K), aj = lucesAj[l.id] || {};
       const ap = aj.ap ?? l.ap ?? (l.kid === 'spotl' ? 80 : 60);
-      const inten = Math.max(5, lm / 12.57) * 0.22 * ambiente.luces;
+      // luz fotométrica (como DIALux): candelas = lúmenes ÷ ángulo sólido del haz (un haz estrecho concentra más luz); KF pasa las candelas a las unidades de la escena (100 lux sobre un blanco mate ≈ 35 % de brillo)
+      const KF = 0.013, inten = (lm / (4 * Math.PI)) * KF * ambiente.luces, intSp = (lm / (2 * Math.PI * (1 - Math.cos((Math.min(170, Math.max(5, ap)) * Math.PI) / 360)))) * KF * ambiente.luces;
       const puede = () => nLuces < 24 && (nLuces++, true);
       // carriles, tiras LED y luminarias lineales: se modelan a lo largo de su recorrido
       if (l.vs) {
@@ -3318,7 +3319,7 @@ export default function Visor3D({ cliente = false }) {
           const y = (l.h != null ? l.h * CM : techoEn((p[0] + q[0]) / 2, (p[1] + q[1]) / 2) * CM) - (esL ? 0.004 : alto / 2) - (l.kid === 'linealc' ? 0.5 : 0);
           const m = new THREE.Mesh(new THREE.BoxGeometry(L, alto, ancho), esL || !esC ? new THREE.MeshBasicMaterial({ color: esL ? col : 0xf4f4f4, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : matNegro);
           m.position.set(((p[0] + q[0]) / 2) * CM, y, ((p[1] + q[1]) / 2) * CM); m.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); m.traverse(x => { x.userData.luzId = l.id; }); g.add(m);
-          if (!esC && puede()) { const pl = new THREE.PointLight(col, Math.max(5, lm * (L / CM / 100) / 12.57) * 0.22 * ambiente.luces * 0.6, 0, 2); pl.position.set(m.position.x, y - 0.05, m.position.z); g.add(pl); }
+          if (!esC && puede()) { const pl = new THREE.PointLight(col, Math.max(0.05, lm * (L / CM / 100) / (4 * Math.PI)) * 0.013 * ambiente.luces * 0.6, 0, 2); pl.position.set(m.position.x, y - 0.05, m.position.z); g.add(pl); }
         }
         return;
       }
@@ -3341,7 +3342,7 @@ export default function Visor3D({ cliente = false }) {
           luzPos = cab.position.clone().add(dir.clone().multiplyScalar(0.09));
         }
         grp.position.set(l.x * CM, yTop, l.y * CM); grp.traverse(x => { x.userData.luzId = l.id; }); g.add(grp);
-        cand.push({ lp: grp.position.clone().add(luzPos), col, i: inten * 2.5, ang: Math.max(0.1, (ap / 2) * Math.PI / 180), dirE: dir.clone().multiplyScalar(2.5) });
+        cand.push({ lp: grp.position.clone().add(luzPos), col, i: intSp, ang: Math.max(0.1, (ap / 2) * Math.PI / 180), dirE: dir.clone().multiplyScalar(2.5) });
         return;
       }
       const hcm = l.h != null ? l.h : (altDe(l.kid, techoEn(l.x, l.y)) ?? 250);
@@ -3383,7 +3384,7 @@ export default function Visor3D({ cliente = false }) {
         const proy = aj.proy || 'arriba_abajo', base = marca.position.clone().add(frente.clone().multiplyScalar(0.08));
         const haz = (dir, k, angulo, desde) => {
           if (!puede()) return;
-          const sl = new THREE.SpotLight(col, inten * 2.5 * k, 0, Math.max(0.1, ((angulo ?? ap) / 2) * Math.PI / 180), 0.6, 2);
+          const sl = new THREE.SpotLight(col, intSp * k, 0, Math.max(0.1, ((angulo ?? ap) / 2) * Math.PI / 180), 0.6, 2);
           sl.position.copy(desde || base); sl.target.position.copy(base.clone().add(dir.clone().multiplyScalar(2.5))); g.add(sl); g.add(sl.target);
         };
         if (proy === 'difusa') { if (puede()) { const p = new THREE.PointLight(col, inten, 0, 2); p.position.copy(luzMundo); g.add(p); } }
@@ -3400,7 +3401,7 @@ export default function Visor3D({ cliente = false }) {
         return;
       }
       if (l.kid === 'foco' || l.kid === 'plaf') {
-        cand.push({ lp: luzMundo.clone(), col, i: inten * 2.5, ang: Math.max(0.1, (ap / 2) * Math.PI / 180), dirE: dirL ? dirL.clone().multiplyScalar(2.5) : new THREE.Vector3(l.x * CM, 0, l.y * CM).sub(luzMundo) });
+        cand.push({ lp: luzMundo.clone(), col, i: intSp, ang: Math.max(0.1, (ap / 2) * Math.PI / 180), dirE: dirL ? dirL.clone().multiplyScalar(2.5) : new THREE.Vector3(l.x * CM, 0, l.y * CM).sub(luzMundo) });
         return;
       }
       if (!puede()) return;

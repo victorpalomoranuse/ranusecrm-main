@@ -6813,7 +6813,7 @@ function seg3(cur,act){
 (function(){var u=document.getElementById('unidad');if(!u)return;u.value=UNIT;u.addEventListener('change',function(){UNIT=UNIDADES[u.value]?u.value:'cm';try{localStorage.setItem('ranuse-unidad',UNIT)}catch(e){}render();panelSel();toast('Unidad: '+UNIT+' (los datos se guardan igual; solo cambia cómo se escriben)')})})();
 function fld(key,label,val,ph){
   var sin=/^(w_ang|pil_cnt|pil_rot|dr_fs|dr_wd|cl_j|cl_mg|eq_rot|pt_lm|pt_ap)$/.test(key);
-  if(!sin)label=String(label).replace(/cm/g,UNL());
+  if(!sin)label=String(label).replace(/\bcm/g,UNL());
   return '<label class="fld"><span>'+label+'</span><input data-f="'+key+'" inputmode="decimal" autocomplete="off" value="'+(val==null?'':(sin?f2(val):toU(val)))+'"'+(ph!=null?' placeholder="'+(sin||isNaN(+ph)?ph:toU(+ph))+'"':'')+'></label>';
 }
 /* al seleccionar algo, el panel de la derecha muestra sus datos arriba del todo */
@@ -7138,7 +7138,7 @@ function panelSel(focus){
     if(!pd.lin&&pd.h!=null)h+=fld('pt_h','Altura sobre el suelo (cm)',q.h);
     if(q.v==='ilum'){
       var cl2=q.lid&&lumById(q.lid);
-      h+=fld('pt_lm','Lúmenes (lm)',q.lm>0?q.lm:null,cl2&&cl2.lm?cl2.lm+' (del catálogo)':'ej. 800')+fld('pt_ap','Ángulo de apertura (°)',q.ap>0?q.ap:null,'ej. 36 (estrecho) · 60 · 110 (amplio)');
+      h+=fld('pt_lm','Lúmenes (lm)',q.lm>0?q.lm:null,cl2&&cl2.lm?cl2.lm+' (del catálogo)':'ej. 800')+fld('pt_ap','Ángulo de apertura (°)',q.ap>0?q.ap:null,'ej. 36 (estrecho) · 60 · 110 (amplio)')+(q.lm>=20000?'<p class="note" style="color:#d9774f">⚠ '+q.lm+' lm es muchísimo para una luminaria: puede ser el error de unidades de antes (se guardaba ×100). <button data-a="lmfix">Corregir: dividir entre 100 las que pasan de 20.000 lm</button></p>':'');
     }
     if(!pd.lin&&!pd.rect){
       var etqDc=q.k==='cuadro'?'Ancho del símbolo en el plano (cm)':'Tamaño real del símbolo (cm)';
@@ -7683,6 +7683,7 @@ function doAction(a,el){
     for(ii2=1;ii2<ve.length;ii2++){var pr=ne[ii2-1],ddx=ve[ii2].x-ve[ii2-1].x,ddy=ve[ii2].y-ve[ii2-1].y,ll=Math.hypot(ddx,ddy);ne.push(Math.abs(ddx)>=Math.abs(ddy)?{x:pr.x+(ddx<0?-ll:ll),y:pr.y}:{x:pr.x,y:pr.y+(ddy<0?-ll:ll)})}
     snap();ptSetVerts(qe,ne);commit();panelSel();toast('Enderezado');return;
   }
+  if(a==='lmfix'){var nfx=0;snap();(st.v.pts||[]).forEach(function(o4){if(o4.v==='ilum'&&o4.lm>=20000){o4.lm=Math.round(o4.lm/100*10)/10;nfx++}});if(!nfx){hist.pop();toast('No hay luminarias con más de 20.000 lm');return}commit();panelSel();toast('Corregidas '+nfx+' luminarias (lúmenes ÷ 100)');return}
   if(a==='znoffset'&&s.t==='zn'){
     var zo=znDe(s.id);if(!zo)return;
     var inpZ=$('sp-off'),dZ=inpZ?parseFloat(String(inpZ.value).replace(',','.')):NaN;
