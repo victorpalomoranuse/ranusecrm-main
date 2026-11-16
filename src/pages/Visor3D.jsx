@@ -5383,6 +5383,8 @@ export default function Visor3D({ cliente = false }) {
       g.textBaseline = 'middle'; g.fillStyle = '#c9a46c'; g.font = '700 36px ' + F; g.fillText('RANUSE DESIGN', M, hCab / 2);
       g.textAlign = 'right'; g.fillStyle = '#ffffff'; g.font = '300 46px ' + F; g.fillText('Distribución por zonas', W - M, hCab / 2 - 18); g.fillStyle = '#b9b3ab'; g.font = '26px ' + F; g.fillText(String(titulo || '').slice(0, 60), W - M, hCab / 2 + 30); g.textAlign = 'left';
       const y0 = hCab + 50; g.save(); g.beginPath(); g.roundRect(M, y0, W - 2 * M, ah, 26); g.clip(); g.drawImage(img, M, y0, W - 2 * M, ah); g.restore();
+      const lay = api3d.current.zonLayout;
+      if (lay && lay.lista) { const k = (W - 2 * M) / lay.W; lay.lista.forEach(q => { const x = M + q.x * k, y = y0 + q.y * k, w = q.w * k, h = q.h * k; g.fillStyle = q.grande ? q.color : '#ffffffdd'; g.beginPath(); g.roundRect(x, y, w, h, h / 2); g.fill(); g.fillStyle = q.grande ? '#ffffff' : '#2b2723'; g.font = '600 ' + ((q.grande ? 13 : 11) * k) + 'px ' + F; g.textAlign = 'center'; g.fillText(q.txt, x + w / 2, y + h / 2 + k); }); g.textAlign = 'left'; }
       const colW = (W - 2 * M) / 3; zonInfo.forEach((z, i) => {
         const x = M + (i % 3) * colW, y = y0 + ah + 50 + Math.floor(i / 3) * 150, gr = {};
         zonDatos.current.maquinas.filter(m => m.tipo === z.tipo).forEach(m => { gr[m.grupo] = (gr[m.grupo] || 0) + (m.cantidad || 1); });
@@ -5400,9 +5402,10 @@ export default function Visor3D({ cliente = false }) {
   const apagaZonas = () => { setZon(z => ({ ...z, on: false })); if (zonRealPrev.current) { zonRealPrev.current = false; setRealista(true); } };
   useEffect(() => {
     const a = api3d.current; if (!a.scene || !a.raiz) return;
-    const L = { muros: [], mats: [], extras: [], vis: [], timer: null, n: undefined };
+    const L = { muros: [], mats: [], extras: [], vis: [], timer: null, n: undefined, etq: [], raf: 0, cont: null, vivoEtq: false };
     const limpia = () => {
       if (L.timer) { clearInterval(L.timer); L.timer = null; }
+      L.vivoEtq = false; if (L.raf) cancelAnimationFrame(L.raf); if (L.cont) L.cont.remove(); L.cont = null; a.zonLayout = null;
       L.vis.forEach(([o, v]) => { o.visible = v; }); L.vis = [];
       L.muros.forEach(([m, sy]) => { m.scale.y = sy; }); L.mats.forEach(([m, mt]) => { m.material = mt; });
       L.extras.forEach(o => { a.scene.remove(o); o.geometry?.dispose?.(); o.material?.map?.dispose?.(); o.material?.dispose?.(); });
@@ -5418,6 +5421,7 @@ export default function Visor3D({ cliente = false }) {
     });
     if (zonas) { // vista de zonas: solo las máquinas; fuera paneles, logos, textos, mobiliario y luminarias
       [...(a.esc ? a.esc.children : []), a.luzG].forEach(o => { if (o) { L.vis.push([o, o.visible]); o.visible = false; } });
+      a.raiz.traverse(o => { if (o.isMesh && o.userData.muroId && String(o.userData.muroId).startsWith('rc-') && o.visible) { L.vis.push([o, true]); o.visible = false; } });
     }
     if (a.renderer?.shadowMap) a.renderer.shadowMap.needsUpdate = true;
     if (zonas) (async () => {
@@ -5448,9 +5452,9 @@ export default function Visor3D({ cliente = false }) {
           const parche = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: ZON_COLOR[tipo], transparent: true, opacity: 0.34, depthWrite: false, side: THREE.DoubleSide }));
           parche.position.y = Math.min(...ms.map(m => m.p.y)) + 0.02; parche.renderOrder = 2; parche.raycast = () => {}; a.scene.add(parche); L.extras.push(parche);
           const cx0 = ms.reduce((q, m) => q + m.p.x, 0) / ms.length, cz0 = ms.reduce((q, m) => q + m.p.z, 0) / ms.length, top = Math.max(...ms.map(m => m.top));
-          const et = zonEtiqueta(ZON_NOMBRE[tipo], ZON_COLOR[tipo], true); et.position.set(cx0, top + 0.7, cz0); a.scene.add(et); L.extras.push(et);
+          L.etq.push({ txt: ZON_NOMBRE[tipo] + ' · ' + ms.length, color: ZON_COLOR[tipo], pos: new THREE.Vector3(cx0, top + 0.45, cz0), grande: true });
           const g2 = {}; ms.forEach(m => { (g2[m.info.grupo] = g2[m.info.grupo] || []).push(m); });
-          if (zonGrupos && Object.keys(g2).length > 1) Object.entries(g2).forEach(([nom, mm]) => { const sp = zonEtiqueta(nom, ZON_COLOR[tipo], false); sp.position.set(mm.reduce((q, m) => q + m.p.x, 0) / mm.length, Math.max(...mm.map(m => m.top)) + 0.2, mm.reduce((q, m) => q + m.p.z, 0) / mm.length); a.scene.add(sp); L.extras.push(sp); });
+          if (zonGrupos && Object.keys(g2).length > 1) Object.entries(g2).forEach(([nom, mm]) => { L.etq.push({ txt: nom + ' · ' + mm.length, color: ZON_COLOR[tipo], pos: new THREE.Vector3(mm.reduce((q, m) => q + m.p.x, 0) / mm.length, Math.max(...mm.map(m => m.top)) + 0.15, mm.reduce((q, m) => q + m.p.z, 0) / mm.length), grande: false }); });
         });
       });
       // base de maqueta bajo el edificio, para que no flote sobre el fondo
@@ -5459,7 +5463,27 @@ export default function Visor3D({ cliente = false }) {
       if (a.renderer?.shadowMap) a.renderer.shadowMap.needsUpdate = true;
       setZonInfo(resumen);
       // los modelos de las máquinas se cargan poco a poco: cuando llegan piezas nuevas, se vuelve a pintar
-      L.timer = setInterval(() => { let n = 0; a.raiz.traverse(o => { if (o.userData && o.userData.capa === 'equipos') o.traverse(m => { if (m.isMesh && !m.userData.overlay && !m.userData.hit) n++; }); }); if (L.n !== undefined && n !== L.n) { L.n = n; setZonRev(x => x + 1); } else L.n = n; }, 1500);
+      const cuenta = () => { let n = 0; a.raiz.traverse(o => { if (o.userData && o.userData.capa === 'equipos') o.traverse(m => { if (m.isMesh && !m.userData.overlay && !m.userData.hit) n++; }); }); return n; };
+      L.n = cuenta(); L.timer = setInterval(() => { const n = cuenta(); if (n !== L.n) { L.n = n; setZonRev(x => x + 1); } }, 900);
+      // rótulos de pantalla: se colocan sobre cada zona y se apartan entre sí para que no se pisen
+      const padreEl = a.renderer.domElement.parentElement;
+      if (padreEl && L.etq.length) {
+        const cont = document.createElement('div'); cont.style.cssText = 'position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:5'; padreEl.appendChild(cont); L.cont = cont;
+        const els = L.etq.map(q => { const d = document.createElement('div'); d.textContent = q.txt; d.style.cssText = 'position:absolute;left:0;top:0;white-space:nowrap;border-radius:999px;font:600 ' + (q.grande ? 13 : 11) + 'px Montserrat,Arial,sans-serif;padding:' + (q.grande ? '4px 12px' : '2px 9px') + ';box-shadow:0 1px 6px rgba(0,0,0,.25);color:' + (q.grande ? '#fff' : '#2b2723') + ';background:' + (q.grande ? q.color : zonMezcla(q.color, 0.55)); cont.appendChild(d); return d; });
+        const v = new THREE.Vector3(); L.vivoEtq = true;
+        const bucle = () => {
+          if (!L.vivoEtq) return;
+          const W = padreEl.clientWidth, H = padreEl.clientHeight, cajas = [];
+          [...(a.esc ? a.esc.children : []), a.luzG].forEach(o => { if (o && o.visible) { o.visible = false; if (!L.vis.some(p => p[0] === o)) L.vis.push([o, true]); } }); // lo que aparezca de nuevo (objetos recién creados) se vuelve a ocultar
+          L.etq.forEach((q, i) => { v.copy(q.pos).project(a.cam); const w = els[i].offsetWidth, h = els[i].offsetHeight; cajas.push({ i, ok: v.z > -1 && v.z < 1, x: (v.x * 0.5 + 0.5) * W - w / 2, y: (-v.y * 0.5 + 0.5) * H - h / 2, w, h }); });
+          const vis = cajas.filter(c => c.ok).sort((p, q) => p.y - q.y);
+          for (let it = 0; it < 4; it++) for (let a1 = 0; a1 < vis.length; a1++) for (let b1 = a1 + 1; b1 < vis.length; b1++) { const A = vis[a1], B = vis[b1]; if (A.x < B.x + B.w + 4 && B.x < A.x + A.w + 4 && A.y < B.y + B.h + 2 && B.y < A.y + A.h + 2) B.y = A.y + A.h + 3; }
+          cajas.forEach(c => { const d = els[c.i]; d.style.display = c.ok ? '' : 'none'; if (c.ok) d.style.transform = 'translate(' + Math.round(c.x) + 'px,' + Math.round(c.y) + 'px)'; });
+          a.zonLayout = { W, H, lista: cajas.filter(c => c.ok).map(c => ({ txt: L.etq[c.i].txt, color: L.etq[c.i].color, grande: L.etq[c.i].grande, x: c.x, y: c.y, w: c.w, h: c.h })) };
+          L.raf = requestAnimationFrame(bucle);
+        };
+        L.raf = requestAnimationFrame(bucle);
+      }
     })();
     return () => { vivo = false; limpia(); };
   }, [!!axo, zon.on, zon.corte, rev, estado, zonRev, zonGrupos]);
