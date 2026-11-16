@@ -109,6 +109,8 @@ function frenaMuros(modelo, pos, mov, offs) {
 // Visor 3D de un plano de Planos (lee su modelo3d). Pensado para gimnasios: paredes con puertas y ventanas,
 // suelos por sala, pilares y máquinas como bloques con sus medidas. Las medidas del plano van en cm.
 const CM = 0.01;
+// óptica (ángulo de visión vertical) con la que arranca la cámara: 30° por defecto; se puede dejar otra como predeterminada desde la barra de arriba
+const lenteGuardada = () => { try { const v = parseFloat(localStorage.getItem('visor3dLenteDef')); return v >= 12 && v <= 110 ? v : 30; } catch { return 30; } };
 // ── vista de zonas (axonométrica con muros cortados, zonas de color en el suelo y rótulos); los mismos colores que la lámina del cliente ──
 const ZON_COLOR = { cardio: '#2a9d8f', pin: '#7a64c4', discos: '#d9774f', poleas: '#3f84c9', libre: '#d9a232', funcional: '#c9628f' };
 const ZON_NOMBRE = { cardio: 'Cardio', pin: 'Máquinas de pin', discos: 'Discos y palanca', poleas: 'Poleas', libre: 'Peso libre', funcional: 'Funcional' };
@@ -2108,12 +2110,12 @@ export default function Visor3D({ cliente = false }) {
     if (a.bloomPass) a.bloomPass.strength = fx.bloom;
   }, [fx, realista, estado]);
   // Óptica: ángulo de visión vertical de la cámara (como el objetivo de una cámara). Menos grados = más zoom y menos deformación; más grados = gran angular
-  const [lente, setLente] = useState(50);
+  const [lente, setLente] = useState(() => lenteGuardada());
   useEffect(() => {
     const t = setInterval(() => { const cam = api3d.current.cam; if (cam && Math.abs(cam.fov - lenteRef.current) > 0.5) { lenteRef.current = Math.round(cam.fov); setLente(Math.round(cam.fov)); } }, 400);
     return () => clearInterval(t);
   }, []);
-  const lenteRef = useRef(50);
+  const lenteRef = useRef(lenteGuardada());
   const ponerLente = g => { const cam = api3d.current.cam; if (!cam) return; g = Math.max(12, Math.min(110, Math.round(g))); cam.fov = g; cam.updateProjectionMatrix(); lenteRef.current = g; setLente(g); if (api3d.current.persona) api3d.current.fovPersona = g; };
   const mmDe = g => Math.round(12 / Math.tan((g * Math.PI / 180) / 2));
   // Exporta el espacio (muros, suelos, puertas, ventanas, máquinas y objetos) a .glb para abrirlo en D5, Blender, etc. Medidas en metros, Y arriba
@@ -2356,7 +2358,7 @@ export default function Visor3D({ cliente = false }) {
       cx.fillStyle = gr; cx.fillRect(0, 0, 2, 256);
       const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; scene.background = t;
     }
-    const cam = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
+    const cam = new THREE.PerspectiveCamera(cliente ? 50 : lenteGuardada(), 1, 0.1, 500);
     {
       const orig = cam.updateProjectionMatrix.bind(cam);
       cam.updateProjectionMatrix = () => { orig(); const s = api3d.current.shiftY || 0; if (s) { cam.projectionMatrix.elements[9] += 2 * s; cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert(); } };
@@ -3499,9 +3501,9 @@ export default function Visor3D({ cliente = false }) {
     { const m = a.modelo, ip = m ? plantaDeCamara(m, a.offsPl, ocultas, cam.position.x, cam.position.z, cam.position.y) : 0; a.basePl = ((m?.plantas || [m])[ip]?.z || 0) * CM; setPlantaPers(ip); cam.position.y = a.basePl + alturaOjos; }
     ctrl.minDistance = ctrl.maxDistance = 0.05; ctrl.target.copy(cam.position).addScaledVector(d, 0.05);
     ctrl.enablePan = false; ctrl.enableZoom = false; ctrl.rotateSpeed = 0.45; ctrl.dampingFactor = 0.2; ctrl.minPolarAngle = Math.PI * 0.12; ctrl.maxPolarAngle = Math.PI * 0.88;
-    cam.fov = 62; cam.updateProjectionMatrix(); ctrl.update();
+    cam.fov = cliente ? 62 : lenteGuardada(); cam.updateProjectionMatrix(); ctrl.update();
     // para el cliente la óptica es siempre la misma (sin zoom con la rueda): la imagen no se deforma; el diseñador sí puede variarla
-    const rueda = e => { e.preventDefault(); if (cliente) return; cam.fov = Math.max(28, Math.min(85, cam.fov + (e.deltaY > 0 ? 3 : -3))); cam.updateProjectionMatrix(); };
+    const rueda = e => { e.preventDefault(); }; // la óptica solo se cambia a mano (barra de arriba), no con la rueda
     el.addEventListener('wheel', rueda, { passive: false });
     return () => el.removeEventListener('wheel', rueda);
   }, [persona, estado]);
@@ -5000,7 +5002,7 @@ export default function Visor3D({ cliente = false }) {
   const vista = tipo => {
     const a = api3d.current, { cam, ctrl, raiz, esc } = a;
     if (alz) salirAlzado();
-    cam.fov = 45; a.shiftY = 0; setShiftY(0); cam.updateProjectionMatrix();
+    cam.fov = lenteGuardada(); a.shiftY = 0; setShiftY(0); cam.updateProjectionMatrix();
     const b = new THREE.Box3().setFromObject(raiz), be = new THREE.Box3().setFromObject(esc); if (!be.isEmpty()) b.union(be);
     const vacio = b.isEmpty(), cen = vacio ? new THREE.Vector3(4, 1, 3) : b.getCenter(new THREE.Vector3()), tam = vacio ? new THREE.Vector3(8, 2.6, 6) : b.getSize(new THREE.Vector3());
     const tg = Math.tan((cam.fov * Math.PI) / 360), asp = cam.aspect || 1.6;
@@ -6199,7 +6201,8 @@ export default function Visor3D({ cliente = false }) {
           ['Escenas' + (escenas.length ? ' (' + escenas.length + ')' : ''), () => setEscAbierta(v => !v), escAbierta, false, 'Vistas guardadas', '3'],
         ])}
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#fff', fontSize: 12, flex: 'none', whiteSpace: 'nowrap' }} title="Óptica de la cámara: menos grados = más zoom; más grados = gran angular. Una persona ve nítido unos 30°">
-          <Ic n="cinta" /> <input type="range" min="12" max="110" value={lente} onChange={e => ponerLente(parseFloat(e.target.value))} style={{ width: 70 }} /> <b style={{ minWidth: 28 }}>{lente}°</b>
+          <Ic n="cinta" /> <input type="range" min="12" max="110" value={lente} onChange={e => ponerLente(parseFloat(e.target.value))} style={{ width: 70 }} /> <input type="number" min="12" max="110" step="1" value={lente} onChange={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) ponerLente(v); }} style={{ ...bTop, width: 48, padding: '2px 4px' }} title="Escribe los grados de la óptica" />°
+          <span onClick={() => { try { localStorage.setItem('visor3dLenteDef', String(lente)); } catch { /* sin almacenamiento */ } setAviso('Óptica predeterminada: ' + lente + '° (se usará al abrir y al encuadrar)'); }} style={{ cursor: 'pointer', padding: '0 3px' }} title="Dejar esta óptica como la predeterminada">★</span>
           <select value="" onChange={e => { if (e.target.value) ponerLente(parseFloat(e.target.value)); }} style={{ ...bTop, width: 92 }}><option value="">Óptica…</option><option value="90">Gran angular 90°</option><option value="65">Interior amplio 65°</option><option value="50">Interior natural 50°</option><option value="30">Como persona 30°</option><option value="25">Tele 25°</option></select>
         </span>
         <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">Ambiente</button>
