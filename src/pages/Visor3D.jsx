@@ -2091,7 +2091,8 @@ export default function Visor3D({ cliente = false }) {
     mira(); const iv = setInterval(mira, 400); window.addEventListener('visor3d-carga', mira);
     return () => { fin = true; clearInterval(iv); if (t) clearTimeout(t); window.removeEventListener('visor3d-carga', mira); };
   }, [estado]);
-  const [realista, setRealista] = useState(() => { try { return localStorage.getItem('visor3dRealista') === '1'; } catch { return false; } });
+  // el modo Realista nunca arranca solo (es lo más pesado del visor): se enciende a mano cuando se quiere mirar o renderizar
+  const [realista, setRealista] = useState(false);
   const [titulo, setTitulo] = useState('');
   // Modo render (el «Realista»): el modelo queda BLOQUEADO. No se mueve, gira, borra, dibuja ni modela nada; solo se ajustan materiales y luces (y la cámara y el ambiente).
   const modoRender = realista && !cliente, modoRenderRef = useRef(false); modoRenderRef.current = modoRender;
