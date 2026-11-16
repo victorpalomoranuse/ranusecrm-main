@@ -3953,7 +3953,10 @@ export default function Visor3D({ cliente = false }) {
             const dd = Math.min(Math.abs(prof), tCm - 1);
             mesh.position.z = lado * ((tCm / 2 - dd) * CM); holder.add(mesh);
             if (/^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) { const ledM = new THREE.MeshBasicMaterial({ color: o.luzZ }); o.pts.forEach((p, i) => { const q = o.pts[(i + 1) % o.pts.length], Ls = Math.hypot(q[0] - p[0], q[1] - p[1]); if (Ls < 2) return; const b = new THREE.Mesh(new THREE.BoxGeometry(Ls * CM, 0.014, 0.014), ledM); b.position.set(((p[0] + q[0]) / 2) * CM, ((p[1] + q[1]) / 2) * CM, lado * ((tCm / 2 - dd) * CM + 0.008)); b.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); holder.add(b); }); }
-          } else { mesh.position.z = lado * ((tCm / 2) * CM + 0.004); holder.add(mesh); }
+          } else {
+            mesh.position.z = lado * ((tCm / 2) * CM + 0.004); holder.add(mesh);
+            if (/^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) { const ledM = new THREE.MeshBasicMaterial({ color: o.luzZ }); o.pts.forEach((p, i) => { const q = o.pts[(i + 1) % o.pts.length], Ls = Math.hypot(q[0] - p[0], q[1] - p[1]); if (Ls < 2) return; const b = new THREE.Mesh(new THREE.BoxGeometry(Ls * CM, 0.012, 0.01), ledM); b.position.set(((p[0] + q[0]) / 2) * CM, ((p[1] + q[1]) / 2) * CM, lado * ((tCm / 2) * CM + 0.009)); b.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); holder.add(b); }); }
+          }
           gz.add(holder);
           gz.userData.sinArrastre = true;
         } else {
@@ -4634,8 +4637,10 @@ export default function Visor3D({ cliente = false }) {
   };
   const tiraLedContornoSel = () => {
     const o = objs.find(x => x.id === selObj); if (!o) { setAviso('Selecciona primero un objeto (volumen, zona, mueble…) y la tira se pega a su contorno'); return; }
-    if (o.rot) { setAviso('Pon el objeto sin girar (rotación 0) para pegarle la tira'); return; }
-    const rel = o.pts && o.pts.length >= 3 ? o.pts : [[-o.w / 2, -o.d / 2], [o.w / 2, -o.d / 2], [o.w / 2, o.d / 2], [-o.w / 2, o.d / 2]];
+    if (o.tipo === 'zona' && o.plano === 'pared') { cambiar(o.id, { luzZ: o.luzZ || '#ffd9a0' }); setAviso('Borde luminoso puesto en esa zona de pared. El color y la profundidad se cambian en «Forma en la pared» del panel.'); return; }
+    if (o.tipo === 'deco' && /^espejo_/.test(o.deco?.kind || '')) { setAviso('Un espejo suelto no lleva tira aparte: dibuja una zona en la pared con el material espejo y pon la luz en el borde, o pega una tira al muro.'); return; }
+    const ang = ((o.rot || 0) * Math.PI) / 180, c = Math.cos(ang), sn = Math.sin(ang);
+    const rel = (o.pts && o.pts.length >= 3 ? o.pts : [[-o.w / 2, -o.d / 2], [o.w / 2, -o.d / 2], [o.w / 2, o.d / 2], [-o.w / 2, o.d / 2]]).map(p => [p[0] * c - p[1] * sn, p[0] * sn + p[1] * c]);
     crearTiraLed(rel.map(p => [o.cx + p[0], o.cy + p[1]]), (o.z0 || 0) + (o.alto || 0), 'Tira LED · ' + (o.nombre || 'objeto'));
   };
   const tiraLedSala = () => {
@@ -8495,7 +8500,23 @@ export default function Visor3D({ cliente = false }) {
                 </select>
                 {modo !== 'plana' && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 118, opacity: 0.7 }}>{modo === 'resalte' ? 'Cuánto sale (cm)' : 'Profundidad (cm)'}</span><input type="number" min="1" max={modo === 'resalte' ? 100 : 60} value={Math.abs(pr)} onChange={e => poner(modo, Math.max(1, parseFloat(e.target.value) || 1))} style={{ ...btn, width: 64 }} /></label>}
                 {modo === 'nicho' && <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 6 }}>Máximo: el grosor del muro menos 1 cm. Si es más hondo, atraviesa el muro.</div>}
-                {modo !== 'plana' && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><input type="checkbox" checked={!!objSel.luzZ} onChange={e => cambiar(objSel.id, { luzZ: e.target.checked ? '#ffd9a0' : undefined })} /><span>Luz LED en el borde</span>{objSel.luzZ && <input type="color" value={objSel.luzZ} onChange={e => cambiar(objSel.id, { luzZ: e.target.value })} style={{ marginLeft: 6 }} />}</label>}
+                {(() => {
+                  const pts = objSel.pts || [], xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+                  const rect = objSel.rect || (pts.length === 4 && new Set(xs.map(v => Math.round(v * 10))).size === 2 && new Set(ys.map(v => Math.round(v * 10))).size === 2 ? { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) } : null);
+                  if (!rect) return null;
+                  const wr = rect.x1 - rect.x0, hr = rect.y1 - rect.y0, maxR = Math.floor(Math.min(wr, hr) / 2), rr = Math.round(objSel.rr || 0);
+                  const redondea = rad => {
+                    const q = Math.max(0, Math.min(maxR, rad || 0)); let np;
+                    if (q < 0.5) np = [[rect.x0, rect.y0], [rect.x1, rect.y0], [rect.x1, rect.y1], [rect.x0, rect.y1]];
+                    else { np = []; [[rect.x1 - q, rect.y0 + q, -Math.PI / 2], [rect.x1 - q, rect.y1 - q, 0], [rect.x0 + q, rect.y1 - q, Math.PI / 2], [rect.x0 + q, rect.y0 + q, Math.PI]].forEach(([cx0, cy0, a0]) => { for (let k = 0; k <= 8; k++) { const a1 = a0 + (k / 8) * (Math.PI / 2); np.push([Math.round((cx0 + q * Math.cos(a1)) * 100) / 100, Math.round((cy0 + q * Math.sin(a1)) * 100) / 100]); } }); }
+                    cambiar(objSel.id, { pts: np, rect, rr: q });
+                  };
+                  return (<>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>{[['Recto', 0], ['Suave', 4], ['Redondeado', 10], ['Muy redondeado', 20]].map(([n, v]) => <button key={n} style={{ ...btn, padding: '3px 8px', background: rr === v ? '#6b6159' : undefined }} onClick={() => redondea(v)}>{n}</button>)}</div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 150, opacity: 0.7 }}>Esquinas redondeadas (cm)</span><input type="number" min="0" max={maxR} value={rr} onChange={e => redondea(parseFloat(e.target.value) || 0)} style={{ ...btn, width: 64 }} /></label>
+                  </>);
+                })()}
+                {<label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><input type="checkbox" checked={!!objSel.luzZ} onChange={e => cambiar(objSel.id, { luzZ: e.target.checked ? '#ffd9a0' : undefined })} /><span>Luz LED en el borde</span>{objSel.luzZ && <input type="color" value={objSel.luzZ} onChange={e => cambiar(objSel.id, { luzZ: e.target.value })} style={{ marginLeft: 6 }} />}</label>}
               </div>
             );
           })()}

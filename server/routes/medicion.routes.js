@@ -781,6 +781,8 @@ router.put('/:id/escena3d', async (req, res) => {
       muroId: o.muroId ? String(o.muroId).slice(0, 40) : undefined,
       lado: o.lado === -1 ? -1 : 1,
       prof: o.tipo === 'zona' && Number.isFinite(parseFloat(o.prof)) ? Math.max(-60, Math.min(100, parseFloat(o.prof))) : undefined,
+      rr: o.tipo === 'zona' && Number.isFinite(parseFloat(o.rr)) ? Math.max(0, Math.min(300, parseFloat(o.rr))) : undefined,
+      rect: o.tipo === 'zona' && o.rect && [o.rect.x0, o.rect.y0, o.rect.x1, o.rect.y1].every(v => Number.isFinite(parseFloat(v))) ? { x0: parseFloat(o.rect.x0), y0: parseFloat(o.rect.y0), x1: parseFloat(o.rect.x1), y1: parseFloat(o.rect.y1) } : undefined,
       luzZ: o.tipo === 'zona' && /^#[0-9a-fA-F]{6}$/.test(String(o.luzZ || '')) ? String(o.luzZ) : undefined,
       h: Number.isFinite(parseFloat(o.h)) ? Math.max(0, Math.min(1000, parseFloat(o.h))) : undefined,
       ft: o.tipo === 'falsotecho' && o.ft ? { descenso: Math.max(-100, Math.min(100, num(o.ft.descenso, 15))), gap: Math.max(2, Math.min(60, num(o.ft.gap, 12))), luz: o.ft.luz !== false, k: Math.max(1500, Math.min(10000, num(o.ft.k, 3000))), ...(o.ft.lados && typeof o.ft.lados === 'object' ? { lados: { n: o.ft.lados.n !== false, s: o.ft.lados.s !== false, e: o.ft.lados.e !== false, o: o.ft.lados.o !== false } } : {}), ...(/^#[0-9a-fA-F]{6}$/.test(o.ft.colorLuz || '') ? { colorLuz: o.ft.colorLuz } : {}) } : undefined,
