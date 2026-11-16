@@ -595,52 +595,6 @@ function aplicaSerie(mm, marca, serie) {
     return true;
   } catch (e) { console.warn('serie de máquinas', e); return false; }
 }
-// ── Versión «de movimiento» de cada máquina: mientras la cámara se mueve y el visor va justo, las ~150 piezas sueltas de cada máquina se sustituyen por unas pocas mallas
-// (las que comparten el mismo aspecto, unidas). Se ve igual, pero son 10-20 veces menos llamadas de dibujo. Al parar, vuelven las piezas originales (las que se pintan, se eligen y se editan).
-function piezasProxy(mm) {
-  const out = [];
-  mm.traverse(x => {
-    if (!x.isMesh || x.userData.hit || x.userData.proxyMov || x.isSkinnedMesh || x.isInstancedMesh || Array.isArray(x.material) || !x.material || x.material.visible === false || !x.geometry?.attributes?.position) return;
-    for (let q = x; q && q !== mm; q = q.parent) if (!q.visible) return;
-    out.push(x);
-  });
-  return out;
-}
-function estampaProxy(piezas) {
-  let h = piezas.length | 0;
-  for (const x of piezas) { const m = x.material; h = (Math.imul(h, 31) + m.id) | 0; h = (Math.imul(h, 31) + (m.color ? m.color.getHex() : 0)) | 0; h = (Math.imul(h, 31) + (m.emissive ? m.emissive.getHex() : 0)) | 0; h = (Math.imul(h, 31) + Math.round((m.roughness || 0) * 1000) + Math.round((m.metalness || 0) * 1000) * 7 + Math.round((m.opacity ?? 1) * 1000) * 13) | 0; h = (Math.imul(h, 31) + (m.map ? m.map.id : 0)) | 0; h = (Math.imul(h, 31) + x.children.length) | 0; }
-  return h;
-}
-function construyeProxy(mm) {
-  const piezas = piezasProxy(mm); if (piezas.length < 6) return null;
-  mm.updateMatrixWorld(true);
-  const inv = new THREE.Matrix4().copy(mm.matrixWorld).invert(), grupos = new Map(), M = new THREE.Matrix4();
-  for (const x of piezas) {
-    const m = x.material, k = [m.type, m.color ? m.color.getHex() : 0, m.map ? m.map.id : 0, m.normalMap ? m.normalMap.id : 0, m.roughnessMap ? m.roughnessMap.id : 0, m.metalnessMap ? m.metalnessMap.id : 0, m.emissive ? m.emissive.getHex() : 0, m.emissiveIntensity, Math.round((m.roughness || 0) * 100), Math.round((m.metalness || 0) * 100), m.opacity, m.transparent ? 1 : 0, m.side, m.alphaTest, m.polygonOffset ? m.polygonOffsetFactor : 0, m.vertexColors ? 1 : 0, m.envMapIntensity].join('|');
-    const g = x.geometry.clone(); g.clearGroups(); g.morphAttributes = {};
-    g.applyMatrix4(M.multiplyMatrices(inv, x.matrixWorld));
-    for (const n of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(n) && !(n === 'color' && m.vertexColors)) g.deleteAttribute(n);
-    if (!g.attributes.normal) g.computeVertexNormals();
-    if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
-    if (!g.index) { const n = g.attributes.position.count, ix = new (n > 65535 ? Uint32Array : Uint16Array)(n); for (let i = 0; i < n; i++) ix[i] = i; g.setIndex(new THREE.BufferAttribute(ix, 1)); }
-    if (x.matrixWorld.determinant() < 0) { const ix = g.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; } }
-    if (!grupos.has(k)) grupos.set(k, { mat: m, geos: [], meshes: [] });
-    const gr = grupos.get(k); gr.geos.push(g); gr.meshes.push(x);
-  }
-  const grp = new THREE.Group(); grp.visible = false; grp.userData.proxyMov = true; grp.userData.hit = true; const ocultables = [];
-  grupos.forEach(({ mat, geos, meshes }) => {
-    let geo = null; try { geo = geos.length === 1 ? geos[0] : mergeGeometries(geos, false); } catch { geo = null; }
-    if (!geo) return;
-    const me = new THREE.Mesh(geo, mat); me.userData.proxyMov = true; me.userData.hit = true; me.raycast = () => {}; me.receiveShadow = true; grp.add(me); ocultables.push(...meshes);
-  });
-  if (!grp.children.length || ocultables.length < 4) { grp.traverse(o => o.geometry?.dispose?.()); return null; }
-  mm.add(grp);
-  return { mm, grp, ocultables, est: estampaProxy(piezas) };
-}
-function alternaProxy(p, on) {
-  if (on) { p.ocultables.forEach(x => { x.visible = false; }); p.grp.visible = true; }
-  else { p.ocultables.forEach(x => { x.visible = true; }); p.grp.visible = false; }
-}
 export function registraLod(a, mm, prox) {
   const r = new THREE.Box3().setFromObject(mm).getSize(new THREE.Vector3()).length() / 2;
   (a.lodList = a.lodList || []).push({ mm, r: r > 0 ? r : 1, prox, peq: false });
@@ -2620,7 +2574,7 @@ export default function Visor3D({ cliente = false }) {
       let serieN = 0, maqN = 0; scene.traverse(o => { if (o.userData && o.userData.capa === 'equipos' && o.userData.equipo) { maqN++; } if (o.userData && o.userData.serie) serieN++; });
       const luces = {}; scene.traverse(o => { if (o.isLight && o.visible && o.intensity > 0) { const k = o.isSpotLight ? 'focos' : o.isRectAreaLight ? 'luces de área' : o.isPointLight ? 'puntuales' : o.isDirectionalLight ? 'sol' : 'otras'; luces[k] = (luces[k] || 0) + 1; } });
       const txtLuces = Object.entries(luces).map(([k, v]) => v + ' ' + k).join(' · ') || 'ninguna', progs = (inf.programs || []).length;
-      det.textContent = 'QUÉ PESA (lo que se ve ahora)\n' + filas + '\nTotal: ' + llamadas + ' piezas · ' + Math.round(tri / 1000) + 'k triángulos · ' + mats.size + ' materiales\nSerie de máquinas: ' + serieN + ' de ' + maqN + ' máquinas simplificadas' + (api3d.current.serieFallos ? ' (' + api3d.current.serieFallos + ' no se han podido)' : '') + '\nVersión de movimiento: ' + ((api3d.current.proxyLista || []).length) + ' máquinas preparadas, ' + ((api3d.current.proxyCola || []).length) + ' en cola, ' + (api3d.current.proxyOn ? 'ACTIVA ahora' : 'inactiva') + (api3d.current.movStats ? '\nÚltimo movimiento de cámara: ' + api3d.current.movStats.calls + ' llamadas · ' + Math.round(1000 / Math.max(1, api3d.current.movStats.ms)) + ' fps · versión de movimiento ' + (api3d.current.movStats.prox ? 'USADA' : 'no usada') : '') + ' · ' + (api3d.current.composer ? 'con efectos' : 'directo') + '\nLuces encendidas: ' + txtLuces + ' · ' + progs + ' programas de sombreado\nEn la tarjeta: ' + inf.memory.textures + ' texturas · ' + inf.memory.geometries + ' geometrías' + '\nPulsa para cerrar';
+      det.textContent = 'QUÉ PESA (lo que se ve ahora)\n' + filas + '\nTotal: ' + llamadas + ' piezas · ' + Math.round(tri / 1000) + 'k triángulos · ' + mats.size + ' materiales\nSerie de máquinas: ' + serieN + ' de ' + maqN + ' máquinas simplificadas' + (api3d.current.serieFallos ? ' (' + api3d.current.serieFallos + ' no se han podido)' : '') + '' + '\nLuces encendidas: ' + txtLuces + ' · ' + progs + ' programas de sombreado\nEn la tarjeta: ' + inf.memory.textures + ' texturas · ' + inf.memory.geometries + ' geometrías' + '\nPulsa para cerrar';
       det.style.display = 'block';
     };
     const vF = new THREE.Vector3(), vR = new THREE.Vector3(), vM = new THREE.Vector3(), ARRIBA = new THREE.Vector3(0, 1, 0);
@@ -2646,18 +2600,6 @@ export default function Visor3D({ cliente = false }) {
           a0.lodList.forEach(it => { it.mm.getWorldPosition(vM); const peq = it.r * it.mm.parent.getWorldScale(vR).x / Math.max(0.1, cam.position.distanceTo(vM)) < (ema > 60 ? 0.2 : ema > 45 ? 0.14 : 0.09); if (peq !== it.peq) { it.peq = peq; it.mm.visible = !peq; it.prox?.(peq); } });
         } else if (!movi && L.some(it => it.peq)) L.forEach(it => { if (it.peq) { it.peq = false; it.mm.visible = true; it.prox?.(false); } });
       }
-      // versión de movimiento de las máquinas: se activa solo si la cámara se mueve y el visor va por debajo de ~35 fps; al parar vuelve todo igual
-      try {
-        const lista = a0.proxyLista = (a0.proxyLista || []).filter(p => { for (let q = p.mm; q; q = q.parent) if (q === scene) return true; return false; });
-        const usa = movi && ema > 28 && !a0.pt;
-        if (usa) {
-          if (!a0.proxyOn) { a0.proxyOn = true; lista.forEach(p => { if (estampaProxy(piezasProxy(p.mm)) !== p.est) { p.grp.removeFromParent(); p.grp.traverse(o => o.geometry?.dispose?.()); p.mm.userData.proxyObsoleto = true; a0.proxyCola = a0.proxyCola || []; if (!a0.proxyCola.includes(p.mm)) a0.proxyCola.push(p.mm); p.viejo = true; } else alternaProxy(p, true); }); a0.proxyLista = lista.filter(p => !p.viejo); }
-        } else if (a0.proxyOn) { a0.proxyOn = false; lista.forEach(p => alternaProxy(p, false)); }
-        if (!movi && !a0.proxyOn && a0.proxyCola && a0.proxyCola.length && ahora - (a0.ultProx || 0) > 40) {
-          a0.ultProx = ahora; const mm0 = a0.proxyCola.shift();
-          if (mm0 && mm0.parent && !a0.proxyLista.some(p => p.mm === mm0)) { const p = construyeProxy(mm0); if (p) a0.proxyLista.push(p); }
-        }
-      } catch (e) { a0.proxyCola = []; a0.proxyOn = false; /* si algo falla, no se usa y se ve todo como antes */ }
       { const lpz = api3d.current.luzPool; if (lpz && ahora - lpz.t > 250) { lpz.t = ahora; if (lpz.ult.distanceToSquared(cam.position) > 0.25) { lpz.ult.copy(cam.position); lpz.asigna(cam.position); } } }
       if (!movi && ahora - ultSombra > 500) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
       if (espejoSucio && ahora - (a0.ultEsp || 0) > 250) { espejoSucio = false; a0.ultEsp = ahora; aplicaEspejos(scene); }
@@ -2677,7 +2619,7 @@ export default function Visor3D({ cliente = false }) {
         }
         if (!(ahora < (a0.despierta || 0))) { a0.reposo = true; return; }
       } // nada ha cambiado: no se dibuja y la tarjeta gráfica descansa
-      a0.reposo = false; if (a0.ultInfoCalls !== undefined) { const ci = renderer.info.render.calls; if (movi && ci > 0) a0.movStats = { calls: ci, ms: Math.round(ema), prox: !!a0.proxyOn, t: Date.now() }; } renderer.info.reset(); a0.ultInfoCalls = 1;
+      a0.reposo = false; renderer.info.reset();
       if (a0.pt && a0.ptReady && !(cliente && movi)) {
         a0.pt.renderSample();
         a0.ptLento = ema > 450 ? (a0.ptLento || 0) + 1 : 0; // si va muy lento se desactiva solo
@@ -2696,7 +2638,7 @@ export default function Visor3D({ cliente = false }) {
         else if (ema > 42 && !a0.sinSombrasMaq) { a0.sinSombrasMaq = true; scene.traverse(o => { if (o.isMesh && o.castShadow && o.parent?.userData?.modeloEq) o.castShadow = false; else if (o.isMesh && o.castShadow) { let q = o.parent, esMaq = false; while (q) { if (q.userData?.modeloEq) { esMaq = true; break; } q = q.parent; } if (esMaq) o.castShadow = false; } }); } // primero se quitan las sombras de las máquinas (lo que más pesa); las del local se mantienen
         else if (ema > 42 && !sinSombras) { sinSombras = true; renderer.shadowMap.enabled = false; sol.castShadow = false; scene.traverse(o => { if (o.material) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.needsUpdate = true; }); } }); }
         else if (ema < 22 && escala < 1) { escala = Math.min(1, escala + 0.1); renderer.setPixelRatio(base * escala); }
-        hud.textContent = Math.round(1000 / Math.max(1, ema)) + ' fps · ' + Math.round(renderer.info.render.triangles / 1000) + 'k triáng. · ' + renderer.info.render.calls + ' llamadas' + (escala < 1 ? ' · res ' + Math.round(escala * 100) + '%' : '') + (sinSombras ? ' · sin sombras' : '') + (a0.composer ? ' · con efectos' : '') + ' · mov ' + (a0.proxyLista ? a0.proxyLista.length : 0) + (a0.proxyCola && a0.proxyCola.length ? '(+' + a0.proxyCola.length + ')' : '') + (a0.proxyOn ? ' ACTIVA' : '') + (a0.pt && a0.ptReady ? ' · refinado ' + a0.pt.samples + '/' + (a0.ptMax || 200) : '') + ' · ' + (gpuNombre || 'gpu ?') + ' · px ' + renderer.getPixelRatio().toFixed(1);
+        hud.textContent = Math.round(1000 / Math.max(1, ema)) + ' fps · ' + Math.round(renderer.info.render.triangles / 1000) + 'k triáng. · ' + renderer.info.render.calls + ' llamadas' + (escala < 1 ? ' · res ' + Math.round(escala * 100) + '%' : '') + (sinSombras ? ' · sin sombras' : '') + (a0.composer ? ' · con efectos' : '') + (a0.pt && a0.ptReady ? ' · refinado ' + a0.pt.samples + '/' + (a0.ptMax || 200) : '') + ' · ' + (gpuNombre || 'gpu ?') + ' · px ' + renderer.getPixelRatio().toFixed(1);
       }
     };
     const enCampo = e => { const t = (e.target?.tagName || '').toLowerCase(); return t === 'input' || t === 'textarea' || t === 'select' || e.target?.isContentEditable; };
@@ -3956,7 +3898,6 @@ export default function Visor3D({ cliente = false }) {
         if (g.userData.cuerpo) { g.userData.cuerpo.material.visible = false; g.userData.cuerpo.castShadow = false; }
         registraLod(a, mm, v => { if (g.userData.cuerpo) g.userData.cuerpo.material.visible = v; });
         try { const ov = mm.userData.serie ? [] : aplicarRegiones(mm, 'e:' + e.id + ':', acabRef.current?.regiones, texturas); (a.overlaysRaiz = a.overlaysRaiz || []).push(...ov); } catch { /* un acabado que falla no debe deshacer el modelo ya puesto */ }
-        (a.proxyCola = a.proxyCola || []).push(mm);
       }).catch(() => { g.userData.modeloCargado = false; });
     });
     setPesadosN(pesados.size); setPendientesN(pendientes.size);
