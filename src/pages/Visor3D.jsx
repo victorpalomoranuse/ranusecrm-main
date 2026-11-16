@@ -3939,7 +3939,15 @@ export default function Visor3D({ cliente = false }) {
           const gw = new THREE.BufferGeometry(); gw.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gw.computeVertexNormals();
           const paredes = new THREE.Mesh(gw, mt); paredes.receiveShadow = true; gf.add(paredes);
         } else {
-          geo = new THREE.ExtrudeGeometry(new THREE.Shape(inner.map(p => new THREE.Vector2(p[0] * CM, -p[1] * CM))), { depth: prof, bevelEnabled: false });
+          const forma = new THREE.Shape(inner.map(p => new THREE.Vector2(p[0] * CM, -p[1] * CM)));
+          // donde hay un hueco hacia arriba (foseado o candileja que sube) dentro de este techo bajado, la losa se abre: antes la tapaba
+          objs.forEach(s2 => {
+            if (s2 === o || s2.tipo !== 'falsotecho' || !Array.isArray(s2.pts) || s2.pts.length < 3 || !((s2.ft?.descenso ?? 15) < 0) || Math.abs((s2.z0 || 0) - (o.z0 || 0)) > 1) return;
+            const abs = s2.pts.map(p => [p[0] + s2.cx - o.cx, p[1] + s2.cy - o.cy]);
+            if (!abs.every(p => puntoEnPoligono(p, inner))) return;
+            forma.holes.push(new THREE.Path(abs.map(p => new THREE.Vector2(p[0] * CM, -p[1] * CM))));
+          });
+          geo = new THREE.ExtrudeGeometry(forma, { depth: prof, bevelEnabled: false });
           geo.rotateX(-Math.PI / 2);
         }
         const losa = new THREE.Mesh(geo, mt); losa.position.y = sube ? H + prof : (D >= 0 ? H - prof : H); losa.castShadow = losa.receiveShadow = true; gf.add(losa);
