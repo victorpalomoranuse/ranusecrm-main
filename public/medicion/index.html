@@ -6812,7 +6812,7 @@ function seg3(cur,act){
 }
 (function(){var u=document.getElementById('unidad');if(!u)return;u.value=UNIT;u.addEventListener('change',function(){UNIT=UNIDADES[u.value]?u.value:'cm';try{localStorage.setItem('ranuse-unidad',UNIT)}catch(e){}render();panelSel();toast('Unidad: '+UNIT+' (los datos se guardan igual; solo cambia cómo se escriben)')})})();
 function fld(key,label,val,ph){
-  var sin=/^(w_ang|pil_cnt|pil_rot|dr_fs|dr_wd|cl_j|cl_mg|eq_rot)$/.test(key);
+  var sin=/^(w_ang|pil_cnt|pil_rot|dr_fs|dr_wd|cl_j|cl_mg|eq_rot|pt_lm|pt_ap)$/.test(key);
   if(!sin)label=String(label).replace(/cm/g,UNL());
   return '<label class="fld"><span>'+label+'</span><input data-f="'+key+'" inputmode="decimal" autocomplete="off" value="'+(val==null?'':(sin?f2(val):toU(val)))+'"'+(ph!=null?' placeholder="'+(sin||isNaN(+ph)?ph:toU(+ph))+'"':'')+'></label>';
 }
@@ -7298,7 +7298,7 @@ function girarMuro(w,ang){
 function applyField(key,val,adv,raw){
   var s=st.sel;if(!s)return;
   var n=num(val);
-  if(!raw&&!/^(w_ang|pil_cnt|pil_rot|dr_fs|dr_wd|cl_j|eq_rot)$/.test(key))n=fromU(n);
+  if(!raw&&!/^(w_ang|pil_cnt|pil_rot|dr_fs|dr_wd|cl_j|eq_rot|pt_lm|pt_ap)$/.test(key))n=fromU(n); /* lúmenes y ángulo de apertura no son longitudes: no se convierten con las unidades */
   if(/^cl_/.test(key)){applyCl(key,n);return}
   if(s.t==='wall'){
     var w=wl(s.id);if(!w)return;
