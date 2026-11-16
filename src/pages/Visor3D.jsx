@@ -766,7 +766,11 @@ export function construirMueble(o, texturas) {
     cajaM(W - 2 * esp, esp, Dm, cx, y0 + hc - esp / 2, 0, cuerpo, 'cuerpo');
     cajaM(W - 2 * esp, hc - 2 * esp, 0.006, cx, y0 + hc / 2, -Dm / 2 + 0.003, cuerpo, 'cuerpo');
     const nb = mod.t === 'abierto' ? (mod.nb ?? 3) : mod.t === 'puertas' ? (mod.nb ?? 1) : 0;
-    for (let i = 1; i <= nb; i++) cajaM(W - 2 * esp, esp, Dm - 0.02, cx, y0 + esp + (hc - 2 * esp) * (i / (nb + 1)), -0.01, cuerpo, 'cuerpo');
+    // módulo abierto con puertas abajo y/o arriba (como una librería de pared con armarios bajos y altos): las baldas se reparten en el nicho de en medio
+    const pAb = mod.t === 'abierto' ? Math.max(0, mod.pAb || 0) * CM : 0, pAr = mod.t === 'abierto' ? Math.max(0, mod.pAr || 0) * CM : 0, zy0 = y0 + (pAb > 0 ? pAb : esp), zy1 = y0 + hc - (pAr > 0 ? pAr : esp);
+    for (let i = 1; i <= nb; i++) cajaM(W - 2 * esp, esp, Dm - 0.02, cx, zy0 + (zy1 - zy0) * (i / (nb + 1)), -0.01, cuerpo, 'cuerpo');
+    if (pAb > 0) cajaM(W - 2 * esp, esp, Dm - 0.02, cx, y0 + pAb - esp / 2, -0.01, cuerpo, 'cuerpo'); // balda sobre las puertas de abajo
+    if (pAr > 0) cajaM(W - 2 * esp, esp, Dm - 0.02, cx, y0 + hc - pAr + esp / 2, -0.01, cuerpo, 'cuerpo'); // balda bajo las puertas de arriba
     const TIP = M.tirador || 'barra';
     const tmat = M.tiradorColor ? new THREE.MeshStandardMaterial({ color: color(M.tiradorColor, '#b8b8b8'), roughness: 0.3, metalness: 0.8 }) : tiradorMat;
     const oscuro = new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 0.75 });
@@ -793,18 +797,21 @@ export function construirMueble(o, texturas) {
         cajaM(fw - 0.004, 0.004, 0.012, fcx, fcy + fh / 2 - 0.037, z0 - 0.004, tmat, 'frente', padre);
       }
     };
-    if (mod.t === 'puertas') {
-      const nd = mod.n === 2 ? 2 : 1, wd = (W - 0.004) / nd, ang = 100 * Math.PI / 180;
+    const hacePuertas = (ya, ha, nd) => {
+      const wd = (W - 0.004) / nd, ang = 100 * Math.PI / 180;
       for (let k = 0; k < nd; k++) {
         const izq = nd === 1 || k === 0; // bisagra a la izquierda (la hoja derecha, a la derecha)
         const bis = izq ? x + 0.002 + wd * k : x + 0.002 + wd * (k + 1);
-        const pivote = new THREE.Group(); pivote.position.set(bis, y0 + hc / 2, zf);
+        const pivote = new THREE.Group(); pivote.position.set(bis, ya + ha / 2, zf);
         if (mod.abierto) pivote.rotation.y = izq ? -ang : ang;
-        cajaM(wd - 0.003, hc - 0.004, ef, izq ? wd / 2 : -wd / 2, 0, 0, frente, 'frente', pivote);
-        tir(pivote, izq ? wd / 2 : -wd / 2, 0, ef / 2, wd - 0.003, hc - 0.004, true, izq ? 1 : -1);
+        cajaM(wd - 0.003, ha - 0.004, ef, izq ? wd / 2 : -wd / 2, 0, 0, frente, 'frente', pivote);
+        tir(pivote, izq ? wd / 2 : -wd / 2, 0, ef / 2, wd - 0.003, ha - 0.004, true, izq ? 1 : -1);
         gM.add(pivote);
       }
-    } else if (mod.t === 'cajones') {
+    };
+    if (mod.t === 'puertas') hacePuertas(y0, hc, mod.n === 2 ? 2 : 1);
+    else if (mod.t === 'abierto') { const npu = mod.nPu === 2 ? 2 : 1; if (pAb > 0) hacePuertas(y0, pAb, npu); if (pAr > 0) hacePuertas(y0 + hc - pAr, pAr, npu); }
+    else if (mod.t === 'cajones') {
       const nc = Math.max(1, mod.n || 3), hf = (hc - 0.004) / nc, saca = mod.abierto ? 0.28 : 0;
       for (let i = 0; i < nc; i++) {
         const yc = y0 + 0.002 + hf * i + hf / 2;
@@ -4383,6 +4390,8 @@ export default function Visor3D({ cliente = false }) {
     'Armario alto (2 puertas)': { d: 60, alto: 220, zocalo: 8, modulos: [{ t: 'puertas', w: 50, n: 1, nb: 5 }, { t: 'puertas', w: 50, n: 1, nb: 5 }] },
     'Mueble de TV': { d: 40, alto: 55, zocalo: 5, modulos: [{ t: 'puertas', w: 60, n: 1, nb: 0 }, { t: 'abierto', w: 80, nb: 0 }, { t: 'puertas', w: 60, n: 1, nb: 0 }] },
     'Estantería abierta': { d: 30, alto: 200, zocalo: 0, modulos: [{ t: 'abierto', w: 80, nb: 5 }, { t: 'abierto', w: 80, nb: 5 }] },
+    'Estantería con puertas abajo y arriba': { d: 40, alto: 240, zocalo: 8, modulos: [{ t: 'abierto', w: 90, nb: 3, pAb: 80, pAr: 60, nPu: 2 }, { t: 'abierto', w: 60, nb: 4 }, { t: 'abierto', w: 90, nb: 3, pAb: 80, pAr: 60, nPu: 2 }] },
+    'Mueble de pared con nichos (como el de hotel)': { d: 45, alto: 240, zocalo: 8, modulos: [{ t: 'abierto', w: 80, nb: 2, pAb: 70, pAr: 55, nPu: 2 }, { t: 'abierto', w: 70, nb: 3, pAb: 90 }, { t: 'abierto', w: 50, nb: 4, pAb: 70, pAr: 40 }] },
     'Mostrador / recepción': { d: 60, alto: 105, zocalo: 8, modulos: [{ t: 'cajones', w: 60, n: 3 }, { t: 'puertas', w: 90, n: 2, nb: 1 }, { t: 'puertas', w: 60, n: 1, nb: 1 }] },
     'Cajonera': { d: 45, alto: 75, zocalo: 5, modulos: [{ t: 'cajones', w: 80, n: 4 }] },
   };
@@ -8636,6 +8645,11 @@ export default function Visor3D({ cliente = false }) {
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4, fontSize: 12 }}>
                       {m.t === 'puertas' && <label>Hojas <select value={m.n === 2 ? 2 : 1} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].n = parseInt(e.target.value, 10); return ms; })} style={{ ...btn, padding: '2px' }}><option value={1}>1</option><option value={2}>2</option></select></label>}
                       {m.t === 'cajones' && <label>Cajones <input type="number" min="1" max="8" value={m.n || 3} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].n = parseInt(e.target.value, 10) || 1; return ms; })} style={{ ...btn, width: 44, padding: '2px 4px' }} /></label>}
+                      {m.t === 'abierto' && <>
+                        <label title="Altura de las puertas de abajo en cm (0 = sin puertas)">Puertas abajo <input type="number" min="0" max="150" value={m.pAb || 0} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].pAb = Math.max(0, parseFloat(e.target.value) || 0); return ms; })} style={{ ...btn, width: 48, padding: '2px 4px' }} /></label>
+                        <label title="Altura de las puertas de arriba en cm (0 = sin puertas)">arriba <input type="number" min="0" max="150" value={m.pAr || 0} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].pAr = Math.max(0, parseFloat(e.target.value) || 0); return ms; })} style={{ ...btn, width: 48, padding: '2px 4px' }} /></label>
+                        {(m.pAb > 0 || m.pAr > 0) && <label>Hojas <select value={m.nPu === 2 ? 2 : 1} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].nPu = parseInt(e.target.value, 10); return ms; })} style={{ ...btn, padding: '2px' }}><option value={1}>1</option><option value={2}>2</option></select></label>}
+                      </>}
                       {(m.t === 'puertas' || m.t === 'abierto') && <label>Baldas <input type="number" min="0" max="10" value={m.nb ?? (m.t === 'abierto' ? 3 : 1)} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].nb = parseInt(e.target.value, 10) || 0; return ms; })} style={{ ...btn, width: 44, padding: '2px 4px' }} /></label>}
                       {m.t === 'nevera' && <label>Acabado <select value={m.color || ''} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].color = e.target.value || undefined; return ms; })} style={{ ...btn, padding: '2px' }}><option value="">Blanca</option><option value="inox">Inox</option><option value="negro">Negra</option></select></label>}
                       {m.t === 'columna' && <div style={{ width: '100%' }}>
