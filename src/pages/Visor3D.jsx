@@ -1973,6 +1973,15 @@ export default function Visor3D({ cliente = false }) {
   useEffect(() => { try { localStorage.setItem('visor3dPropImg', propImg ? '1' : '0'); } catch { /* sin almacenamiento */ } }, [propImg]);
   const botonProp = () => (<button type="button" style={{ ...btn, width: '100%', marginBottom: 6, background: proporcional ? '#8c8076' : undefined }} onClick={() => setProporcional(v => !v)} title="Con la cadena enlazada, al cambiar largo, fondo o alto, las otras dos medidas cambian en la misma proporción">{proporcional ? '🔗 Proporciones enlazadas' : '⛓ Proporciones libres'}</button>);
   const [velPersona, setVelPersona] = useState(() => { if (cliente) return 2.2; try { const v = parseFloat(localStorage.getItem('visor3dVelPersona')); return v >= 0.2 && v <= 8 ? v : 1.3; } catch { return 1.3; } }); // m/s al recorrer como persona
+  // velocidad al moverte con el teclado (W A S D / flechas) fuera del modo persona: se cambia con + y − y se recuerda
+  const [velVuelo, setVelVuelo] = useState(() => { try { const v = parseFloat(localStorage.getItem('visor3dVelVuelo')); return v >= 1 && v <= 40 ? v : 6; } catch { return 6; } });
+  useEffect(() => { api3d.current.velVuelo = velVuelo; try { if (!cliente) localStorage.setItem('visor3dVelVuelo', String(velVuelo)); } catch { /* sin almacenamiento */ } }, [velVuelo]);
+  useEffect(() => {
+    api3d.current.cambiaVel = (dir) => {
+      if (api3d.current.persona) setVelPersona(v => { const n = Math.max(0.2, Math.min(6, Math.round((v + dir * 0.4) * 10) / 10)); setAviso('Velocidad al caminar: ' + n.toFixed(1) + ' m/s'); return n; });
+      else setVelVuelo(v => { const n = Math.max(1, Math.min(40, Math.round(v * (dir > 0 ? 1.25 : 0.8) * 10) / 10)); setAviso('Velocidad: ' + n.toFixed(1) + ' m/s · con Mayús ×3 · + y − para cambiarla'); return n; });
+    };
+  }, []);
   useEffect(() => { api3d.current.velPersona = velPersona; try { if (!cliente) localStorage.setItem('visor3dVelPersona', String(velPersona)); } catch { /* sin almacenamiento */ } }, [velPersona]);
   const [sinGpu, setSinGpu] = useState(false);
   useEffect(() => { if (estado === 'cargando') return; let cerrado = false; try { cerrado = sessionStorage.getItem('visor3dSinGpuCerrado') === '1'; } catch { /* sin almacenamiento */ } setSinGpu(GL_SOFTWARE && !cerrado); }, [estado]);
@@ -2376,7 +2385,7 @@ export default function Visor3D({ cliente = false }) {
         if (teclas.has('w')) vM.add(vF); if (teclas.has('s')) vM.sub(vF); if (teclas.has('d')) vM.add(vR); if (teclas.has('a')) vM.sub(vR);
         { const jy = api3d.current.joy; if (jy) { vM.addScaledVector(vF, -jy.y); vM.addScaledVector(vR, jy.x); } }
         if (api3d.current.persona) vM.y = 0; else { if (teclas.has('e')) vM.y += 1; if (teclas.has('q')) vM.y -= 1; }
-        if (vM.lengthSq()) { vM.normalize().multiplyScalar(dt * (api3d.current.persona ? (api3d.current.velPersona || 1.3) * (teclas.has('shift') ? 2.5 : 1) : (teclas.has('shift') ? 9 : 3))); if (api3d.current.persona && cliente) frenaMuros(api3d.current.modelo, cam.position, vM, api3d.current.offsPl); cam.position.add(vM); ctrl.target.add(vM); }
+        if (vM.lengthSq()) { vM.normalize().multiplyScalar(dt * (api3d.current.persona ? (api3d.current.velPersona || 1.3) * (teclas.has('shift') ? 2.5 : 1) : (api3d.current.velVuelo || 6) * (teclas.has('shift') ? 3 : 1))); if (api3d.current.persona && cliente) frenaMuros(api3d.current.modelo, cam.position, vM, api3d.current.offsPl); cam.position.add(vM); ctrl.target.add(vM); }
       }
       // mientras la cámara se mueve se dibuja a menor resolución y al parar vuelve a la normal: el movimiento va fluido aunque haya muchos modelos
       const movi = teclas.size > 0 || !!api3d.current.joy || ahora - ultMov < 180;
@@ -2430,7 +2439,7 @@ export default function Visor3D({ cliente = false }) {
       }
     };
     const enCampo = e => { const t = (e.target?.tagName || '').toLowerCase(); return t === 'input' || t === 'textarea' || t === 'select' || e.target?.isContentEditable; };
-    const tDown = e => { if (enCampo(e) || e.ctrlKey || e.metaKey || e.altKey) return; const k = { arrowup: 'w', arrowdown: 's', arrowleft: 'a', arrowright: 'd' }[e.key.toLowerCase()] || e.key.toLowerCase(); if (k.length === 1 && 'wasdqe'.includes(k)) { teclas.add(k); e.preventDefault(); } else if (k === 'shift') teclas.add('shift'); };
+    const tDown = e => { if (enCampo(e) || e.ctrlKey || e.metaKey || e.altKey) return; const k = { arrowup: 'w', arrowdown: 's', arrowleft: 'a', arrowright: 'd' }[e.key.toLowerCase()] || e.key.toLowerCase(); if (!cliente && (k === '+' || k === '=' || k === '-' || k === '_')) { api3d.current.cambiaVel?.(k === '+' || k === '=' ? 1 : -1); e.preventDefault(); return; } if (k.length === 1 && 'wasdqe'.includes(k)) { teclas.add(k); e.preventDefault(); } else if (k === 'shift') teclas.add('shift'); };
     const tUp = e => { teclas.delete({ arrowup: 'w', arrowdown: 's', arrowleft: 'a', arrowright: 'd' }[e.key.toLowerCase()] || e.key.toLowerCase()); };
     window.addEventListener('keydown', tDown); window.addEventListener('keyup', tUp); window.addEventListener('blur', () => teclas.clear());
     ctrl.addEventListener('change', () => { ultMov = performance.now(); });
