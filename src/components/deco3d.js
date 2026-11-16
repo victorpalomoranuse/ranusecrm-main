@@ -15,7 +15,7 @@ export const KINDS_DECO = {
   jardinera_hiedra: 'Jardinera mural con hiedra y luz',
   persona_sentadilla: 'Persona haciendo sentadilla', persona_sentada: 'Persona sentada', persona_estirando: 'Persona estirando', grupo_hablando: 'Dos personas hablando',
 };
-export const KINDS_MOBILIARIO = ['jardinera_hiedra', 'sofa_modular', 'sofa_esquina', 'butaca', 'puf', 'mesa_centro', 'mesa_alta', 'taburete_alto', 'banco_vestuario', 'taquillas', 'mostrador_recepcion', 'estanteria_abierta', 'aparador', 'escritorio', 'espejo_pie', 'espejo_pared', 'lampara_pie', 'lampara_colgante', 'alfombra', 'panel_lamas', 'tv_mural'];
+export const KINDS_MOBILIARIO = ['jardinera_hiedra', 'planta', 'planta_alta', 'arbusto', 'sofa_modular', 'sofa_esquina', 'butaca', 'puf', 'mesa_centro', 'mesa_alta', 'taburete_alto', 'banco_vestuario', 'taquillas', 'mostrador_recepcion', 'estanteria_abierta', 'aparador', 'escritorio', 'espejo_pie', 'espejo_pared', 'lampara_pie', 'lampara_colgante', 'alfombra', 'panel_lamas', 'tv_mural'];
 export const KINDS_PERSONAS = ['persona_de_pie', 'persona_andando', 'persona_corriendo', 'persona_mancuernas', 'persona_sentadilla', 'persona_sentada', 'persona_estirando', 'grupo_hablando'];
 // Medidas habituales (cm) para cuando la IA no las da
 export const MEDIDAS_DECO = {
