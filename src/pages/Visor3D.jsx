@@ -3271,6 +3271,16 @@ export default function Visor3D({ cliente = false }) {
     const g = new THREE.Group(); g.userData.capa = 'luces'; g.visible = !ocultas.includes('luces');
     const HT = a.modelo?.altura || 260;
     const ALT = { foco: HT - 1, plaf: HT - 1, colg: HT - 60, aplq: 180, pie: 120, suel: 5, esp: 160, mue: 90, spot: HT - 6, spotl: HT - 6 };
+    // el techo que hay sobre cada luminaria: si el techo se ha bajado (de toda la sala o solo de una parte dibujada), carriles, focos y colgantes bajan con él
+    const pl0 = ((a.modelo && (a.modelo.plantas || [a.modelo])) || [])[0] || {};
+    const techoEn = (x, y) => {
+      let mejor = null, area = 1e12;
+      (pl0.cielos || []).forEach(c => { if (!(c.h > 0) || !Array.isArray(c.pts) || c.pts.length < 3 || !puntoEnPoligono([x, y], c.pts)) return; const xs = c.pts.map(p => p[0]), ys = c.pts.map(p => p[1]), ar = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys)); if (ar < area) { area = ar; mejor = c.h; } });
+      if (mejor != null) return mejor;
+      const sa = (pl0.salas || []).find(q => q.techo && q.techo.h > 0 && Array.isArray(q.pts) && puntoEnPoligono([x, y], q.pts));
+      return sa ? sa.techo.h : HT;
+    };
+    const altDe = (kid, Hc) => ({ foco: Hc - 1, plaf: Hc - 1, colg: Hc - 60, aplq: 180, pie: 120, suel: 5, esp: 160, mue: 90, spot: Hc - 6, spotl: Hc - 6 })[kid];
     const matNegro = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.5, metalness: 0.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); // el desplazamiento evita que parpadee donde roza el techo
     let nLuces = 0;
     lucesPl.slice(0, 120).forEach(l0 => {
@@ -3282,11 +3292,11 @@ export default function Visor3D({ cliente = false }) {
       const puede = () => nLuces < 24 && (nLuces++, true);
       // carriles, tiras LED y luminarias lineales: se modelan a lo largo de su recorrido
       if (l.vs) {
-        const ceil = HT * CM, esC = l.kid === 'carril', esL = l.kid === 'led';
+        const esC = l.kid === 'carril', esL = l.kid === 'led';
         const ancho = esL ? 0.012 : esC ? 0.032 : 0.04, alto = esL ? 0.006 : esC ? 0.025 : 0.035;
-        const y = (l.h != null ? l.h * CM : ceil) - (esL ? 0.004 : alto / 2) - (l.kid === 'linealc' ? 0.5 : 0);
         for (let i = 0; i < l.vs.length - 1; i++) {
           const p = l.vs[i], q = l.vs[i + 1], L = Math.hypot(q[0] - p[0], q[1] - p[1]) * CM; if (L < 0.01) continue;
+          const y = (l.h != null ? l.h * CM : techoEn((p[0] + q[0]) / 2, (p[1] + q[1]) / 2) * CM) - (esL ? 0.004 : alto / 2) - (l.kid === 'linealc' ? 0.5 : 0);
           const m = new THREE.Mesh(new THREE.BoxGeometry(L, alto, ancho), esL || !esC ? new THREE.MeshBasicMaterial({ color: esL ? col : 0xf4f4f4, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : matNegro);
           m.position.set(((p[0] + q[0]) / 2) * CM, y, ((p[1] + q[1]) / 2) * CM); m.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); m.traverse(x => { x.userData.luzId = l.id; }); g.add(m);
           if (!esC && puede()) { const pl = new THREE.PointLight(col, Math.max(5, lm * (L / CM / 100) / 12.57) * 0.22 * ambiente.luces * 0.6, 0, 2); pl.position.set(m.position.x, y - 0.05, m.position.z); g.add(pl); }
@@ -3295,7 +3305,7 @@ export default function Visor3D({ cliente = false }) {
       }
       // spots de carril (orientable y lineal): cuelgan del propio carril, no flotan
       if (l.kid === 'spot' || l.kid === 'spotl') {
-        const yTop = (l.h != null ? l.h : ALT[l.kid]) * CM, grp = new THREE.Group(), lin = l.kid === 'spotl';
+        const yTop = (l.h != null ? l.h : altDe(l.kid, techoEn(l.x, l.y))) * CM, grp = new THREE.Group(), lin = l.kid === 'spotl';
         const glow = new THREE.MeshBasicMaterial({ color: col });
         const tallo = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.04, 0.02), matNegro); tallo.position.y = 0.02; grp.add(tallo);
         let luzPos, dir = new THREE.Vector3(0, -1, 0);
@@ -3318,7 +3328,7 @@ export default function Visor3D({ cliente = false }) {
         }
         return;
       }
-      const hcm = l.h != null ? l.h : (ALT[l.kid] ?? 250);
+      const hcm = l.h != null ? l.h : (altDe(l.kid, techoEn(l.x, l.y)) ?? 250);
       const { grupo: marca, luzPos, dir: dirL } = construirLuminaria(l.kid, col, sel2(l.id, luzSel), aj.v, aj.tilt, aj.yaw);
       marca.position.set(l.x * CM, hcm * CM, l.y * CM); marca.traverse(x => { x.userData.luzId = l.id; }); g.add(marca);
       const esPared = l.kid === 'aplq' || l.kid === 'esp';
@@ -3380,7 +3390,7 @@ export default function Visor3D({ cliente = false }) {
       } else { const p = new THREE.PointLight(col, inten, 0, 2); p.position.copy(luzMundo); g.add(p); }
     });
     a.scene.add(g); a.luzG = g;
-  }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas, ambiente.luces, ambiente.kLuces, luzOver]);
+  }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas, ambiente.luces, ambiente.kLuces, luzOver, rev]);
 
   // Sol según la hora y exposición de la cámara
   useEffect(() => {

@@ -3,6 +3,7 @@ import { Ruler, Plus, Trash2, Search, FolderOpen, Link2 } from 'lucide-react';
 import api from '../services/api';
 import { abrirPlanosEnPestana } from './PlanosEditor';
 import { MedicionEditor } from '../components/MedicionProyecto';
+import { LaminaZonasModal } from '../components/LaminaZonasModal';
 import { SearchableSelect } from '../components/SearchableSelect';
 
 // Planos: sección propia (fuera de los proyectos, aunque estén enlazados) con
@@ -34,7 +35,7 @@ function Tile({ valor, titulo, sub }) {
   );
 }
 
-function FilaPlano({ p, proyectos, onAbrir, onBorrar, onVincular }) {
+function FilaPlano({ p, proyectos, onAbrir, onBorrar, onVincular, onZonas }) {
   const [vinculando, setVinculando] = useState(false);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
@@ -56,6 +57,7 @@ function FilaPlano({ p, proyectos, onAbrir, onBorrar, onVincular }) {
       )}
       <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => onAbrir(p)}>Abrir</button>
       <button className="ap-btn ap-btn-ghost ap-btn-sm" title="Ver el plano en 3D" onClick={() => window.open('/planos/3d/' + p.id, '_blank')}>Ver en 3D</button>
+      <button className="ap-btn ap-btn-ghost ap-btn-sm" title="Lámina bonita para el cliente: las máquinas agrupadas por zonas (pin, discos, cardio…) en PDF" onClick={() => onZonas(p)}>Zonas (PDF cliente)</button>
       <button className="ap-btn ap-btn-ghost ap-btn-sm" title="Vincular a otro proyecto" onClick={() => setVinculando(v => !v)}><Link2 size={13} /></button>
       <button className="ap-btn-icon" title="Borrar plano" onClick={() => onBorrar(p)}><Trash2 size={13} /></button>
     </div>
@@ -71,6 +73,7 @@ export function SectionPlanos() {
   const [filtro, setFiltro] = useState('todos'); // todos | con | sin (según tenga planos)
   const [editor, setEditor] = useState(null); // { projectId, abrir, nuevo, titulo, proyecto }
   const [nuevoModal, setNuevoModal] = useState(false);
+  const [zonasPlano, setZonasPlano] = useState(null);
   const [nuevoProyecto, setNuevoProyecto] = useState('');
 
   const cargar = () => Promise.all([api.get('/medicion/dashboard'), api.get('/client-projects')])
@@ -178,7 +181,7 @@ export function SectionPlanos() {
       {sueltosVis.length > 0 && (
         <div style={{ ...card, marginBottom: 14 }}>
           <p style={{ fontSize: '0.78rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.4)', margin: '0 0 4px' }}>Sin proyecto</p>
-          {sueltosVis.map(p => <FilaPlano key={p.id} p={p} proyectos={proyectos} onAbrir={abrirPlano} onBorrar={borrar} onVincular={vincular} />)}
+          {sueltosVis.map(p => <FilaPlano key={p.id} p={p} proyectos={proyectos} onAbrir={abrirPlano} onBorrar={borrar} onVincular={vincular} onZonas={(q) => setZonasPlano(q.id)} />)}
         </div>
       )}
 
@@ -191,11 +194,13 @@ export function SectionPlanos() {
             </div>
             <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => crearEnProyecto(pr)}><Plus size={13} /> {lista.length ? 'Otro plano' : 'Crear plano'}</button>
           </div>
-          {lista.map(p => <FilaPlano key={p.id} p={p} proyectos={proyectos} onAbrir={abrirPlano} onBorrar={borrar} onVincular={vincular} />)}
+          {lista.map(p => <FilaPlano key={p.id} p={p} proyectos={proyectos} onAbrir={abrirPlano} onBorrar={borrar} onVincular={vincular} onZonas={(q) => setZonasPlano(q.id)} />)}
         </div>
       ))}
 
       {!filas.length && !sueltosVis.length && <p style={muted}><Ruler size={13} style={{ verticalAlign: -2 }} /> No hay nada que coincida con ese filtro.</p>}
+
+      {zonasPlano && <LaminaZonasModal planoId={zonasPlano} onClose={() => setZonasPlano(null)} />}
 
       {nuevoModal && (
         <div className="ap-modal-overlay" onClick={() => setNuevoModal(false)}>
