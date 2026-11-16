@@ -2494,7 +2494,9 @@ export default function Visor3D({ cliente = false }) {
         (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m && mats.add(m.uuid));
       });
       const inf = renderer.info, filas = [...cuenta.entries()].sort((a, b) => b[1].m - a[1].m).map(([k, v]) => k.padEnd(12) + String(v.m).padStart(6) + ' piezas ' + String(Math.round(v.t / 1000)).padStart(6) + 'k triáng.').join('\n');
-      det.textContent = 'QUÉ PESA (lo que se ve ahora)\n' + filas + '\nTotal: ' + llamadas + ' piezas · ' + Math.round(tri / 1000) + 'k triángulos · ' + mats.size + ' materiales\nEn la tarjeta: ' + inf.memory.textures + ' texturas · ' + inf.memory.geometries + ' geometrías' + '\nPulsa para cerrar';
+      const luces = {}; scene.traverse(o => { if (o.isLight && o.visible && o.intensity > 0) { const k = o.isSpotLight ? 'focos' : o.isRectAreaLight ? 'luces de área' : o.isPointLight ? 'puntuales' : o.isDirectionalLight ? 'sol' : 'otras'; luces[k] = (luces[k] || 0) + 1; } });
+      const txtLuces = Object.entries(luces).map(([k, v]) => v + ' ' + k).join(' · ') || 'ninguna', progs = (inf.programs || []).length;
+      det.textContent = 'QUÉ PESA (lo que se ve ahora)\n' + filas + '\nTotal: ' + llamadas + ' piezas · ' + Math.round(tri / 1000) + 'k triángulos · ' + mats.size + ' materiales\nLuces encendidas: ' + txtLuces + ' · ' + progs + ' programas de sombreado\nEn la tarjeta: ' + inf.memory.textures + ' texturas · ' + inf.memory.geometries + ' geometrías' + '\nPulsa para cerrar';
       det.style.display = 'block';
     };
     const vF = new THREE.Vector3(), vR = new THREE.Vector3(), vM = new THREE.Vector3(), ARRIBA = new THREE.Vector3(0, 1, 0);
