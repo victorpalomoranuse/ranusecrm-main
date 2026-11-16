@@ -8334,6 +8334,7 @@ export default function Visor3D({ cliente = false }) {
                   {campo(esCirc ? 'Diámetro' : 'Ancho', x1 - x0, v => aplica(x0, y0, Math.max(1, v), esCirc ? Math.max(1, v) : y1 - y0))}
                   {campo('Alto', y1 - y0, v => aplica(x0, y0, esCirc ? Math.max(1, v) : x1 - x0, Math.max(1, v)))}
                 </div>
+                {(() => { const mod0 = api3d.current.modelo, mu = (mod0?.plantas || [mod0]).flatMap(pp => pp?.muros || []).find(m => m.id === objSel.muroId); if (!mu) return null; const Lm = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]), Hm = mu.h || 260; return (<div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 4 }}><button style={btn} onClick={() => aplica((Lm - (x1 - x0)) / 2, y0, x1 - x0, y1 - y0)}>↔ Centrar en la pared</button><button style={btn} onClick={() => aplica(x0, (Hm - (y1 - y0)) / 2, x1 - x0, y1 - y0)}>↕ Centrar en altura</button></div>); })()}
                 <div style={{ opacity: 0.55, fontSize: 11 }}>Centro: {r1((x0 + x1) / 2)} desde el inicio del muro, {r1((y0 + y1) / 2)} desde el suelo. Los vértices están más abajo.</div>
               </div>
             );
