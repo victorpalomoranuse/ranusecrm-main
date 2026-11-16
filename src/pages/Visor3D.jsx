@@ -6526,7 +6526,6 @@ export default function Visor3D({ cliente = false }) {
         ], false, 'Objetos')}
         {!modoRender && grupoRail([
           railBtn(revAbierto || herr === 'revest', 'revest', 'Revestimientos', 'Palillería, lamas acústicas, panelados, paneles 3D y molduras: eliges un modelo y pulsas el muro', () => { setRevAbierto(v => !v); if (revAbierto && herr === 'revest') setHerr('sel'); }),
-          railBtn(chatAbierto, 'chatia', 'Chat IA', 'Chat de imágenes: habla con la IA, adjunta la vista actual del 3D, fotos o el logo; guarda las imágenes en la galería o mándalas a un proyecto', () => setChatAbierto(v => !v)),
           railBtn(false, 'imagen', 'Imagen', 'Sube una imagen (PNG con transparencia, o con fondo liso que se quita) y se coloca en el 3D como en SketchUp; después la escalas', () => imagenInput.current?.click()),
           railBtn(false, 'texto', 'Texto 3D', 'Escribe una palabra y elige la fuente: se convierte en letras 3D', () => setTextoDlg({ texto: '', fuente: 'Montserrat-Regular', disp: 'horizontal' })),
           railBtn(false, 'logo', 'Logo', 'Sube un logo en SVG (o DXF con contornos cerrados) y se convierte en 3D', () => logoInput.current?.click()),
@@ -6680,6 +6679,12 @@ export default function Visor3D({ cliente = false }) {
           </div>
         );
       })()}
+      {!chatAbierto && !cliente && (
+        <button type="button" onClick={() => setChatAbierto(true)} title="Chat de imágenes con IA: adjunta la vista del 3D, fotos o el logo; guarda y envía las imágenes a un proyecto"
+          style={{ position: 'absolute', right: 16, bottom: 16, zIndex: 8, display: 'flex', alignItems: 'center', gap: 8, background: 'linear-gradient(135deg,#d4b07a,#b98f55)', color: '#1e1b18', border: 'none', borderRadius: 999, padding: '11px 18px', fontSize: 14, fontWeight: 800, cursor: 'pointer', boxShadow: '0 6px 22px rgba(0,0,0,0.45)' }}>
+          <span style={{ fontSize: 17 }}>✨</span> Chat IA
+        </button>
+      )}
       {chatAbierto && (
         <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 470, maxWidth: 'calc(100% - 24px)', zIndex: 9 }}>
           <ChatImagenes compacto capturarVista={capturaVista} obtenerContexto={contextoModelo} onCerrar={() => setChatAbierto(false)} />
