@@ -2518,9 +2518,9 @@ export default function Visor3D({ cliente = false }) {
       // simplificación al mover: los modelos que se ven pequeños (lejos) se ocultan o se cambian por su caja hasta que la cámara se para
       const a0 = api3d.current, L = a0.lodList;
       if (L && L.length) {
-        if (false && movi && ahora - ultLod > 150) {
+        if (movi && ema > 33 && ahora - ultLod > 150) {
           ultLod = ahora; a0.lodList = L.filter(it => it.mm.parent);
-          a0.lodList.forEach(it => { it.mm.getWorldPosition(vM); const peq = it.r * it.mm.parent.getWorldScale(vR).x / Math.max(0.1, cam.position.distanceTo(vM)) < 0.06; if (peq !== it.peq) { it.peq = peq; it.mm.visible = !peq; it.prox?.(peq); } });
+          a0.lodList.forEach(it => { it.mm.getWorldPosition(vM); const peq = it.r * it.mm.parent.getWorldScale(vR).x / Math.max(0.1, cam.position.distanceTo(vM)) < (ema > 60 ? 0.2 : ema > 45 ? 0.14 : 0.09); if (peq !== it.peq) { it.peq = peq; it.mm.visible = !peq; it.prox?.(peq); } });
         } else if (!movi && L.some(it => it.peq)) L.forEach(it => { if (it.peq) { it.peq = false; it.mm.visible = true; it.prox?.(false); } });
       }
       { const lpz = api3d.current.luzPool; if (lpz && ahora - lpz.t > 250) { lpz.t = ahora; if (lpz.ult.distanceToSquared(cam.position) > 0.25) { lpz.ult.copy(cam.position); lpz.asigna(cam.position); } } }
