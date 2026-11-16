@@ -1089,8 +1089,21 @@ function luzArea(g, pos, dir, w, h, col, inten, presup, u) {
   if (Math.abs(dir.y) > 0.5) rl.up.copy(u ? new THREE.Vector3().crossVectors(dir.clone().negate(), u) : new THREE.Vector3(0, 0, 1)); else rl.up.set(0, 1, 0);
   rl.lookAt(pos.clone().add(dir)); g.add(rl);
 }
+// Si una zona de pared es (casi) un círculo/óvalo, se dibuja como uno perfecto de 120 puntos aunque sus vértices tengan pequeños bultos
+function ovalLimpio(o) {
+  if (o.tipo !== 'zona' || o.plano !== 'pared' || !Array.isArray(o.pts) || o.pts.length < 12) return o;
+  const xs = o.pts.map(p => p[0]), ys = o.pts.map(p => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, rx = (x1 - x0) / 2, ry = (y1 - y0) / 2;
+  if (rx < 1 || ry < 1) return o;
+  if (!o.pts.every(p => Math.abs(Math.hypot((p[0] - cx) / rx, (p[1] - cy) / ry) - 1) < 0.1)) return o;
+  return { ...o, pts: Array.from({ length: 120 }, (_, i) => [cx + rx * Math.cos((i / 120) * 2 * Math.PI), cy + ry * Math.sin((i / 120) * 2 * Math.PI)]) };
+}
 // Borde luminoso de una forma en la pared (cm, plano de la pared): cinta visible + luces de área reales. hacia fuera=true: halo que baña la pared alrededor (resalte/plana); false: baña el interior del nicho
 function ledPerimetro(holder, pts, hex, zLed, lado, haciaFuera) {
+  if (pts.length >= 24) { // forma curva: una sola cinta continua (tubo) y un halo suave, sin los trozos rectos que daban bultos
+    const col0 = new THREE.Color(hex), cur = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(p[0] * CM, p[1] * CM, zLed)), true), cinta = new THREE.Mesh(new THREE.TubeGeometry(cur, Math.min(480, pts.length * 3), 0.011, 6, true), new THREE.MeshBasicMaterial({ color: col0 }));
+    const halo = new THREE.Mesh(new THREE.TubeGeometry(cur, Math.min(360, pts.length * 2), 0.055, 8, true), new THREE.MeshBasicMaterial({ color: col0, transparent: true, opacity: 0.13, blending: THREE.AdditiveBlending, depthWrite: false })); halo.scale.z = 0.25; halo.position.z = zLed * 0.75;
+    holder.add(cinta); holder.add(halo); return;
+  }
   const col = new THREE.Color(hex), mat = new THREE.MeshBasicMaterial({ color: col }), n = pts.length, c = pts.reduce((q, p) => [q[0] + p[0] / n, q[1] + p[1] / n], [0, 0]), paso = Math.max(1, Math.ceil(n / 4));
   let luces = 0;
   for (let i = 0; i < n; i++) {
@@ -3365,7 +3378,7 @@ export default function Visor3D({ cliente = false }) {
   // Nichos en la pared: una zona de pared con profundidad negativa abre el muro con su forma (el fondo y la luz los pone la propia zona)
   useEffect(() => {
     const A = api3d.current; if (!A.raiz) return;
-    const por = {}; objs.forEach(o => { if (o.tipo === 'zona' && o.plano === 'pared' && o.prof < 0 && o.muroId && Array.isArray(o.pts) && o.pts.length >= 3) (por[o.muroId] = por[o.muroId] || []).push(o.pts); });
+    const por = {}; objs.forEach(o => { if (o.tipo === 'zona' && o.plano === 'pared' && o.prof < 0 && o.muroId && Array.isArray(o.pts) && o.pts.length >= 3) (por[o.muroId] = por[o.muroId] || []).push(ovalLimpio(o).pts); });
     A.raiz.traverse(m => {
       if (!m.isMesh || !m.userData.geoBase || m.userData.overlay) return;
       const lista = por[m.userData.muroId] || [], clave = lista.length ? JSON.stringify(lista) : '';
@@ -3981,7 +3994,8 @@ export default function Visor3D({ cliente = false }) {
     const todosMuros = (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.muros || []);
     // cada muro pertenece a una planta que puede estar desplazada y a otra altura: lo que se pega a un muro tiene que ir con ella
     const plantaDelMuro = (muId) => { const pls = api3d.current.modelo?.plantas || [api3d.current.modelo], ip = pls.findIndex(p => (p?.muros || []).some(m => m.id === muId)); const [ox, oy] = (api3d.current.offsPl || [])[Math.max(0, ip)] || [0, 0]; return { ox, oy, z: (pls[Math.max(0, ip)]?.z || 0) * CM }; };
-    objs.forEach(o => {
+    objs.forEach(o0 => {
+      const o = ovalLimpio(o0);
       if (o.guia) return; // las guías solo se ven en el alzado o la planta
       if (o.tipo === 'zona' && Array.isArray(o.pts) && o.pts.length >= 3) {
         const gz = new THREE.Group();
