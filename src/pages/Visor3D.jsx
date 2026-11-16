@@ -2398,6 +2398,7 @@ export default function Visor3D({ cliente = false }) {
           a0.lodList.forEach(it => { it.mm.getWorldPosition(vM); const peq = it.r * it.mm.parent.getWorldScale(vR).x / Math.max(0.1, cam.position.distanceTo(vM)) < 0.06; if (peq !== it.peq) { it.peq = peq; it.mm.visible = !peq; it.prox?.(peq); } });
         } else if (!movi && L.some(it => it.peq)) L.forEach(it => { if (it.peq) { it.peq = false; it.mm.visible = true; it.prox?.(false); } });
       }
+      { const lpz = api3d.current.luzPool; if (lpz && ahora - lpz.t > 250) { lpz.t = ahora; if (lpz.ult.distanceToSquared(cam.position) > 0.25) { lpz.ult.copy(cam.position); lpz.asigna(cam.position); } } }
       if (!movi && ahora - ultSombra > 500) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
       if (espejoSucio && ahora - (a0.ultEsp || 0) > 250) { espejoSucio = false; a0.ultEsp = ahora; aplicaEspejos(scene); }
       if (ctrl.update()) { a0.despierta = ahora + 400; a0.pt?.updateCamera?.(); }
@@ -3291,14 +3292,14 @@ export default function Visor3D({ cliente = false }) {
     };
     const altDe = (kid, Hc) => ({ foco: Hc - 1, plaf: Hc - 1, colg: Hc - 60, aplq: 180, pie: 120, suel: 5, esp: 160, mue: 90, spot: Hc - 6, spotl: Hc - 6 })[kid];
     const matNegro = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.5, metalness: 0.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); // el desplazamiento evita que parpadee donde roza el techo
-    let nLuces = 0;
+    let nLuces = 0; const cand = [], nSp = lucesPl.slice(0, 120).filter(x => ['spot', 'spotl', 'foco', 'plaf'].includes(x.kid) && !x.vs).length, POOL = Math.min(nSp, 16); a.luzPool = null;
     lucesPl.slice(0, 120).forEach(l0 => {
       const l = { ...l0, ...(luzOver[l0.id] || {}) };
       const cat = lumCat.find(c => c.id === l.lid), lm = lucesAj[l.id]?.lm ?? (l.lm || cat?.lm || 800), K = lucesAj[l.id]?.k ?? (cat?.k || 3000);
       const col = colorK(K), aj = lucesAj[l.id] || {};
       const ap = aj.ap ?? l.ap ?? (l.kid === 'spotl' ? 80 : 60);
       const inten = Math.max(5, lm / 12.57) * 0.22 * ambiente.luces;
-      const puede = () => nLuces < 24 && (nLuces++, true);
+      const puede = () => nLuces < 24 - POOL && (nLuces++, true);
       // carriles, tiras LED y luminarias lineales: se modelan a lo largo de su recorrido
       if (l.vs) {
         const esC = l.kid === 'carril', esL = l.kid === 'led';
@@ -3331,10 +3332,7 @@ export default function Visor3D({ cliente = false }) {
           luzPos = cab.position.clone().add(dir.clone().multiplyScalar(0.09));
         }
         grp.position.set(l.x * CM, yTop, l.y * CM); grp.traverse(x => { x.userData.luzId = l.id; }); g.add(grp);
-        if (puede()) {
-          const lp = grp.position.clone().add(luzPos), sl = new THREE.SpotLight(col, inten * 2.5, 0, Math.max(0.1, (ap / 2) * Math.PI / 180), 0.45, 2);
-          sl.position.copy(lp); sl.target.position.copy(lp.clone().add(dir.clone().multiplyScalar(2.5))); g.add(sl); g.add(sl.target);
-        }
+        cand.push({ lp: grp.position.clone().add(luzPos), col, i: inten * 2.5, ang: Math.max(0.1, (ap / 2) * Math.PI / 180), dirE: dir.clone().multiplyScalar(2.5) });
         return;
       }
       const hcm = l.h != null ? l.h : (altDe(l.kid, techoEn(l.x, l.y)) ?? 250);
@@ -3392,12 +3390,22 @@ export default function Visor3D({ cliente = false }) {
         else { haz(arribaL, 0.6); haz(abajoL, 0.6); }
         return;
       }
-      if (!puede()) return;
       if (l.kid === 'foco' || l.kid === 'plaf') {
-        const s = new THREE.SpotLight(col, inten * 2.5, 0, Math.max(0.1, (ap / 2) * Math.PI / 180), 0.45, 2);
-        s.position.copy(luzMundo); if (dirL) s.target.position.copy(luzMundo.clone().add(dirL.clone().multiplyScalar(2.5))); else s.target.position.set(l.x * CM, 0, l.y * CM); g.add(s); g.add(s.target);
-      } else { const p = new THREE.PointLight(col, inten, 0, 2); p.position.copy(luzMundo); g.add(p); }
+        cand.push({ lp: luzMundo.clone(), col, i: inten * 2.5, ang: Math.max(0.1, (ap / 2) * Math.PI / 180), dirE: dirL ? dirL.clone().multiplyScalar(2.5) : new THREE.Vector3(l.x * CM, 0, l.y * CM).sub(luzMundo) });
+        return;
+      }
+      if (!puede()) return;
+      const p = new THREE.PointLight(col, inten, 0, 2); p.position.copy(luzMundo); g.add(p);
     });
+    // los spots y focos alumbran de verdad por turnos: hay 16 focos reales que se colocan siempre en los que están más cerca de la cámara (al moverte, se van pasando a los nuevos)
+    if (cand.length && POOL > 0) {
+      const pool = []; for (let i = 0; i < Math.min(POOL, cand.length); i++) { const sl = new THREE.SpotLight(0xffffff, 0, 0, 0.5, 0.45, 2); g.add(sl); g.add(sl.target); pool.push(sl); }
+      const asigna = (c0) => {
+        const ord = cand.map((c, i) => [c.lp.distanceToSquared(c0), i]).sort((x, y) => x[0] - y[0]);
+        pool.forEach((sl, k) => { const c = cand[ord[k][1]]; sl.color.copy(c.col); sl.intensity = c.i; sl.angle = c.ang; sl.position.copy(c.lp); sl.target.position.copy(c.lp).add(c.dirE); sl.target.updateMatrixWorld(); });
+      };
+      asigna(a.cam.position); a.luzPool = { asigna, ult: a.cam.position.clone(), t: 0 };
+    }
     a.scene.add(g); a.luzG = g;
   }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas, ambiente.luces, ambiente.kLuces, luzOver, rev]);
 
@@ -3953,11 +3961,11 @@ export default function Visor3D({ cliente = false }) {
         const losa = new THREE.Mesh(geo, mt); losa.position.y = sube ? H + prof : (D >= 0 ? H - prof : H); losa.castShadow = losa.receiveShadow = true; gf.add(losa);
         if (ft.luz !== false) {
           const K = ft.k || 3000, colL = /^#[0-9a-fA-F]{6}$/.test(ft.colorLuz || '') ? new THREE.Color(ft.colorLuz) : colorK(K), led = new THREE.MeshBasicMaterial({ color: colL });
-          const cen = inner.reduce((q, p) => [q[0] + p[0] / inner.length, q[1] + p[1] / inner.length], [0, 0]);
+          const cen = inner.reduce((q, p) => [q[0] + p[0] / inner.length, q[1] + p[1] / inner.length], [0, 0]), pasoLed = inner.length > 10 ? Math.ceil(inner.length / 8) : 1; // en un círculo (muchos tramos) bastan 8 luces de área repartidas por igual
           for (let i = 0; i < inner.length; i++) {
             const p = inner[i], q = inner[(i + 1) % inner.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]); if (L < 2) continue;
             { const dx = (p[0] + q[0]) / 2 - cen[0], dy = (p[1] + q[1]) / 2 - cen[1], lado = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'e' : 'o') : (dy > 0 ? 's' : 'n'); if (ft.lados && ft.lados[lado] === false) continue; }
-            luzArea(gf, new THREE.Vector3(((p[0] + q[0]) / 2) * CM, (D >= 0 ? H - 0.012 : H + prof - 0.012), ((p[1] + q[1]) / 2) * CM), new THREE.Vector3(0, D >= 0 ? 1 : -1, 0), L * CM, 0.06, colL, 6 * ambiente.luces, presup, new THREE.Vector3((q[0] - p[0]) / L, 0, (q[1] - p[1]) / L));
+            if (i % pasoLed === 0) luzArea(gf, new THREE.Vector3(((p[0] + q[0]) / 2) * CM, (D >= 0 ? H - 0.012 : H + prof - 0.012), ((p[1] + q[1]) / 2) * CM), new THREE.Vector3(0, D >= 0 ? 1 : -1, 0), L * pasoLed * CM, 0.06, colL, 6 * ambiente.luces, presup, new THREE.Vector3((q[0] - p[0]) / L, 0, (q[1] - p[1]) / L));
             const b = new THREE.Mesh(new THREE.BoxGeometry(L * CM, 0.01, 0.02), led);
             b.position.set(((p[0] + q[0]) / 2) * CM, (D >= 0 ? H - 0.005 : H + prof - 0.005), ((p[1] + q[1]) / 2) * CM); b.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); gf.add(b);
           }
