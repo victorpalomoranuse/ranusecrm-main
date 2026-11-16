@@ -485,29 +485,12 @@ function nombreParte(grupo, malla) {
   grupo.traverse(x => { if (!x.isMesh || x.userData.overlay || x.userData.hit || x.userData.parte !== undefined) return; if (x === malla) res = 'i' + n; n++; });
   return res;
 }
-// la región «pieza» pinta lo que mira hacia el mismo lado que su triángulo de partida: se parte de seis (uno por dirección) para cubrir toda la pieza
-function semillasPieza(geo) {
-  regionTriangulos(geo, 0, 25); const nn = geo.userData.adj && geo.userData.adj.normales; if (!nn) return [0];
-  const out = new Set();
-  [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].forEach(([x, y, z]) => { let mejor = -1, bi = 0; for (let i = 0; i < nn.length; i++) { const d = nn[i].x * x + nn[i].y * y + nn[i].z * z; if (d > mejor) { mejor = d; bi = i; } } if (mejor > 0.3) out.add(bi); });
-  return out.size ? [...out] : [0];
-}
-// todas las piezas de todas las máquinas que tienen el mismo color original que la pieza tocada: [clave de región, triángulo de partida]
-function regionesMismoColor(raiz, hit) {
-  const mt = Array.isArray(hit.object.material) ? hit.object.material[hit.face?.materialIndex || 0] : hit.object.material; if (!mt || !mt.color) return [];
-  const hexMin = mt.color.getHexString(), sets = [];
-  raiz.traverse(eq => {
-    const e = eq.userData && eq.userData.equipo; if (!e || eq.userData.capa !== 'equipos') return;
-    eq.traverse(m => { if (!m.isMesh || m.userData.overlay || m.userData.hit || m.userData.parte === undefined) return; const mm = Array.isArray(m.material) ? m.material[0] : m.material; if (mm && mm.color && mm.color.getHexString() === hexMin) semillasPieza(m.geometry).forEach(sd => sets.push(['e:' + e.id + ':' + m.userData.parte, sd])); });
-  });
-  return sets;
-}
 function claveRegion(hit) {
   const x = hit.object; if (!x.isMesh || x.userData.overlay || x.userData.hit || hit.faceIndex == null) return null;
   const u = x.userData;
   if (u.muroId) return 'm:' + u.muroId + ':i0';
   let ge = x; while (ge && !ge.userData.equipo) ge = ge.parent;
-  if (ge && u.parte !== undefined) return 'e:' + ge.userData.equipo.id + ':' + u.parte;
+  if (ge) return null; // las máquinas se colorean desde «Serie»
   if (u.salaKey || u.techoKey || u.pilarId || u.hueco || ge) return null;
   let g = x; while (g && !g.userData.oid) g = g.parent;
   if (!g || g.userData.tipoObj === 'zona') return null;
@@ -2966,13 +2949,7 @@ export default function Visor3D({ cliente = false }) {
       const mat = matSelRef.current; if (!mat) return;
       const valor = mat.conMapa ? 'tinte:' + (mat.tinte || '#ffffff') : (mat.hex || ('tex:' + mat.id));
       const u = hit.object.userData;
-      if (todos) { // en una pieza de máquina, «todas» = todas las piezas con ese mismo color de todas las máquinas (antes solo cambiaba el cuerpo oculto)
-        const ck0 = claveRegion(hit);
-        if (ck0 && ck0.startsWith('e:')) {
-          const sets0 = regionesMismoColor(raiz, hit);
-          if (sets0.length) { setAcab(a => { const reg = { ...(a.regiones || {}) }; sets0.forEach(([k, tri]) => { reg[k] = [...(reg[k] || []).filter(q => !(q.ang === 181 && q.tri === tri)), { tri, valor, ang: 181 }]; }); return { ...a, regiones: reg }; }); return; }
-        }
-      }
+      { let ge0 = hit.object; while (ge0 && !ge0.userData.equipo) ge0 = ge0.parent; if (ge0 && ge0.userData.capa === 'equipos') { setAviso('Las máquinas se colorean desde «Serie», en la barra de arriba.'); return; } }
       {
         const clave = (modoPincelRef.current === 'cara' || modoPincelRef.current === 'pieza') && !todos ? claveRegion(hit) : null;
         if (clave && (modoPincelRef.current === 'cara' || clave.startsWith('e:'))) {
@@ -3853,7 +3830,6 @@ export default function Visor3D({ cliente = false }) {
         g.add(mm);
         if (g.userData.cuerpo) { g.userData.cuerpo.material.visible = false; g.userData.cuerpo.castShadow = false; }
         registraLod(a, mm, v => { if (g.userData.cuerpo) g.userData.cuerpo.material.visible = v; });
-        try { const ov = mm.userData.serie ? [] : aplicarRegiones(mm, 'e:' + e.id + ':', acabRef.current?.regiones, texturas); (a.overlaysRaiz = a.overlaysRaiz || []).push(...ov); } catch { /* un acabado que falla no debe deshacer el modelo ya puesto */ }
       }).catch(() => { g.userData.modeloCargado = false; });
     });
     setPesadosN(pesados.size); setPendientesN(pendientes.size);
@@ -3867,7 +3843,6 @@ export default function Visor3D({ cliente = false }) {
     const reg = acab.regiones || {};
     a.raiz.traverse(x => {
       if (x.isMesh && x.userData.muroId && !x.userData.overlay) a.overlaysRaiz.push(...aplicarRegiones(x, 'm:' + x.userData.muroId + ':', reg, texturas));
-      else if (x.userData.equipo) x.children.filter(c => c.userData.modeloEq).forEach(mm => a.overlaysRaiz.push(...aplicarRegiones(mm, 'e:' + x.userData.equipo.id + ':', reg, texturas)));
     });
   }, [acab.regiones, rev, estado, texturas]);
 
