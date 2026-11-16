@@ -32,6 +32,54 @@ function descargar(url, nombre) {
   const a = document.createElement('a'); a.href = url; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
 }
 
+// Cuestionario por pasos: cuando el agente hace preguntas numeradas con opciones (A, B, C…), se enseñan de una en una con botones
+function leerCuestionario(texto) {
+  const lineas = String(texto || '').split('\n'), qs = []; const intro = [];
+  for (const l of lineas) {
+    const q = l.match(/^\s*(\d+)[).]\s+(.+?)\s*$/), o = l.match(/^\s*([A-Ea-e])[).]\s+(.+?)\s*$/);
+    if (q && !o) { qs.push({ n: q[1], t: q[2].replace(/:\s*$/, ''), ops: [] }); }
+    else if (o && qs.length) qs[qs.length - 1].ops.push({ l: o[1].toUpperCase(), t: o[2] });
+    else if (!qs.length && l.trim()) intro.push(l.trim());
+  }
+  const buenas = qs.filter(q => q.ops.length >= 2);
+  return buenas.length >= 2 ? { intro: intro.join(' '), qs: buenas } : null;
+}
+function Cuestionario({ cu, onEnviar }) {
+  const [paso, setPaso] = useState(0), [resp, setResp] = useState([]), [otro, setOtro] = useState('');
+  const fin = paso >= cu.qs.length, q = cu.qs[Math.min(paso, cu.qs.length - 1)];
+  const elige = (op, extra) => { const nr = resp.slice(0, paso); nr[paso] = { op, extra }; setResp(nr); setOtro(''); setPaso(paso + 1); };
+  const esOtra = op => /^otra cosa/i.test(op.t);
+  const texto = () => 'Mis respuestas:\n' + cu.qs.map((qq, i) => { const x = resp[i]; return qq.n + ') ' + qq.t + ' → ' + (x ? (esOtra(x.op) ? (x.extra || 'otra cosa') : x.op.l + ') ' + x.op.t) : 'lo decides tú'); }).join('\n') + '\nCon esto, dibuja la idea.';
+  const caja = { background: 'rgba(0,0,0,0.05)', borderRadius: 10, padding: 12, marginTop: 6 };
+  const btnOp = { display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', margin: '6px 0', borderRadius: 8, border: '1px solid rgba(120,110,100,0.4)', background: 'rgba(255,255,255,0.7)', color: '#2b2723', cursor: 'pointer', font: 'inherit' };
+  return (
+    <div style={caja}>
+      {cu.intro && <p style={{ margin: '0 0 8px', opacity: 0.85 }}>{cu.intro}</p>}
+      <div style={{ height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.12)', marginBottom: 8 }}><div style={{ width: (Math.min(paso, cu.qs.length) / cu.qs.length) * 100 + '%', height: '100%', borderRadius: 2, background: '#8a6d4d', transition: 'width .25s' }} /></div>
+      {!fin ? (
+        <>
+          <div style={{ fontSize: 11, opacity: 0.6 }}>Pregunta {paso + 1} de {cu.qs.length}</div>
+          <div style={{ fontWeight: 700, margin: '2px 0 4px' }}>{q.t}</div>
+          {q.ops.filter(op => !esOtra(op)).map(op => <button key={op.l} type="button" style={btnOp} onClick={() => elige(op)}><b>{op.l}</b> · {op.t}</button>)}
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <input value={otro} onChange={e => setOtro(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && otro.trim()) elige(q.ops.find(esOtra) || { l: 'D', t: 'Otra cosa' }, otro.trim()); }} placeholder="Otra cosa… (escríbelo y Enter)" style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(120,110,100,0.4)', font: 'inherit' }} />
+          </div>
+          <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 12 }}>
+            {paso > 0 && <button type="button" className="ei-btn" onClick={() => setPaso(paso - 1)}>← Atrás</button>}
+            <button type="button" className="ei-btn" onClick={() => { const nr = resp.slice(0, paso); setResp(nr); setPaso(paso + 1); }} title="Esta la decide el agente">Que decida el agente</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Listo. Esto es lo que has elegido:</div>
+          {cu.qs.map((qq, i) => { const x = resp[i]; return <div key={i} style={{ fontSize: 13, margin: '3px 0', cursor: 'pointer' }} onClick={() => setPaso(i)} title="Clic para cambiarla"><b>{qq.t}:</b> {x ? (esOtra(x.op) ? x.extra : x.op.t) : <i>lo decide el agente</i>}</div>; })}
+          <button type="button" className="ei-btn" style={{ marginTop: 10, fontWeight: 700 }} onClick={() => onEnviar(texto())}>✨ Dibujar con estas respuestas</button>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function EstudioIdeas({ oscuro = false, capturarVista = null, onCerrar = null, obtenerContexto = null }) {
   const [mensajes, setMensajes] = useState([]);       // { rol: 'yo'|'ia', texto, imagenes, modelo }
   const [texto, setTexto] = useState('');
@@ -175,7 +223,7 @@ export default function EstudioIdeas({ oscuro = false, capturarVista = null, onC
         {mensajes.map((m, i) => (
           <div key={i} className={'ei-msg ei-' + m.rol}>
             {m.propuesta && <small className="ei-modelo" style={{ fontWeight: 700 }}>Propuesta {m.propuesta} de {m.de}</small>}
-            {m.texto && <p>{m.texto}</p>}
+            {m.texto && (() => { const cu = m.rol === 'ia' && i === mensajes.length - 1 && !trabajando ? leerCuestionario(m.texto) : null; return cu ? <Cuestionario key={m.texto.length + '-' + i} cu={cu} onEnviar={enviar} /> : <p>{m.texto}</p>; })()}
             {m.imagenes?.length > 0 && (
               <div className="ei-imgs">
                 {m.imagenes.map((u, k) => (
