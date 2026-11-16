@@ -272,15 +272,36 @@ function RendersConRecorrido({ projectId, capitulo, bloques, llamar, inter, reca
   const [abierto, setAbierto] = useState(null);
   const vistos = new Set();
   const items = [
-    ...(capitulo.render_url ? [{ url: capitulo.render_url, quitar: () => llamar(() => api.put('/historia/capitulos/' + capitulo.id, { render_url: null })) }] : []),
-    ...bloques.filter(b => b.tipo === 'render' && b.imagen_url).map(b => ({ url: b.imagen_url, quitar: () => llamar(() => api.put('/historia/bloques/' + b.id, { imagen_url: null })) })),
+    ...(capitulo.render_url ? [{ url: capitulo.render_url, slot: { tipo: 'main' }, quitar: () => llamar(() => api.put('/historia/capitulos/' + capitulo.id, { render_url: null })) }] : []),
+    ...bloques.filter(b => b.tipo === 'render' && b.imagen_url).map(b => ({ url: b.imagen_url, slot: { tipo: 'bloque', id: b.id }, quitar: () => llamar(() => api.put('/historia/bloques/' + b.id, { imagen_url: null })) })),
   ].filter(it => (vistos.has(it.url) ? false : vistos.add(it.url)));
+  // orden de los renders: el primero es el principal. Se reordena con las flechas o arrastrando; por dentro se intercambian las imágenes entre sus huecos
+  const [arrastrando, setArrastrando] = useState(null);
+  const reordena = (desde, hasta) => {
+    if (desde === hasta || hasta < 0 || hasta >= items.length) return;
+    const urls = items.map(it => it.url), [u] = urls.splice(desde, 1); urls.splice(hasta, 0, u);
+    return llamar(async () => {
+      for (let i = 0; i < items.length; i++) {
+        if (urls[i] === items[i].url) continue;
+        if (items[i].slot.tipo === 'main') await api.put('/historia/capitulos/' + capitulo.id, { render_url: urls[i] });
+        else await api.put('/historia/bloques/' + items[i].slot.id, { imagen_url: urls[i] });
+      }
+    });
+  };
   return (
     <div>
       <div style={{ ...row, alignItems: 'flex-start', gap: '0.9rem' }}>
-        {items.map(it => (
-          <div key={it.url} style={{ display: 'grid', gap: 5, justifyItems: 'center' }}>
+        {items.map((it, idx) => (
+          <div key={it.url} draggable onDragStart={() => setArrastrando(idx)} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (arrastrando !== null) reordena(arrastrando, idx); setArrastrando(null); }} onDragEnd={() => setArrastrando(null)}
+            style={{ display: 'grid', gap: 5, justifyItems: 'center', opacity: arrastrando === idx ? 0.45 : 1, cursor: 'grab' }}>
             <Miniatura url={it.url} onQuitar={it.quitar} />
+            {items.length > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem' }}>
+                <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" disabled={idx === 0} title="Mover hacia delante" onClick={() => reordena(idx, idx - 1)}>◀</button>
+                <span style={{ opacity: 0.7, minWidth: 14, textAlign: 'center' }}>{idx === 0 ? '★' : idx + 1}</span>
+                <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" disabled={idx === items.length - 1} title="Mover hacia atrás" onClick={() => reordena(idx, idx + 1)}>▶</button>
+              </div>
+            )}
             <button type="button" className={'ap-btn ap-btn-xs ' + (inter[it.url] ? 'ap-btn-primary' : 'ap-btn-ghost')} title="Que el render se mueva al deslizar, como si caminaras por el espacio" onClick={() => setAbierto(it.url)}>
               {inter[it.url] ? '✓ Con recorrido' : '✨ Recorrido'}
             </button>
