@@ -1821,29 +1821,35 @@ function color(hex, def) {
   try { return new THREE.Color(String(hex || def).replace(/!$/, '')); } catch { return new THREE.Color(def); }
 }
 
+// geometría de un muro: rectángulo con los huecos de puertas y ventanas y, si los hay, nichos (huecos con forma que la zona cierra por detrás con su fondo)
+function muroGeo(L, alto, t, abs, nichos) {
+  const sh = new THREE.Shape();
+  sh.moveTo(0, 0); sh.lineTo(L, 0); sh.lineTo(L, alto); sh.lineTo(0, alto); sh.closePath();
+  for (const [x0, y0, x1, y1] of abs) { const hole = new THREE.Path(); hole.moveTo(x0, y0); hole.lineTo(x1, y0); hole.lineTo(x1, y1); hole.lineTo(x0, y1); hole.closePath(); sh.holes.push(hole); }
+  for (const pts of nichos || []) sh.holes.push(new THREE.Path(pts.map(p => new THREE.Vector2(Math.max(0.5, Math.min(L - 0.5, p[0])), Math.max(0.5, Math.min(alto - 0.5, p[1]))))));
+  const g = new THREE.ExtrudeGeometry(sh, { depth: t, bevelEnabled: false });
+  g.translate(0, 0, -t / 2);
+  g.scale(CM, CM, CM);
+  return g;
+}
 function muro(m, h0) {
   const [ax, ay] = m.a, [bx, by] = m.b;
   const L = Math.hypot(bx - ax, by - ay);
   if (L < 1) return null;
   const alto = (m.h || h0) ;
-  const sh = new THREE.Shape();
-  sh.moveTo(0, 0); sh.lineTo(L, 0); sh.lineTo(L, alto); sh.lineTo(0, alto); sh.closePath();
+  const abs = [];
   for (const o of m.ab || []) {
     const x0 = Math.max(0.5, Math.min(L - 1, o.p)); // «p» = distancia desde el inicio del muro al borde del hueco
     const x1 = Math.max(x0 + 1, Math.min(L - 0.5, o.p + o.w));
     const y0 = Math.max(0, o.sill || 0);
     const y1 = Math.min(alto - 0.5, y0 + (o.h || 210));
     if (y1 <= y0) continue;
-    const hole = new THREE.Path();
-    hole.moveTo(x0, y0); hole.lineTo(x1, y0); hole.lineTo(x1, y1); hole.lineTo(x0, y1); hole.closePath();
-    sh.holes.push(hole);
+    abs.push([x0, y0, x1, y1]);
   }
   const t = m.t || 12;
-  const g = new THREE.ExtrudeGeometry(sh, { depth: t, bevelEnabled: false });
-  g.translate(0, 0, -t / 2);
-  g.scale(CM, CM, CM);
+  const g = muroGeo(L, alto, t, abs, []);
   const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: m.estado === 'new' ? 0xf1ece6 : 0xe4e0db, roughness: 0.95 }));
-  mesh.userData = { capa: 'muros', muroId: m.id };
+  mesh.userData = { capa: 'muros', muroId: m.id, geoBase: { L, alto, t, abs } };
   // puertas y ventanas: marco y hoja (puerta) o cristal (ventana), en el hueco del muro (el muro está en metros y centrado en su grosor)
   for (const o of m.ab || []) {
     const x0 = Math.max(0.5, Math.min(L - 1, o.p)), x1 = Math.max(x0 + 1, Math.min(L - 0.5, o.p + o.w));
@@ -3282,6 +3288,18 @@ export default function Visor3D({ cliente = false }) {
     });
   }, [rev, estado]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Nichos en la pared: una zona de pared con profundidad negativa abre el muro con su forma (el fondo y la luz los pone la propia zona)
+  useEffect(() => {
+    const A = api3d.current; if (!A.raiz) return;
+    const por = {}; objs.forEach(o => { if (o.tipo === 'zona' && o.plano === 'pared' && o.prof < 0 && o.muroId && Array.isArray(o.pts) && o.pts.length >= 3) (por[o.muroId] = por[o.muroId] || []).push(o.pts); });
+    A.raiz.traverse(m => {
+      if (!m.isMesh || !m.userData.geoBase || m.userData.overlay) return;
+      const lista = por[m.userData.muroId] || [], clave = lista.length ? JSON.stringify(lista) : '';
+      if ((m.userData.nKey || '') === clave) return; m.userData.nKey = clave;
+      const b = m.userData.geoBase; m.geometry.dispose(); m.geometry = muroGeo(b.L, b.alto, b.t, b.abs, lista);
+    });
+  }, [objs, estado, rev]);
+
   // Techo con huecos: donde una forma de techo «sube», el techo de la sala se abre (el hueco se ve desde dentro y desde abajo)
   useEffect(() => {
     const A = api3d.current; if (!A.raiz) return;
@@ -3901,7 +3919,17 @@ export default function Visor3D({ cliente = false }) {
         if (o.plano === 'pared') {
           const mu = todosMuros.find(m => m.id === o.muroId); if (!mu) return;
           const pm = plantaDelMuro(mu.id), holder = new THREE.Group(); holder.position.set((mu.a[0] + pm.ox) * CM, pm.z, (mu.a[1] + pm.oy) * CM); holder.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]);
-          mesh.position.z = (o.lado || 1) * (((mu.t || 12) / 2) * CM + 0.004); holder.add(mesh); gz.add(holder);
+          const lado = o.lado || 1, tCm = mu.t || 12, prof = Number(o.prof) || 0;
+          if (prof > 0) { // resalte: un volumen con la forma de la zona que sale del muro hacia la sala
+            const prisma = new THREE.Mesh(new THREE.ExtrudeGeometry(new THREE.Shape(o.pts.map(p => new THREE.Vector2(p[0] * CM, p[1] * CM))), { depth: Math.max(0.5, prof) * CM, bevelEnabled: false }), mt);
+            prisma.position.z = lado * (tCm / 2) * CM; prisma.scale.z = lado; prisma.castShadow = prisma.receiveShadow = true; holder.add(prisma);
+            if (/^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) { const ledM = new THREE.MeshBasicMaterial({ color: o.luzZ }); o.pts.forEach((p, i) => { const q = o.pts[(i + 1) % o.pts.length], Ls = Math.hypot(q[0] - p[0], q[1] - p[1]); if (Ls < 2) return; const b = new THREE.Mesh(new THREE.BoxGeometry(Ls * CM, 0.012, 0.01), ledM); b.position.set(((p[0] + q[0]) / 2) * CM, ((p[1] + q[1]) / 2) * CM, lado * (tCm / 2) * CM + lado * 0.004); b.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); holder.add(b); }); }
+          } else if (prof < 0) { // nicho: el muro se abre con esa forma y la zona hace de fondo, dentro del grosor del muro
+            const dd = Math.min(Math.abs(prof), tCm - 1);
+            mesh.position.z = lado * ((tCm / 2 - dd) * CM); holder.add(mesh);
+            if (/^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) { const ledM = new THREE.MeshBasicMaterial({ color: o.luzZ }); o.pts.forEach((p, i) => { const q = o.pts[(i + 1) % o.pts.length], Ls = Math.hypot(q[0] - p[0], q[1] - p[1]); if (Ls < 2) return; const b = new THREE.Mesh(new THREE.BoxGeometry(Ls * CM, 0.014, 0.014), ledM); b.position.set(((p[0] + q[0]) / 2) * CM, ((p[1] + q[1]) / 2) * CM, lado * ((tCm / 2 - dd) * CM + 0.008)); b.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); holder.add(b); }); }
+          } else { mesh.position.z = lado * ((tCm / 2) * CM + 0.004); holder.add(mesh); }
+          gz.add(holder);
           gz.userData.sinArrastre = true;
         } else {
           geo.rotateX(Math.PI / 2);
@@ -8339,6 +8367,21 @@ export default function Visor3D({ cliente = false }) {
                   <span style={{ opacity: 0.6, fontSize: 11 }}>o un color liso</span>
                 </div>
                 <div style={{ opacity: 0.5, fontSize: 11 }}>Descenso negativo = el techo sube (relieve). Cada falso techo tiene su propio descenso: así uno queda más bajo que otro. El foseado es el hueco entre el borde y el falso techo.</div>
+              </div>
+            );
+          })()}
+          {objSel.tipo === 'zona' && objSel.plano === 'pared' && (() => {
+            const pr = Number(objSel.prof) || 0, modo = pr > 0 ? 'resalte' : pr < 0 ? 'nicho' : 'plana';
+            const poner = (m, p) => cambiar(objSel.id, { prof: m === 'plana' ? 0 : m === 'resalte' ? Math.max(1, p || 5) : -Math.max(1, p || 8) });
+            return (
+              <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Forma en la pared</div>
+                <select value={modo} onChange={e => poner(e.target.value, Math.abs(pr))} style={{ ...btn, width: '100%', marginBottom: 6 }}>
+                  <option value="plana">Plana: solo cambia el material</option><option value="resalte">Resalte: sale de la pared</option><option value="nicho">Nicho: hueco en el muro</option>
+                </select>
+                {modo !== 'plana' && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 118, opacity: 0.7 }}>{modo === 'resalte' ? 'Cuánto sale (cm)' : 'Profundidad (cm)'}</span><input type="number" min="1" max={modo === 'resalte' ? 100 : 60} value={Math.abs(pr)} onChange={e => poner(modo, Math.max(1, parseFloat(e.target.value) || 1))} style={{ ...btn, width: 64 }} /></label>}
+                {modo === 'nicho' && <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 6 }}>Máximo: el grosor del muro menos 1 cm. Si es más hondo, atraviesa el muro.</div>}
+                {modo !== 'plana' && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><input type="checkbox" checked={!!objSel.luzZ} onChange={e => cambiar(objSel.id, { luzZ: e.target.checked ? '#ffd9a0' : undefined })} /><span>Luz LED en el borde</span>{objSel.luzZ && <input type="color" value={objSel.luzZ} onChange={e => cambiar(objSel.id, { luzZ: e.target.value })} style={{ marginLeft: 6 }} />}</label>}
               </div>
             );
           })()}
