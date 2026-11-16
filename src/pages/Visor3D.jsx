@@ -2279,6 +2279,9 @@ export default function Visor3D({ cliente = false }) {
   const [zForm, setZForm] = useState({ x: 0, y: 90, w: 100, h: 100, forma: 'rect' });
   // la barra de herramientas usa 1 columna y, solo si no cabe en la altura de la ventana, pasa a 2 (se mide, no se adivina por la altura)
   const [railCols, setRailCols] = useState(1), [railTick, setRailTick] = useState(0);
+  // panel de herramientas de la izquierda: se puede ocultar con la pestaña y se recuerda
+  const [railOculto, setRailOculto] = useState(() => { try { return localStorage.getItem('visor3dRailOculto') === '1'; } catch { return false; } });
+  const alternaRail = () => setRailOculto(v => { const n = !v; try { localStorage.setItem('visor3dRailOculto', n ? '1' : '0'); } catch { /* sin almacenamiento */ } return n; });
   const railRef = useRef(null);
   const ultTab = useRef({ mat: 'pintura', comp: 'catalogo' }); // última pestaña usada de cada bloque (Materiales / Componentes)
   useEffect(() => { const f = () => { setRailCols(1); setRailTick(t => t + 1); }; window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
@@ -6476,7 +6479,8 @@ export default function Visor3D({ cliente = false }) {
       })()}
 
       {/* ── Carril de herramientas (izquierda), agrupadas por tarea ── */}
-      <div ref={railRef} style={{ position: 'absolute', top: 54, left: 8, boxSizing: 'content-box', columnCount: railCols, columnGap: 0, width: railCols * 54, maxHeight: 'calc(100vh - 78px)', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', background: 'rgba(22,20,18,0.95)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+      {!cliente && <button type="button" onClick={alternaRail} title={railOculto ? 'Mostrar las herramientas' : 'Ocultar las herramientas'} style={{ position: 'absolute', top: 54, left: railOculto ? 8 : railW + 12, zIndex: 8, background: 'rgba(22,20,18,0.92)', color: '#fff', border: '1px solid #444', borderRadius: 8, padding: railOculto ? '6px 10px' : '6px 7px', fontSize: 12, cursor: 'pointer', fontWeight: 700, lineHeight: 1 }}>{railOculto ? '▶ Herramientas' : '◀'}</button>}
+      <div ref={railRef} style={{ display: railOculto ? 'none' : undefined, position: 'absolute', top: 54, left: 8, boxSizing: 'content-box', columnCount: railCols, columnGap: 0, width: railCols * 54, maxHeight: 'calc(100vh - 78px)', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', background: 'rgba(22,20,18,0.95)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
         {grupoRail([
           railBtn(herr === 'sel', 'sel', 'Seleccionar', modoRender ? 'Modo render: el modelo está bloqueado; aquí solo se eligen luces' : 'Seleccionar y mover objetos (Espacio)', () => setHerr('sel')),
           !modoRender && railBtn(false, 'ocultar', 'Ocultar', 'Oculta lo seleccionado sin borrarlo (H)', ocultarSel),
