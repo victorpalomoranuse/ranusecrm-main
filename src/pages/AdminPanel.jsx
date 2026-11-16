@@ -5,6 +5,7 @@ import api from '../services/api';
 import { Sparkles, Table2, Home, Ruler, LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu, CalendarDays, Search, Building2, Film } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
 import EstudioIdeas from '../components/EstudioIdeas';
+import GeneradorImagenes from '../components/GeneradorImagenes';
 import { SectionAsistenteIA } from './SectionAsistenteIA';
 import { SectionAsistenteFinanzas } from './SectionAsistenteFinanzas';
 import { SectionAsistentePersonal } from './SectionAsistentePersonal';
@@ -2877,6 +2878,7 @@ const NAV_ITEMS = [
   { id:'planos', label:'Planos', Icon:Ruler, permission:'proyectos' },
   { id:'asistente-diseno', label:'Asistente de diseño', Icon:Ruler, permission:'proyectos' },
   { id:'estudio-ideas', label:'Estudio de ideas', Icon:Sparkles, permission:'proyectos' },
+  { id:'generador-imagenes', label:'Generador de imágenes', Icon:Sparkles, permission:'proyectos' },
   { id:'hojas', label:'Hojas', Icon:Table2 },
   { id:'clientes', label:'Clientes', Icon:UserCheck, permission:'clientes' },
   { id:'empleados', label:'Empleados', Icon:Users, adminOnly:true },
@@ -2933,6 +2935,7 @@ export function AdminPanel() {
       case 'proyectos': return <SectionProyectos/>;
       case 'planos': return <SectionPlanos/>;
       case 'estudio-ideas': return <div style={{height:'calc(100vh - 140px)',minHeight:480}}><EstudioIdeas/></div>;
+      case 'generador-imagenes': return <div style={{height:'calc(100vh - 100px)',minHeight:560}}><GeneradorImagenes/></div>;
       case 'hojas': return <SectionHojas/>;
       case 'clientes': return <SectionClientes/>;
       case 'empleados': return <SectionEmpleados/>;
