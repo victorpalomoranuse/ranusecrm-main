@@ -3374,7 +3374,7 @@ export default function Visor3D({ cliente = false }) {
     const matNegro = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.5, metalness: 0.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); // el desplazamiento evita que parpadee donde roza el techo
     // focos y spots: se encienden TODOS mientras la tarjeta gráfica lo aguante (el tope sube con la calidad y se limita por lo que admite la tarjeta);
     // solo si hay más de los que caben, los reales se reparten entre los más cercanos a la cámara
-    let nLuces = 0; const cand = [], nSp = lucesPl.slice(0, 120).filter(x => ['spot', 'spotl', 'foco', 'plaf'].includes(x.kid) && !x.vs).length;
+    let nLuces = 0; const presupL = { n: 0 }; const cand = [], nSp = lucesPl.slice(0, 120).filter(x => ['spot', 'spotl', 'foco', 'plaf'].includes(x.kid) && !x.vs).length;
     const gl0 = a.renderer && a.renderer.getContext ? a.renderer.getContext() : null, maxVec = gl0 ? (gl0.getParameter(gl0.MAX_FRAGMENT_UNIFORM_VECTORS) || 224) : 224;
     const porUnif = Math.max(8, Math.floor((maxVec - 200) / 8) - 24), porCal = { baja: 12, media: 40, alta: 64 }[calidad] || 24, POOL = Math.min(nSp, porCal, porUnif); a.luzPool = null;
     lucesPl.slice(0, 120).forEach(l0 => {
@@ -3394,7 +3394,8 @@ export default function Visor3D({ cliente = false }) {
           const y = (l.h != null ? l.h * CM : techoEn((p[0] + q[0]) / 2, (p[1] + q[1]) / 2) * CM) - (esL ? 0.004 : alto / 2) - (l.kid === 'linealc' ? 0.5 : 0);
           const m = new THREE.Mesh(new THREE.BoxGeometry(L, alto, ancho), esL || !esC ? new THREE.MeshBasicMaterial({ color: esL ? col : 0xf4f4f4, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : matNegro);
           m.position.set(((p[0] + q[0]) / 2) * CM, y, ((p[1] + q[1]) / 2) * CM); m.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); m.traverse(x => { x.userData.luzId = l.id; }); g.add(m);
-          if (!esC && puede()) { const pl = new THREE.PointLight(col, Math.max(0.05, lm * (L / CM / 100) / (4 * Math.PI)) * 0.013 * ambiente.luces * 0.6, 0, 2); pl.position.set(m.position.x, y - 0.05, m.position.z); g.add(pl); }
+          // tiras y lineales: luz LINEAL (de área, tan larga como el tramo) y no una luz puntual en el centro, que pegada al techo hacía un punto brillante; el tope de intensidad evita los quemados si los lúmenes están mal puestos
+          if (!esC) luzArea(g, new THREE.Vector3(m.position.x, y - 0.02, m.position.z), new THREE.Vector3(0, -1, 0), L, 0.04, col, Math.max(1, Math.min(40, lm / 80)) * ambiente.luces, presupL, new THREE.Vector3((q[0] - p[0]) / (L / CM), 0, (q[1] - p[1]) / (L / CM)));
         }
         return;
       }
