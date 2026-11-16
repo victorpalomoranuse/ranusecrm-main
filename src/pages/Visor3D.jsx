@@ -532,6 +532,59 @@ function aplicarRegiones(raizObj, prefijo, regiones, texturas) {
 const cacheModelos = new Map();
 const cacheAristas = new WeakMap(); // geometría → sus aristas (se calculan una sola vez)
 // Registro de modelos pesados: mientras la cámara se mueve, los que se ven pequeños o lejanos se simplifican (ver el bucle del visor)
+// ── Serie de máquinas: todas las máquinas con los mismos 4 materiales (estructura, tapizado, cromo y detalles), compartidos. Cada máquina queda en 4 mallas como mucho (en vez de cientos de piezas) y
+// cambiar un color cambia todas a la vez. Cada pieza se asigna a su material por el nombre y las propiedades del material original.
+const SERIE_DEF = { on: false, estructura: '#2b2b2e', tapizado: '#3a2f28', cromo: '#cfd2d6', detalles: '#18181a' };
+const SERIE_PBR = { estructura: [0.55, 0.45], tapizado: [0.0, 0.78], cromo: [1.0, 0.18], detalles: [0.05, 0.8] }; // [metalness, roughness]
+// colores de una marca: los de la serie base con los cambios propios de esa marca por encima
+const colorSerie = (serie, marca) => ({ ...SERIE_DEF, ...(serie || {}), ...((serie && serie.marcas && serie.marcas[marca]) || {}) });
+const serieSets = new Map();
+function matsSerie(marca, serie) {
+  const mk = marca || 'Sin marca'; let st = serieSets.get(mk);
+  if (!st) { st = Object.fromEntries(Object.entries(SERIE_PBR).map(([k, [mt, ro]]) => [k, new THREE.MeshStandardMaterial({ color: SERIE_DEF[k], metalness: mt, roughness: ro, envMapIntensity: k === 'cromo' ? 1.4 : 1 })])); serieSets.set(mk, st); }
+  if (serie) { const S = colorSerie(serie, mk); Object.keys(st).forEach(k => { st[k].color.set(S[k]); }); }
+  return st;
+}
+function actualizaSerieMats(serie) { serieSets.forEach((st, mk) => { const S = colorSerie(serie, mk); Object.keys(st).forEach(k => { st[k].color.set(S[k]); st[k].needsUpdate = true; }); }); }
+function clasificaPieza(m, nombre) {
+  const n = String(nombre || '').toLowerCase(), c = m.color || new THREE.Color(0x808080), lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, met = m.metalness ?? 0, rou = m.roughness ?? 0.5;
+  const mx = Math.max(c.r, c.g, c.b), mn = Math.min(c.r, c.g, c.b), sat = mx > 0 ? (mx - mn) / mx : 0;
+  if (/tapiz|cuero|piel|leather|vinil|vinyl|skai|espuma|foam|cushion|cojin|cojín|upholst|asiento|respaldo|seat|banqueta/.test(n)) return 'tapizado';
+  if (/cromo|chrome|inox|stainless|acero|steel|niquel|níquel|nickel|aluminio|alumin|plata|silver|pulid|polish/.test(n)) return 'cromo';
+  if (/goma|rubber|plast|nylon|grip|empu|handle|tornill|bolt|screw/.test(n)) return 'detalles';
+  if (met > 0.7 && rou < 0.4 && lum > 0.3) return 'cromo';
+  if (rou > 0.5 && met < 0.3 && sat > 0.25) return 'tapizado';
+  return 'estructura';
+}
+function aplicaSerie(mm, marca, serie) {
+  try {
+    const serieMats = matsSerie(marca, serie);
+    mm.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(mm.matrixWorld).invert(), M = new THREE.Matrix4(), grupos = { estructura: [], tapizado: [], cromo: [], detalles: [] }, orig = [];
+    mm.traverse(x => {
+      if (!x.isMesh || x.userData.hit || x.userData.overlay || x.isSkinnedMesh || x.isInstancedMesh || !x.geometry?.attributes?.position || x.visible === false) return;
+      const mt = Array.isArray(x.material) ? x.material[0] : x.material; if (!mt || mt.visible === false || (mt.transparent && (mt.opacity ?? 1) < 0.9)) return; // cristales y similares se dejan como están
+      const g = x.geometry.clone(); g.clearGroups(); g.morphAttributes = {};
+      g.applyMatrix4(M.multiplyMatrices(inv, x.matrixWorld));
+      for (const n of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(n)) g.deleteAttribute(n);
+      if (!g.attributes.normal) g.computeVertexNormals();
+      if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+      if (!g.index) { const n = g.attributes.position.count, ix = new (n > 65535 ? Uint32Array : Uint16Array)(n); for (let i = 0; i < n; i++) ix[i] = i; g.setIndex(new THREE.BufferAttribute(ix, 1)); }
+      if (x.matrixWorld.determinant() < 0) { const ix = g.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; } }
+      grupos[clasificaPieza(mt, x.name || mt.name)].push(g); orig.push(x);
+    });
+    if (orig.length < 2) return false;
+    const nuevos = [];
+    for (const [slot, geos] of Object.entries(grupos)) {
+      if (!geos.length) continue;
+      const geo = geos.length === 1 ? geos[0] : mergeGeometries(geos, false); if (!geo) return false;
+      const me = new THREE.Mesh(geo, serieMats[slot]); me.name = slot; me.userData.parte = slot; me.castShadow = true; me.receiveShadow = true; nuevos.push(me);
+    }
+    if (!nuevos.length) return false;
+    orig.forEach(x => x.removeFromParent()); nuevos.forEach(me => mm.add(me)); mm.userData.serie = true;
+    return true;
+  } catch (e) { console.warn('serie de máquinas', e); return false; }
+}
 // ── Versión «de movimiento» de cada máquina: mientras la cámara se mueve y el visor va justo, las ~150 piezas sueltas de cada máquina se sustituyen por unas pocas mallas
 // (las que comparten el mismo aspecto, unidas). Se ve igual, pero son 10-20 veces menos llamadas de dibujo. Al parar, vuelven las piezas originales (las que se pintan, se eligen y se editan).
 function piezasProxy(mm) {
@@ -2289,6 +2342,9 @@ export default function Visor3D({ cliente = false }) {
   const [hora, setHora] = useState(15);                       // hora del sol (6–21)
   const [ambiente, setAmbiente] = useState(() => { try { return { exposicion: 1, luces: 1, ...JSON.parse(localStorage.getItem('visor3dAmb') || '{}') }; } catch { return { exposicion: 1, luces: 1 }; } });
   const [ambAbierto, setAmbAbierto] = useState(false);
+  const [serieAbierto, setSerieAbierto] = useState(false);
+  const ponSerie = campos => setAcab(a => ({ ...a, serie: { ...SERIE_DEF, ...(a.serie || {}), ...campos } }));
+  const ponSerieMarca = (marca, campos) => setAcab(a => { const s = { ...SERIE_DEF, ...(a.serie || {}) }; return { ...a, serie: { ...s, marcas: { ...(s.marcas || {}), [marca]: { ...((s.marcas || {})[marca] || {}), ...campos } } } }; });
   const [imanActivo, setImanActivo] = useState(true);      // imán a paredes, vértices y guías
   const [gridCm, setGridCm] = useState(5);                    // salto de la rejilla al dibujar
   const [formaDib, setFormaDib] = useState('poli');           // poli | rect | oval
@@ -2467,6 +2523,14 @@ export default function Visor3D({ cliente = false }) {
   const [matrizDx, setMatrizDx] = useState(100);
   const [matrizDy, setMatrizDy] = useState(0);
   useEffect(() => { acabRef.current = acab; }, [acab]);
+  // Serie de máquinas: los colores se cambian en los 4 materiales compartidos (todas las máquinas a la vez); activar o desactivar recarga los modelos
+  useEffect(() => { actualizaSerieMats(acab.serie); const A = api3d.current; if (A.despertar) A.despertar(); }, [JSON.stringify(acab.serie || null)]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const A = api3d.current; if (!A.raiz || estado !== 'listo') return;
+    const on = !!acab.serie?.on, antes = !!A.serieAplicada; A.serieAplicada = on; if (antes === on) return;
+    A.raiz.traverse(g2 => { if (!g2.userData.equipo || g2.userData.capa !== 'equipos') return; g2.children.filter(c => c.userData.modeloEq).forEach(c => { g2.remove(c); if (c.userData.serie) c.traverse(x => { x.geometry?.dispose?.(); }); }); g2.userData.modeloCargado = false; g2.userData.limitada = false; if (g2.userData.cuerpo) { g2.userData.cuerpo.material.visible = true; g2.userData.cuerpo.castShadow = true; } });
+    setModosEq(m => ({ ...m }));
+  }, [acab.serie?.on, estado]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { rodapieRef.current = rodapie; }, [rodapie]);
   useEffect(() => { const f = () => setTexturas(t => [...t]); window.addEventListener('visor3d-tex', f); return () => window.removeEventListener('visor3d-tex', f); }, []);
   const [grosorMuro, setGrosorMuro] = useState(12);
@@ -2642,7 +2706,7 @@ export default function Visor3D({ cliente = false }) {
       ultima = pl?.updated;
       if (cliente && primera && esMovil() && (pl?.escena3d?.renders || []).some(r => r.tipo === '360' && r.tour)) { navigate('/tour/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma), { replace: true }); return; }
       setTitulo(pl?.nombre || 'Plano');
-      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null, antirepSuelos: ac.antirepSuelos === true, modoSuelo: ['moteado', 'aguas', 'liso'].includes(ac.modoSuelo) ? ac.modoSuelo : (ac.antirepSuelos === true ? 'moteado' : '') }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); setTapetas(pl?.escena3d?.tapetas || {}); setHuecosCfg(pl?.escena3d?.huecosCfg || {}); setModosEq(pl?.escena3d?.modelosEq || {}); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
+      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, serie: ac.serie && typeof ac.serie === 'object' ? ac.serie : undefined, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null, antirepSuelos: ac.antirepSuelos === true, modoSuelo: ['moteado', 'aguas', 'liso'].includes(ac.modoSuelo) ? ac.modoSuelo : (ac.antirepSuelos === true ? 'moteado' : '') }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); setTapetas(pl?.escena3d?.tapetas || {}); setHuecosCfg(pl?.escena3d?.huecosCfg || {}); setModosEq(pl?.escena3d?.modelosEq || {}); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
       // el 3D enseña el estado de DISTRIBUCIÓN: lo marcado para demoler (muros, huecos, pilares, máquinas) ya no está
       const sinDem = (p) => ({ ...p, muros: (p.muros || []).filter(w => w.estado !== 'dem').map(w => ({ ...w, ab: (w.ab || []).filter(o => o.estado !== 'dem') })), salas: (p.salas || []).map(s => ({ ...s, pts: quitarPicos(s.pts) })), pilares: (p.pilares || []).filter(x => x.estado !== 'dem'), equipos: (p.equipos || []).filter(x => x.estado !== 'dem'), recrecidos: (p.recrecidos || []).filter(x => x.estado !== 'dem') });
       const modelo0 = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
@@ -3868,6 +3932,7 @@ export default function Visor3D({ cliente = false }) {
         mm.userData.tri = triMm;
         setMtick(v => v + 1);
         sobrescribirModelo(mm, {}, texturas); mm.userData.modeloEq = true; mm.rotation.y = -(rotE * Math.PI) / 180;
+        if (acabRef.current?.serie?.on) aplicaSerie(mm, ((prod && prod.marca) || '').trim() || 'Sin marca', acabRef.current.serie);
         { // posición, elevación y espejo propios del modelo (solo esta copia): el bloque del plano no se mueve
           const me2 = modosEq[e.id] || {}, phi = g.rotation.y;
           if (me2.pos || me2.zM) { const dxw = me2.pos ? (me2.pos.x - e.cx) * CM : 0, dzw = me2.pos ? (me2.pos.y - e.cy) * CM : 0; mm.position.x += dxw * Math.cos(phi) - dzw * Math.sin(phi); mm.position.z += dxw * Math.sin(phi) + dzw * Math.cos(phi); mm.position.y += (me2.zM || 0) * CM; }
@@ -3877,7 +3942,7 @@ export default function Visor3D({ cliente = false }) {
         g.add(mm);
         if (g.userData.cuerpo) { g.userData.cuerpo.material.visible = false; g.userData.cuerpo.castShadow = false; }
         registraLod(a, mm, v => { if (g.userData.cuerpo) g.userData.cuerpo.material.visible = v; });
-        try { const ov = aplicarRegiones(mm, 'e:' + e.id + ':', acabRef.current?.regiones, texturas); (a.overlaysRaiz = a.overlaysRaiz || []).push(...ov); } catch { /* un acabado que falla no debe deshacer el modelo ya puesto */ }
+        try { const ov = mm.userData.serie ? [] : aplicarRegiones(mm, 'e:' + e.id + ':', acabRef.current?.regiones, texturas); (a.overlaysRaiz = a.overlaysRaiz || []).push(...ov); } catch { /* un acabado que falla no debe deshacer el modelo ya puesto */ }
         (a.proxyCola = a.proxyCola || []).push(mm);
       }).catch(() => { g.userData.modeloCargado = false; });
     });
@@ -6469,6 +6534,7 @@ export default function Visor3D({ cliente = false }) {
           <select value="" onChange={e => { if (e.target.value) ponerLente(parseFloat(e.target.value)); }} style={{ ...bTop, width: 92 }}><option value="">Óptica…</option><option value="90">Gran angular 90°</option><option value="65">Interior amplio 65°</option><option value="50">Interior natural 50°</option><option value="30">Como persona 30°</option><option value="25">Tele 25°</option></select>
         </span>
         <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">Ambiente</button>
+        <button style={{ ...bTop, ...(serieAbierto || acab.serie?.on ? bOn : {}) }} onClick={() => setSerieAbierto(v => !v)} title="Todas las máquinas con el mismo color y tapizado, y mucho más fluido">Serie</button>
         <button style={{ ...bTop, ...(renderAbierto ? bOn : { background: '#8c8076' }), fontWeight: 700 }} onClick={() => { setRenderAbierto(v => !v); setSelObj(null); setSeleccion(null); }} title="Panel de render: luz, color, efectos y calidad de la imagen final">Render</button>
         <span style={{ flex: 1, minWidth: 8 }} />
         <button style={{ ...bTop, ...(realista && calidad === 'alta' && !ligero ? { background: '#8c6a2f' } : {}) }} onClick={poneBonita} title="Vista bonita en un clic: modo Realista y calidad alta. Para mostrar el modelo y sacar renders">✨ Bonita</button>
@@ -7322,6 +7388,38 @@ export default function Visor3D({ cliente = false }) {
           </div>
         );
       })()}
+      {serieAbierto && (
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', width: 320, background: 'rgba(22,20,18,0.96)', color: '#fff', borderRadius: 8, padding: '10px 14px', fontSize: 13, zIndex: 7 }}>
+          <div style={{ fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center' }}>🏋 Serie de máquinas<span style={{ flex: 1 }} /><span style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => setSerieAbierto(false)}>✕</span></div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, cursor: 'pointer' }}><input type="checkbox" checked={!!acab.serie?.on} onChange={e => ponSerie({ on: e.target.checked })} /> <b>Máquinas por serie (mismo aspecto, más fluido)</b></label>
+          {acab.serie?.on ? (
+            <>
+              {[['estructura', 'Estructura'], ['tapizado', 'Tapizado'], ['cromo', 'Cromo / metal pulido'], ['detalles', 'Detalles (gomas, plástico)']].map(([k, n]) => <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}><span style={{ width: 170, opacity: 0.8 }}>{n}</span><input type="color" value={acab.serie?.[k] || SERIE_DEF[k]} onChange={e => ponSerie({ [k]: e.target.value })} /></label>)}
+              {(() => {
+                const mod0 = api3d.current.modelo, eqs = (mod0?.plantas || [mod0]).flatMap(pl => pl?.equipos || []), cuenta = {};
+                eqs.forEach(e => { const mk = ((biblioteca.find(m => m.id === e.cid) || {}).marca || '').trim() || 'Sin marca'; cuenta[mk] = (cuenta[mk] || 0) + 1; });
+                const marcas = Object.keys(cuenta).sort((a, b) => cuenta[b] - cuenta[a]);
+                if (marcas.length < 2) return null;
+                return (
+                  <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 6 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>Por marca <span style={{ opacity: 0.55, fontWeight: 400 }}>(si no tocas, usa los de arriba)</span></div>
+                    {marcas.map(mk => { const C = colorSerie(acab.serie, mk), propio = (acab.serie?.marcas || {})[mk] || {}; return (
+                      <div key={mk} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+                        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={mk}>{mk} <span style={{ opacity: 0.5 }}>({cuenta[mk]})</span></span>
+                        {[['estructura', 'Estructura'], ['tapizado', 'Tapizado'], ['cromo', 'Cromo'], ['detalles', 'Detalles']].map(([k, n]) => <input key={k} type="color" title={n} value={C[k]} onChange={e => ponSerieMarca(mk, { [k]: e.target.value })} style={{ width: 24, height: 22, padding: 0, border: propio[k] ? '1px solid #d9c7b0' : '1px solid #444' }} />)}
+                      </div>
+                    ); })}
+                  </div>
+                );
+              })()}
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', margin: '6px 0' }}>
+                {[['Negro total', { estructura: '#1c1c1e', tapizado: '#151515', cromo: '#9a9da1', detalles: '#101010' }], ['Grafito y marrón', { estructura: '#2b2b2e', tapizado: '#4a3629', cromo: '#cfd2d6', detalles: '#18181a' }], ['Blanco y gris', { estructura: '#e7e7e4', tapizado: '#6a6a6e', cromo: '#d4d6d9', detalles: '#2a2a2c' }]].map(([n, v]) => <button key={n} style={{ ...btn, padding: '3px 8px' }} onClick={() => ponSerie(v)}>{n}</button>)}
+              </div>
+              <div style={{ opacity: 0.55, fontSize: 11 }}>Cada máquina se simplifica a 4 piezas con estos materiales: se ve más limpia y el visor va mucho más fluido. Los colores pintados pieza a pieza no se muestran mientras esté activado; al desactivarlo vuelve todo como estaba.</div>
+            </>
+          ) : <div style={{ opacity: 0.6, fontSize: 12 }}>Actívalo para que todas tus máquinas tengan el mismo color y tapizado, y para que el visor vaya mucho más fluido. Se puede desactivar cuando quieras.</div>}
+        </div>
+      )}
       {ambAbierto && (
         <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', width: 300, background: 'rgba(22,20,18,0.95)', color: '#fff', borderRadius: 8, padding: '10px 14px', fontSize: 13, zIndex: 6 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>☀ Ambiente</div>
