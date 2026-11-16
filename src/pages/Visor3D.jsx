@@ -8394,6 +8394,22 @@ export default function Visor3D({ cliente = false }) {
               </div>
             );
           })()}
+          {objSel.tipo === 'deco' && /^espejo_/.test(objSel.deco?.kind || '') && (() => {
+            const rad = Math.round(parseFloat(objSel.deco?.radio) || 0), maxR = Math.floor(Math.min(objSel.w, objSel.alto) / 2), marco = Number.isFinite(parseFloat(objSel.deco?.marco)) ? parseFloat(objSel.deco.marco) : 3.5;
+            const ponDeco = campos => cambiar(objSel.id, { deco: { ...objSel.deco, ...campos } });
+            return (
+              <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Forma del espejo</div>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                  {[['Recto', 0], ['Suave', 4], ['Redondeado', 10], ['Muy redondeado', 20], ['Óvalo', maxR]].map(([n, v]) => <button key={n} style={{ ...btn, padding: '3px 8px', background: rad === v ? '#6b6159' : undefined }} onClick={() => ponDeco({ radio: v })}>{n}</button>)}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 150, opacity: 0.7 }}>Esquinas redondeadas (cm)</span><input type="number" min="0" max={maxR} value={rad} onChange={e => ponDeco({ radio: Math.max(0, Math.min(maxR, parseFloat(e.target.value) || 0)) })} style={{ ...btn, width: 64 }} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 150, opacity: 0.7 }}>Grosor del marco (cm)</span><input type="number" min="0" max="12" step="0.5" value={marco} onChange={e => ponDeco({ marco: Math.max(0, Math.min(12, parseFloat(e.target.value) || 0)) })} style={{ ...btn, width: 64 }} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 150, opacity: 0.7 }}>Color del marco</span><input type="color" value={/^#[0-9a-fA-F]{6}$/.test(objSel.deco?.color2 || '') ? objSel.deco.color2 : '#222226'} onChange={e => ponDeco({ color2: e.target.value })} /></label>
+                <div style={{ opacity: 0.55, fontSize: 11 }}>Con grosor 0 no lleva marco: solo la luna.</div>
+              </div>
+            );
+          })()}
           {objSel.tipo === 'zona' && objSel.plano === 'pared' && (() => {
             const pr = Number(objSel.prof) || 0, modo = pr > 0 ? 'resalte' : pr < 0 ? 'nicho' : 'plana';
             const poner = (m, p) => cambiar(objSel.id, { prof: m === 'plana' ? 0 : m === 'resalte' ? Math.max(1, p || 5) : -Math.max(1, p || 8) });

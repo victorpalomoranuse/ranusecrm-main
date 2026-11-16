@@ -66,6 +66,14 @@ function figuraHumana(h, P, cTop, cLeg, cSkin) {
   return g;
 }
 
+// rectángulo de lados w × h centrado en el origen con las esquinas redondeadas a radio rad (0 = esquinas rectas)
+function rectRedondo(w, h, rad) {
+  const s = new THREE.Shape(), x = -w / 2, y = -h / 2, q = Math.max(0, Math.min(rad, Math.min(w, h) / 2 - 0.0005));
+  if (q < 0.0005) { s.moveTo(x, y); s.lineTo(x + w, y); s.lineTo(x + w, y + h); s.lineTo(x, y + h); s.closePath(); return s; }
+  s.moveTo(x + q, y); s.lineTo(x + w - q, y); s.absarc(x + w - q, y + q, q, -Math.PI / 2, 0, false); s.lineTo(x + w, y + h - q); s.absarc(x + w - q, y + h - q, q, 0, Math.PI / 2, false);
+  s.lineTo(x + q, y + h); s.absarc(x + q, y + h - q, q, Math.PI / 2, Math.PI, false); s.lineTo(x, y + q); s.absarc(x + q, y + q, q, Math.PI, Math.PI * 1.5, false);
+  return s;
+}
 export function construirDeco(o) {
   const w = (o.w || 50) * CM, dd = (o.d || 50) * CM, h = (o.alto || 100) * CM, r = Math.min(w, dd) / 2, kind = o.deco?.kind || 'planta';
   const c1 = new THREE.Color(hexOk(o.color, kind.startsWith('planta') || kind === 'arbusto' ? '#8a5a3c' : '#c9b9a0')), c2 = new THREE.Color(hexOk(o.deco?.color2, '#3f7d3a'));
@@ -153,10 +161,15 @@ export function construirDeco(o) {
       for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new THREE.CylinderGeometry(0.018, 0.012, 0.12, 8), mat(c2, 0.4, 0.6), sx * (w / 2 - 0.08), 0.06, sz * (dd / 2 - 0.06)); break;
     }
     case 'espejo_pie': case 'espejo_pared': {
-      const pie = kind === 'espejo_pie', fr = 0.035, mf = mat(c2, 0.4, 0.6);
-      const luna = add(new THREE.BoxGeometry(w - fr * 2, h - fr * 2, 0.008), new THREE.MeshStandardMaterial({ color: '#dfe6ea', roughness: 0.04, metalness: 1, envMapIntensity: 1.6 }), 0, pie ? h / 2 + 0.05 : h / 2, 0.01);
+      const pie = kind === 'espejo_pie', fr = Math.max(0, Math.min(0.12, (Number.isFinite(parseFloat(o.deco?.marco)) ? parseFloat(o.deco.marco) : 3.5) * CM)), mf = mat(c2, 0.4, 0.6), radC = Math.max(0, Math.min(Math.min(w, h) / 2, (parseFloat(o.deco?.radio) || 0) * CM)), yc = pie ? h / 2 + 0.05 : h / 2;
+      // la luna y el marco siguen la misma forma: rectángulo con esquinas redondeadas (radio) hasta llegar a óvalo
+      const gLuna = new THREE.ExtrudeGeometry(rectRedondo(w - fr * 2, h - fr * 2, Math.max(0, radC - fr)), { depth: 0.008, bevelEnabled: false }); gLuna.translate(0, 0, -0.004);
+      const luna = add(gLuna, new THREE.MeshStandardMaterial({ color: '#dfe6ea', roughness: 0.04, metalness: 1, envMapIntensity: 1.6 }), 0, yc, 0.01);
       luna.userData.espejoDeco = true;
-      for (const [bw, bh, x, y] of [[w, fr, 0, (pie ? h / 2 + 0.05 : h / 2) + h / 2 - fr / 2], [w, fr, 0, (pie ? h / 2 + 0.05 : h / 2) - h / 2 + fr / 2], [fr, h, -w / 2 + fr / 2, pie ? h / 2 + 0.05 : h / 2], [fr, h, w / 2 - fr / 2, pie ? h / 2 + 0.05 : h / 2]]) add(new THREE.BoxGeometry(bw, bh, 0.03), mf, x, y, 0.005);
+      if (fr > 0) { // marco: anillo con la misma forma que la luna
+        const sMarco = rectRedondo(w, h, radC); sMarco.holes.push(new THREE.Path(rectRedondo(w - fr * 2, h - fr * 2, Math.max(0, radC - fr)).getPoints(24)));
+        const gMarco = new THREE.ExtrudeGeometry(sMarco, { depth: 0.03, bevelEnabled: false }); gMarco.translate(0, 0, -0.01); add(gMarco, mf, 0, yc, 0.005);
+      }
       if (pie) for (const sx of [-1, 1]) { const p = add(new THREE.BoxGeometry(0.03, h * 0.5, 0.03), mf, sx * w * 0.38, h * 0.22, -0.12); p.rotation.x = 0.3; }
       break;
     }
