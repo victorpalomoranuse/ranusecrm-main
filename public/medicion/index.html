@@ -7060,7 +7060,9 @@ function panelSel(focus){
     h+='<label class="fld chk"><input type="checkbox" data-t="sp_sm"'+(sp.sm?' checked':'')+'><span>Solo para modelar en 3D: no cuenta en mediciones ni en el presupuesto (por si ya lo dibujaste otra vez para pintar)</span></label>';
     h+='<label class="fld chk"><input type="checkbox" data-t="sp_ex"'+(sp.ex?' checked':'')+'><span>Existente: se mantiene (no se mide ni se pide)</span></label>';
     var spp=spPts(sp);if(sp.k==='t'&&spp&&spp.length>2){ /* una parte dibujada de techo (p. ej. una entreplanta) también tiene altura propia y puede llevar estructura */
-      h+=fld('zn_h','Altura desde el suelo (cm) · más que el techo = sube · menos = baja',sp.h,String(fmt(num(st.v.altura)||260)));
+      var H0=num(st.v.altura)||260,mo0=sp.h>0?(sp.h>H0?'sube':(sp.h<H0?'baja':'igual')):'igual',pf0=sp.h>0?Math.abs(sp.h-H0):0;
+      h+='<label class="fld"><span>Forma de esta parte del techo</span><select data-t="sp_modo"><option value="igual"'+(mo0==='igual'?' selected':'')+'>Igual que el techo (solo cambia el material)</option><option value="sube"'+(mo0==='sube'?' selected':'')+'>Foseado: hueco hacia arriba (con luz dentro)</option><option value="baja"'+(mo0==='baja'?' selected':'')+'>Descuelgue: falso techo que baja</option></select></label>';
+      if(mo0!=='igual')h+=fld('sp_prof',mo0==='sube'?'Cuánto sube el hueco (cm)':'Cuánto baja (cm)',pf0)+'<p class="note">Altura final: '+fmt(sp.h)+' cm desde el suelo. En el 3D se ve el hueco o el descuelgue con su borde.</p>';
       h+='<label class="fld chk"><input type="checkbox" data-t="sp_luz"'+(sp.luz?' checked':'')+'><span>Luz LED en el borde (candileja)</span></label>';
       if(sp.luz){var spl=sp.lados||{};h+='<div class="rowh" style="gap:10px;flex-wrap:wrap">'+[['N','Arriba'],['S','Abajo'],['O','Izquierda'],['E','Derecha']].map(function(q){return '<label class="chk" style="display:flex;gap:4px;align-items:center"><input type="checkbox" data-t="sp_l'+q[0]+'"'+(spl[q[0]]===false?'':' checked')+'>'+q[1]+'</label>'}).join('')+'</div><p class="note">El color de la luz y de la forma se elige en el modelo 3D. Lados como se ven en el plano.</p>'}
       h+=techoPanel(sp,techoFaceDe(sp));
@@ -7370,6 +7372,10 @@ function applyField(key,val,adv,raw){
     if(key==='rc_t')qrc.t=Math.max(1,Math.min(100,n));else if(key==='rc_ancho'){if(n<1){toast('El ancho tiene que ser mayor que 0');hist.pop();return}var gw2=wl(qrc.wall),gl2=gw2?wg(gw2).l:1e9;qrc.s1=Math.min(gl2,qrc.s0+n)}else qrc[key.slice(3)]=n;
     if(qrc.s1<qrc.s0){var tt0=qrc.s0;qrc.s0=qrc.s1;qrc.s1=tt0}
     commit(false);
+  }else if(s.t==='sp'&&key==='sp_prof'){
+    var qP=by(st.v.sp,s.id);if(!qP)return;
+    if(!(n>=1&&n<=1000)){toast('Escribe una medida entre 1 y 1000 cm');return}
+    var HP=num(st.v.altura)||260,subeP=qP.h>HP;snap();qP.h=subeP?HP+n:Math.max(50,HP-n);commit(false);panelSel();
   }else if(s.t==='sp'&&/^sp_/.test(key)){
     var qs=by(st.v.sp,s.id);if(!qs||(qs.pts&&!spOv(qs)))return;
     if(!(n>=0&&n<=5000)){toast('Escribe una medida válida');return}
@@ -7883,6 +7889,7 @@ $('side').addEventListener('change',function(e){
     }
     commit(false);panelSel();return;
   }
+  if(t==='sp_modo'&&st.sel&&st.sel.t==='sp'){var qM=by(st.v.sp,st.sel.id);if(qM){snap();var HM=num(st.v.altura)||260,vM=e.target.value,pM=qM.h>0?Math.abs(qM.h-HM):0;if(vM==='igual')delete qM.h;else{if(!(pM>0))pM=vM==='sube'?30:20;qM.h=vM==='sube'?HM+pM:Math.max(50,HM-pM);if(vM==='sube'&&qM.luz==null)qM.luz=true}commit(false);panelSel()}return}
   if(t==='sp_mat'&&st.sel&&st.sel.t==='sp'){var qm=by(st.v.sp,st.sel.id);if(qm){snap();var cm=matOf('suelos',qm.mat);var vq=qm.k==='s'?'suelos':'techos',cq=matOf(vq,qm.mat);qm.mat=cq.cod?colorDe(vq,e.target.value,cq.cod,codigoHex(cq.cod)||cq.c):e.target.value;commit(false);panelSel()}return}
   if(t==='sp_nm'&&st.sel&&st.sel.t==='sp'){var qn=by(st.v.sp,st.sel.id);if(qn){snap();qn.nm=e.target.value.slice(0,60);commit(false)}return}
   if(t==='rz_mat'&&st.sel&&st.sel.t==='rz'){
