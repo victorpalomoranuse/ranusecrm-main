@@ -546,7 +546,9 @@ function matsSerie(marca, serie) {
   return st;
 }
 function actualizaSerieMats(serie) { serieSets.forEach((st, mk) => { const S = colorSerie(serie, mk); Object.keys(st).forEach(k => { st[k].color.set(S[k]); st[k].needsUpdate = true; }); }); }
-function clasificaPieza(m, nombre) {
+const seriePiezas = new Map(); // nombre del material original → { hex, tri, slot }: lo que se ha encontrado en las máquinas, para poder corregirlo a mano
+function clasificaPieza(m, nombre, clases) {
+  if (clases && clases[nombre]) return clases[nombre];
   const n = String(nombre || '').toLowerCase(), c = m.color || new THREE.Color(0x808080), lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, met = m.metalness ?? 0, rou = m.roughness ?? 0.5;
   const mx = Math.max(c.r, c.g, c.b), mn = Math.min(c.r, c.g, c.b), sat = mx > 0 ? (mx - mn) / mx : 0;
   if (/tapiz|cuero|piel|leather|vinil|vinyl|skai|espuma|foam|cushion|cojin|cojín|upholst|asiento|respaldo|seat|banqueta/.test(n)) return 'tapizado';
@@ -558,9 +560,9 @@ function clasificaPieza(m, nombre) {
 }
 function aplicaSerie(mm, marca, serie) {
   try {
-    const serieMats = matsSerie(marca, serie);
+    const serieMats = matsSerie(marca, serie), clases = (serie && serie.clases) || null;
     mm.updateMatrixWorld(true);
-    const inv = new THREE.Matrix4().copy(mm.matrixWorld).invert(), M = new THREE.Matrix4(), grupos = { estructura: [], tapizado: [], cromo: [], detalles: [] }, orig = [];
+    const inv = new THREE.Matrix4().copy(mm.matrixWorld).invert(), M = new THREE.Matrix4(), grupos = {}, orig = [];
     mm.traverse(x => {
       if (!x.isMesh || x.userData.hit || x.userData.overlay || x.isSkinnedMesh || x.isInstancedMesh || !x.geometry?.attributes?.position || x.visible === false) return;
       const mt = Array.isArray(x.material) ? x.material[0] : x.material; if (!mt || mt.visible === false || (mt.transparent && (mt.opacity ?? 1) < 0.9)) return; // cristales y similares se dejan como están
@@ -571,14 +573,16 @@ function aplicaSerie(mm, marca, serie) {
       if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
       if (!g.index) { const n = g.attributes.position.count, ix = new (n > 65535 ? Uint32Array : Uint16Array)(n); for (let i = 0; i < n; i++) ix[i] = i; g.setIndex(new THREE.BufferAttribute(ix, 1)); }
       if (x.matrixWorld.determinant() < 0) { const ix = g.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; } }
-      grupos[clasificaPieza(mt, x.name || mt.name)].push(g); orig.push(x);
+      const nom = String(x.name || mt.name || 'sin nombre').slice(0, 80), slot = clasificaPieza(mt, nom, clases), k = slot + '|' + nom;
+      (grupos[k] = grupos[k] || { slot, nom, geos: [] }).geos.push(g); orig.push(x);
+      const reg = seriePiezas.get(nom) || { hex: mt.color ? mt.color.getHexString() : '808080', tri: 0, slot, n: 0 }; reg.slot = slot; reg.tri += (g.index ? g.index.count : 0) / 3; reg.n++; seriePiezas.set(nom, reg);
     });
     if (orig.length < 2) return false;
     const nuevos = [];
-    for (const [slot, geos] of Object.entries(grupos)) {
+    for (const { slot, nom, geos } of Object.values(grupos)) {
       if (!geos.length) continue;
       const geo = geos.length === 1 ? geos[0] : mergeGeometries(geos, false); if (!geo) return false;
-      const me = new THREE.Mesh(geo, serieMats[slot]); me.name = slot; me.userData.parte = slot; me.castShadow = true; me.receiveShadow = true; nuevos.push(me);
+      const me = new THREE.Mesh(geo, serieMats[slot]); me.name = nom; me.userData.parte = nom; me.userData.serieSlot = slot; me.castShadow = true; me.receiveShadow = true; nuevos.push(me);
     }
     if (!nuevos.length) return false;
     orig.forEach(x => x.removeFromParent()); nuevos.forEach(me => mm.add(me)); mm.userData.serie = true;
@@ -2344,6 +2348,7 @@ export default function Visor3D({ cliente = false }) {
   const [ambAbierto, setAmbAbierto] = useState(false);
   const [serieAbierto, setSerieAbierto] = useState(false);
   const ponSerie = campos => setAcab(a => ({ ...a, serie: { ...SERIE_DEF, ...(a.serie || {}), ...campos } }));
+  const ponClase = (nombre, slot) => setAcab(a => { const s = { ...SERIE_DEF, ...(a.serie || {}) }, cl = { ...(s.clases || {}) }; if (slot) cl[nombre] = slot; else delete cl[nombre]; return { ...a, serie: { ...s, clases: cl } }; });
   const ponSerieMarca = (marca, campos) => setAcab(a => { const s = { ...SERIE_DEF, ...(a.serie || {}) }; return { ...a, serie: { ...s, marcas: { ...(s.marcas || {}), [marca]: { ...((s.marcas || {})[marca] || {}), ...campos } } } }; });
   const [imanActivo, setImanActivo] = useState(true);      // imán a paredes, vértices y guías
   const [gridCm, setGridCm] = useState(5);                    // salto de la rejilla al dibujar
@@ -2527,10 +2532,11 @@ export default function Visor3D({ cliente = false }) {
   useEffect(() => { actualizaSerieMats(acab.serie); const A = api3d.current; if (A.despertar) A.despertar(); }, [JSON.stringify(acab.serie || null)]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const A = api3d.current; if (!A.raiz || estado !== 'listo') return;
-    const on = !!acab.serie?.on, antes = !!A.serieAplicada; A.serieAplicada = on; if (antes === on) return;
+    const clave = (acab.serie?.on ? '1' : '0') + JSON.stringify(acab.serie?.clases || {}), antes = A.serieClave; A.serieClave = clave; if (antes === clave || (antes === undefined && !acab.serie?.on)) return;
+    if (acab.serie?.on) seriePiezas.clear();
     A.raiz.traverse(g2 => { if (!g2.userData.equipo || g2.userData.capa !== 'equipos') return; g2.children.filter(c => c.userData.modeloEq).forEach(c => { g2.remove(c); if (c.userData.serie) c.traverse(x => { x.geometry?.dispose?.(); }); }); g2.userData.modeloCargado = false; g2.userData.limitada = false; if (g2.userData.cuerpo) { g2.userData.cuerpo.material.visible = true; g2.userData.cuerpo.castShadow = true; } });
     setModosEq(m => ({ ...m }));
-  }, [acab.serie?.on, estado]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [acab.serie?.on, JSON.stringify(acab.serie?.clases || {}), estado]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { rodapieRef.current = rodapie; }, [rodapie]);
   useEffect(() => { const f = () => setTexturas(t => [...t]); window.addEventListener('visor3d-tex', f); return () => window.removeEventListener('visor3d-tex', f); }, []);
   const [grosorMuro, setGrosorMuro] = useState(12);
@@ -7411,6 +7417,25 @@ export default function Visor3D({ cliente = false }) {
                       </div>
                     ); })}
                   </div>
+                );
+              })()}
+              {(() => {
+                const lista = [...seriePiezas.entries()].sort((a, b) => b[1].tri - a[1].tri).slice(0, 30); if (!lista.length) return null;
+                return (
+                  <details style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 6 }}>
+                    <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Piezas detectadas <span style={{ opacity: 0.55, fontWeight: 400 }}>(corrige si alguna está en el grupo equivocado)</span></summary>
+                    <div style={{ maxHeight: 220, overflow: 'auto', marginTop: 6 }}>
+                      {lista.map(([nom, v]) => (
+                        <div key={nom} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                          <span title="Color original" style={{ width: 14, height: 14, borderRadius: 3, background: '#' + v.hex, border: '1px solid #666', flexShrink: 0 }} />
+                          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }} title={nom + ' · ' + Math.round(v.tri / 100) / 10 + 'k triáng.'}>{nom}</span>
+                          <select value={(acab.serie?.clases || {})[nom] || ''} onChange={e => ponClase(nom, e.target.value || null)} style={{ ...btn, padding: '2px 4px', fontSize: 12, width: 112 }}>
+                            <option value="">Auto: {v.slot}</option><option value="estructura">Estructura</option><option value="tapizado">Tapizado</option><option value="cromo">Cromo</option><option value="detalles">Detalles</option>
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
                 );
               })()}
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', margin: '6px 0' }}>
