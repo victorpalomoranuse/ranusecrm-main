@@ -1930,6 +1930,9 @@ export default function Visor3D({ cliente = false }) {
   const [estado, setEstado] = useState('cargando');
   const [realista, setRealista] = useState(() => { try { return localStorage.getItem('visor3dRealista') === '1'; } catch { return false; } });
   const [titulo, setTitulo] = useState('');
+  // Modo render (el «Realista»): el modelo queda BLOQUEADO. No se mueve, gira, borra, dibuja ni modela nada; solo se ajustan materiales y luces (y la cámara y el ambiente).
+  const modoRender = realista && !cliente, modoRenderRef = useRef(false); modoRenderRef.current = modoRender;
+  useEffect(() => { if (!modoRender) return; setHerr(h => (['pincel', 'gotero', 'sel'].includes(h) ? h : 'sel')); setSelObj(null); setSeleccion(null); setSelHueco(null); try { api3d.current.limpiarSel?.(); } catch { /* sin selección */ } }, [modoRender]); // eslint-disable-line react-hooks/exhaustive-deps
   const [calidad, setCalidad] = useState(() => { try { return localStorage.getItem('visor3dCalidad') || 'media'; } catch { return 'media'; } });
   const api3d = useRef({});
   const [seleccion, setSeleccionR] = useState(null);
@@ -2580,6 +2583,7 @@ export default function Visor3D({ cliente = false }) {
         if (hl) { setLuzSel(hl.object.userData.luzId); setSeleccion(null); setSelAcab(null); setSelObj(null); return; }
         setLuzSel(null);
       }
+      if (modoRenderRef.current) { setSeleccion(null); setSelObj(null); const u0 = primero?.object?.userData || {}; if (u0.muroId) setSelAcab({ tipo: 'muro', id: u0.muroId }); return; } // modo render: no se seleccionan máquinas, objetos ni huecos (sí un muro, para ajustar su material)
       const uh = primero?.object?.userData?.hueco;
       if (uh) { setSelHueco({ ...uh, nuevo: { w: uh.w, h: uh.h, sill: uh.sill, p: uh.p, tip: uh.tip, mat: uh.mat } }); setSeleccion(null); setSelAcab(null); setSelObj(null); return; }
       let eq = null; if (primero) { let o = primero.object; while (o && !o.userData.equipo) o = o.parent; eq = o; }
@@ -2596,7 +2600,7 @@ export default function Visor3D({ cliente = false }) {
     if (!cliente) dom.addEventListener('pointerdown', onDown);
     if (!cliente) dom.addEventListener('pointerup', onUp);
     const onDbl = e => {
-      if (cliente) return;
+      if (cliente || modoRenderRef.current) return;
       const r0 = dom.getBoundingClientRect(); p2.set(((e.clientX - r0.left) / r0.width) * 2 - 1, -((e.clientY - r0.top) / r0.height) * 2 + 1); rayo.setFromCamera(p2, cam);
       const h0 = rayo.intersectObjects(esc.children, true).find(x => x.object.isMesh && !x.object.userData.hit);
       if (!h0) { setEditMod(null); return; }
@@ -2894,6 +2898,7 @@ export default function Visor3D({ cliente = false }) {
         previa = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x2f6fa8, transparent: true, opacity: 0.45 }));
         scene.add(previa); e.stopPropagation(); return;
       }
+      if (modoRenderRef.current) return; // modo render: el modelo no se arrastra
       {
         const vg = api3d.current.vertG, ob0 = objsRef.current.find(x => x.id === selObjRef.current);
         if (vg && ob0 && Array.isArray(ob0.pts)) {
@@ -4623,6 +4628,7 @@ export default function Visor3D({ cliente = false }) {
       if ((tag === 'input' || tag === 'select') && !(ctrl && (k === 'z' || k === 'y'))) return;
       if (ctrl && k === 'z' && !e.shiftKey) { e.preventDefault(); deshacer(); return; }
       if (ctrl && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); rehacer(); return; }
+      if (modoRender && ((ctrl && k === 'd') || ['delete', 'backspace', 'r', 'h'].includes(k) || (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'pageup', 'pagedown'].includes(k) && !luzSel))) return; // modo render: el modelo no se edita con el teclado
       if (ctrl && k === 'd' && selObj) { e.preventDefault(); if (selExtra.length) duplicarSel(); else duplicar(selObj); return; }
       if (['poli', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'carril', 'led', 'muro'].includes(herr) && (k === 'enter' || k === 'escape' || k === 'backspace' || /^[0-9.,]$/.test(k))) return;
       if (['poli', 'zonaS', 'zonaT', 'sigue', 'carril', 'led'].includes(herr) && ['arrowleft', 'arrowright', 'arrowdown'].includes(k)) { e.preventDefault(); return; } // las flechas bloquean el eje al dibujar, no mueven el objeto // lo gestiona la propia herramienta
@@ -4703,7 +4709,7 @@ export default function Visor3D({ cliente = false }) {
     { g: 'Render', n: 'Render con IA', k: '', f: () => abrirFormIA() },
     { g: 'Render', n: 'Exportar a D5 (.glb)', k: '', f: () => exportarGLB() },
     { g: 'Render', n: 'Despiece y cantidades', k: '', f: () => abrirDespiece() },
-  ];
+  ].filter(c => !modoRenderRef.current || ['Vista', 'Render', 'Panel'].includes(c.g));
   const [cmdPal, setCmdPal] = useState(null); // paleta de comandos { q, i }
   // Ayuda: tutorial paso a paso, asistente al que preguntar «cómo hago X» y lista de peticiones (lo que se pidió y aún no se puede)
   const [ayudaTab, setAyudaTab] = useState('tutorial');
@@ -6069,6 +6075,7 @@ export default function Visor3D({ cliente = false }) {
       {pildora}
       {barraMaterial}
       {barra2d}
+      {modoRender && !axo && <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', zIndex: 6, background: 'rgba(22,20,18,0.88)', color: '#fff', borderRadius: 20, padding: '5px 14px', fontSize: 12, pointerEvents: 'none' }}>✨ Modo render · el modelo está bloqueado · solo materiales y luces <span style={{ opacity: 0.6 }}>(desactiva «Realista» para modelar)</span></div>}
       {barraAxo}
       <div ref={caja} data-vista="1" style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
       {!cliente && limitadasN > 0 && limiteTri < 1e9 && (
@@ -6212,11 +6219,11 @@ export default function Visor3D({ cliente = false }) {
       {/* ── Carril de herramientas (izquierda), agrupadas por tarea ── */}
       <div ref={railRef} style={{ position: 'absolute', top: 54, left: 8, boxSizing: 'content-box', columnCount: railCols, columnGap: 0, width: railCols * 54, maxHeight: 'calc(100vh - 78px)', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', background: 'rgba(22,20,18,0.95)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
         {grupoRail([
-          railBtn(herr === 'sel', 'sel', 'Seleccionar', 'Seleccionar y mover objetos (Espacio)', () => setHerr('sel')),
-          railBtn(false, 'ocultar', 'Ocultar', 'Oculta lo seleccionado sin borrarlo (H)', ocultarSel),
-          nOcultos > 0 && railBtn(false, 'mostrar', 'Mostrar (' + nOcultos + ')', 'Vuelve a mostrar todo lo que ocultaste', mostrarTodo),
+          railBtn(herr === 'sel', 'sel', 'Seleccionar', modoRender ? 'Modo render: el modelo está bloqueado; aquí solo se eligen luces' : 'Seleccionar y mover objetos (Espacio)', () => setHerr('sel')),
+          !modoRender && railBtn(false, 'ocultar', 'Ocultar', 'Oculta lo seleccionado sin borrarlo (H)', ocultarSel),
+          !modoRender && nOcultos > 0 && railBtn(false, 'mostrar', 'Mostrar (' + nOcultos + ')', 'Vuelve a mostrar todo lo que ocultaste', mostrarTodo),
         ].filter(Boolean))}
-        {grupoRail([
+        {!modoRender && grupoRail([
           railBtn(herr === 'muro', 'muro', 'Muro', 'Dibuja muros: clic para empezar y cada punto; Mayús = recto. Se crean también en Planos', () => setHerr('muro')),
           menuRail(zonaMenu, setZonaMenu, railBtn(['zonaS', 'zonaT', 'zonaP'].includes(herr) || zonaMenu, 'zona', 'Zonas', 'Dibuja una forma sobre un suelo, techo o pared y dale su propio material', () => setZonaMenu(v => !v)), (<>
             {[['zonaS', 'En el suelo'], ['zonaT', 'En el techo'], ['zonaP', 'En una pared (o media pared)']].map(([h, n]) => <div key={h} onClick={() => { setHerr(h); setZonaMenu(false); }} style={itemMenu}>{n}</div>)}
@@ -6235,7 +6242,7 @@ export default function Visor3D({ cliente = false }) {
         {grupoRail([
           railBtn(enMat || herr === 'pincel', 'pintar', 'Materiales', 'Pintura (mate, satinada, esmalte…), texturas y tus texturas, todo en un mismo sitio', () => { if (enMat) cierraBloque(); else irTab(ultTab.current.mat); }),
         ], false)}
-        {grupoRail([
+        {!modoRender && grupoRail([
           railBtn(enComp, 'catalogo', 'Biblioteca', 'Catálogo de Ranuse, muebles y tus modelos 3D, todo en un mismo sitio', () => { if (enComp) cierraBloque(); else irTab(ultTab.current.comp); }),
           menuRail(muebleMenu, setMuebleMenu, railBtn(muebleMenu, 'mueble', 'A medida', 'Muebles a medida por módulos', () => setMuebleMenu(v => !v)), (<>
             {Object.keys(PLANTILLAS_MUEBLE).map(n => <div key={n} onClick={() => crearMueble(n)} style={itemMenu}>{n}</div>)}
@@ -6266,7 +6273,7 @@ export default function Visor3D({ cliente = false }) {
             {Object.entries(TIPOS_RACK).map(([k, v]) => <div key={k} onClick={() => crearRack(k)} style={itemMenu}>{v.n}</div>)}
           </>), 290),
         ], false, 'Objetos')}
-        {grupoRail([
+        {!modoRender && grupoRail([
           railBtn(revAbierto || herr === 'revest', 'revest', 'Revestimientos', 'Palillería, lamas acústicas, panelados, paneles 3D y molduras: eliges un modelo y pulsas el muro', () => { setRevAbierto(v => !v); if (revAbierto && herr === 'revest') setHerr('sel'); }),
           railBtn(ideasAbierto, 'ideas', 'Ideas', 'Chat con ChatGPT: comparte una imagen o la vista actual, pide una idea (un mural, un ambiente…) y descarga solo la imagen', () => setIdeasAbierto(v => !v)),
           railBtn(false, 'imagen', 'Imagen', 'Sube una imagen (PNG con transparencia, o con fondo liso que se quita) y se coloca en el 3D como en SketchUp; después la escalas', () => imagenInput.current?.click()),
@@ -6286,7 +6293,7 @@ export default function Visor3D({ cliente = false }) {
             {[['magnetico', 'Carril magnético (48 V, ultrafino)'], ['trifasico', 'Carril trifásico (230 V)']].map(([v, n]) => <div key={v} onClick={() => { setCarrilSis(v); setHerr('carril'); setCarrilMenu(false); }} style={itemMenu}>{n}</div>)}
           </>), 270),
         ], false, 'Luz')}
-        {grupoRail([
+        {!modoRender && grupoRail([
           railBtn(herr === 'vistaM', 'alzado', 'Alzado', 'Pulsa un muro: vista de frente de ese muro para dibujar y colocar materiales con medidas', () => setHerr('vistaM')),
           railBtn(herr === 'vistaS', 'planta', VISTAS_PLANTA_ACTIVAS ? 'Planta suelo' : '🔒 Pl. suelo', VISTAS_PLANTA_ACTIVAS ? 'Pulsa un suelo: vista desde arriba para dibujar y colocar materiales con medidas' : 'Desactivado por ahora: el suelo se define en Planos y aquí solo se pinta', () => (VISTAS_PLANTA_ACTIVAS ? setHerr('vistaS') : setAviso('La planta de suelo está desactivada por ahora: el suelo se define en Planos y aquí solo se pinta.'))),
           railBtn(herr === 'vistaT', 'techo', VISTAS_PLANTA_ACTIVAS ? 'Planta techo' : '🔒 Pl. techo', VISTAS_PLANTA_ACTIVAS ? 'Pulsa el suelo de una sala: vista del techo desde abajo' : 'Desactivado por ahora: el techo se define en Planos y aquí solo se pinta', () => (VISTAS_PLANTA_ACTIVAS ? setHerr('vistaT') : setAviso('La planta de techo está desactivada por ahora: el techo se define en Planos y aquí solo se pinta.'))),
