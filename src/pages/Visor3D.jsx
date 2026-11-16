@@ -3349,7 +3349,7 @@ export default function Visor3D({ cliente = false }) {
       if (o.userData.capa) o.visible = !ocultas.includes(o.userData.capa) && !oculto; else if (k && o.userData.equipo) o.visible = !oculto;
     };
     a.raiz.traverse(aplica);
-    a.esc.children.forEach(g => { const ob = objsRef.current.find(x => x.id === g.userData.oid); g.visible = !ocultas.includes('obj:' + (ob?.etiqueta || '')) && !ocultas.includes('id:' + g.userData.oid) && !(ob && ob.tipo === 'zona' && ob.plano === 'techo' && ocultas.includes('techos')); });
+    a.esc.children.forEach(g => { if (zonasOnRef.current) return; const ob = objsRef.current.find(x => x.id === g.userData.oid); g.visible = !ocultas.includes('obj:' + (ob?.etiqueta || '')) && !ocultas.includes('id:' + g.userData.oid) && !(ob && ob.tipo === 'zona' && ob.plano === 'techo' && ocultas.includes('techos')); });
     // Los techos que se ocultan solo mientras estás en Planta 2D o Axonométrica no se recuerdan: si cierras la pestaña en ese modo, el siguiente proyecto no se abre sin techo
     try { localStorage.setItem('visor3dOcultas:' + id, JSON.stringify(planta2d?.ocultasAntes ?? axo?.ocultasAntes ?? ocultas)); } catch {}
   }, [ocultas, rev, objs, estado, modosEq]);
@@ -3358,7 +3358,7 @@ export default function Visor3D({ cliente = false }) {
   useEffect(() => {
     const a = api3d.current; if (!a.scene) return;
     if (a.luzG) { a.scene.remove(a.luzG); a.luzG.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); if (x.isLight && x.target) a.scene.remove(x.target); }); }
-    const g = new THREE.Group(); g.userData.capa = 'luces'; g.visible = !ocultas.includes('luces');
+    const g = new THREE.Group(); g.userData.capa = 'luces'; g.visible = !ocultas.includes('luces') && !zonasOnRef.current;
     const HT = a.modelo?.altura || 260;
     const ALT = { foco: HT - 1, plaf: HT - 1, colg: HT - 60, aplq: 180, pie: 120, suel: 5, esp: 160, mue: 90, spot: HT - 6, spotl: HT - 6 };
     // el techo que hay sobre cada luminaria: si el techo se ha bajado (de toda la sala o solo de una parte dibujada), carriles, focos y colgantes bajan con él
@@ -5369,14 +5369,15 @@ export default function Visor3D({ cliente = false }) {
     setZon({ on: false, corte: false }); if (zonRealPrev.current) { zonRealPrev.current = false; setRealista(true); }
   };
   // Vista de zonas: muros cortados a ~1,1 m, máquinas teñidas por tipo, zonas de color en el suelo y rótulos
-  const [zon, setZon] = useState({ on: false, corte: false }), [zonInfo, setZonInfo] = useState(null), zonDatos = useRef(null), zonRealPrev = useRef(false), [zonEditar, setZonEditar] = useState(false), [zonRev, setZonRev] = useState(0);
+  const [zon, setZon] = useState({ on: false, corte: false }), [zonInfo, setZonInfo] = useState(null), zonDatos = useRef(null), zonRealPrev = useRef(false), [zonEditar, setZonEditar] = useState(false), [zonRev, setZonRev] = useState(0), zonasOnRef = useRef(false); zonasOnRef.current = !!axo && zon.on;
   const cambiaZon = (clave, k, v) => { const d = zonDatos.current; if (!d) return; d.maquinas = d.maquinas.map(m => (m.clave === clave ? { ...m, [k]: v } : m)); setZonRev(x => x + 1); clearTimeout(window.__zonT); window.__zonT = setTimeout(() => api.put('/lamina-zonas/' + id, { maquinas: zonDatos.current.maquinas }).catch(() => setAviso('No se pudo guardar la corrección')), 700); };
   const entrarZonas = () => { if (!axo) entrarAxo(); setZon({ on: true, corte: true }); if (realista) { zonRealPrev.current = true; setRealista(false); } };
   const apagaZonas = () => { setZon(z => ({ ...z, on: false })); if (zonRealPrev.current) { zonRealPrev.current = false; setRealista(true); } };
   useEffect(() => {
     const a = api3d.current; if (!a.scene || !a.raiz) return;
-    const L = { muros: [], mats: [], extras: [] };
+    const L = { muros: [], mats: [], extras: [], vis: [] };
     const limpia = () => {
+      L.vis.forEach(([o, v]) => { o.visible = v; }); L.vis = [];
       L.muros.forEach(([m, sy]) => { m.scale.y = sy; }); L.mats.forEach(([m, mt]) => { m.material = mt; });
       L.extras.forEach(o => { a.scene.remove(o); o.geometry?.dispose?.(); o.material?.map?.dispose?.(); o.material?.dispose?.(); });
       L.muros = []; L.mats = []; L.extras = []; if (a.renderer?.shadowMap) a.renderer.shadowMap.needsUpdate = true;
@@ -5389,6 +5390,9 @@ export default function Visor3D({ cliente = false }) {
       if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); const hm = o.geometry.boundingBox.max.y - o.geometry.boundingBox.min.y;
       if (hm > 1.3) { L.muros.push([o, o.scale.y]); o.scale.y = o.scale.y * 1.1 / hm; }
     });
+    if (zonas) { // vista de zonas: solo las máquinas; fuera paneles, logos, textos, mobiliario y luminarias
+      [...(a.esc ? a.esc.children : []), a.luzG].forEach(o => { if (o) { L.vis.push([o, o.visible]); o.visible = false; } });
+    }
     if (a.renderer?.shadowMap) a.renderer.shadowMap.needsUpdate = true;
     if (zonas) (async () => {
       let datos = zonDatos.current;
