@@ -791,6 +791,12 @@ export function construirMueble(o, texturas) {
     // módulo abierto con puertas abajo y/o arriba (como una librería de pared con armarios bajos y altos): las baldas se reparten en el nicho de en medio
     const pAb = mod.t === 'abierto' ? Math.max(0, mod.pAb || 0) * CM : 0, pAr = mod.t === 'abierto' ? Math.max(0, mod.pAr || 0) * CM : 0, zy0 = y0 + (pAb > 0 ? pAb : esp), zy1 = y0 + hc - (pAr > 0 ? pAr : esp);
     for (let i = 1; i <= nb; i++) cajaM(W - 2 * esp, esp, Dm - 0.02, cx, zy0 + (zy1 - zy0) * (i / (nb + 1)), -0.01, cuerpo, 'cuerpo');
+    // luz LED escondida bajo cada balda y bajo la tapa del hueco abierto: cinta cálida junto al frente y brillo suave sobre la trasera
+    if (M.ledBaldas && mod.t === 'abierto') {
+      const cl = new THREE.Color(/^#[0-9a-fA-F]{6}$/.test(M.colorLed || '') ? M.colorLed : '#ffd9a0'), ledM = new THREE.MeshBasicMaterial({ color: cl }), glowM = new THREE.MeshBasicMaterial({ color: cl, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+      const bajos = []; for (let i = 1; i <= nb; i++) bajos.push(zy0 + (zy1 - zy0) * (i / (nb + 1)) - esp / 2); bajos.push(y0 + hc - (pAr > 0 ? pAr + esp : esp) + (pAr > 0 ? esp : 0));
+      bajos.forEach(yb => { cajaM(W - 2 * esp - 0.03, 0.008, 0.012, cx, yb - 0.004, Dm / 2 - 0.04, ledM, 'led'); const gp = new THREE.Mesh(new THREE.PlaneGeometry(W - 2 * esp - 0.02, 0.2), glowM); gp.position.set(cx, yb - 0.1, -Dm / 2 + 0.01); gM.add(gp); });
+    }
     if (pAb > 0) cajaM(W - 2 * esp, esp, Dm - 0.02, cx, y0 + pAb - esp / 2, -0.01, cuerpo, 'cuerpo'); // balda sobre las puertas de abajo
     if (pAr > 0) cajaM(W - 2 * esp, esp, Dm - 0.02, cx, y0 + hc - pAr + esp / 2, -0.01, cuerpo, 'cuerpo'); // balda bajo las puertas de arriba
     const TIP = M.tirador || 'barra';
@@ -882,6 +888,18 @@ export function construirMueble(o, texturas) {
         }
         yy += hs;
       });
+    }
+    // frente de lamas verticales (como los frentes acanalados de madera): tiras finas pegadas al frente de puertas y cajones
+    if (M.lamas && (mod.t === 'puertas' || mod.t === 'cajones' || mod.t === 'regleta')) {
+      const ancho = 0.022, paso = 0.032, nL = Math.max(1, Math.floor((W - 0.01) / paso)), im = new THREE.InstancedMesh(new THREE.BoxGeometry(ancho, Math.max(0.05, hc - 0.006), 0.012), frente, nL), mx = new THREE.Matrix4(), x00 = cx - ((nL - 1) * paso) / 2;
+      for (let i = 0; i < nL; i++) { mx.makeTranslation(x00 + i * paso, y0 + hc / 2, zf + ef / 2 + 0.006); im.setMatrixAt(i, mx); }
+      im.castShadow = im.receiveShadow = true; im.userData.zona = 'frente'; gM.add(im);
+    }
+    // zócalo con luz: cinta fina en el suelo bajo el frente y un halo cálido sobre el suelo
+    if (M.zocaloLed && !elev && zoc > 0) {
+      const cl = new THREE.Color(/^#[0-9a-fA-F]{6}$/.test(M.colorLed || '') ? M.colorLed : '#ffd9a0');
+      cajaM(W - 0.01, 0.01, 0.008, cx, zoc * 0.45, Dm / 2 - 0.04, new THREE.MeshBasicMaterial({ color: cl }), 'led');
+      const hp = new THREE.Mesh(new THREE.PlaneGeometry(W + 0.1, 0.22), new THREE.MeshBasicMaterial({ color: cl, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false })); hp.rotation.x = -Math.PI / 2; hp.position.set(cx, 0.004, Dm / 2 + 0.06); gM.add(hp);
     }
     x += W;
   });
@@ -4508,11 +4526,17 @@ export default function Visor3D({ cliente = false }) {
     'Mueble de pared con nichos (como el de hotel)': { d: 45, alto: 240, zocalo: 8, modulos: [{ t: 'abierto', w: 80, nb: 2, pAb: 70, pAr: 55, nPu: 2 }, { t: 'abierto', w: 70, nb: 3, pAb: 90 }, { t: 'abierto', w: 50, nb: 4, pAb: 70, pAr: 40 }] },
     'Mostrador / recepción': { d: 60, alto: 105, zocalo: 8, modulos: [{ t: 'cajones', w: 60, n: 3 }, { t: 'puertas', w: 90, n: 2, nb: 1 }, { t: 'puertas', w: 60, n: 1, nb: 1 }] },
     'Cajonera': { d: 45, alto: 75, zocalo: 5, modulos: [{ t: 'cajones', w: 80, n: 4 }] },
+    'Estantería boutique con luz (toallas y agua)': { d: 40, alto: 225, zocalo: 8, color: '#c9a06a', colorFrente: '#c9a06a', extra: { ledBaldas: true, zocaloLed: true }, modulos: [{ t: 'abierto', w: 60, nb: 2 }, { t: 'abierto', w: 90, nb: 0, pAb: 80, nPu: 2 }, { t: 'abierto', w: 60, nb: 2, pAb: 70 }] },
+    'Mostrador de lamas con encimera de piedra': { d: 60, alto: 105, zocalo: 10, color: '#c9a06a', colorFrente: '#c9a06a', encimera: { on: true, esp: 4, vuelo: 5, color: '#d8cfc0' }, extra: { lamas: true, zocaloLed: true }, modulos: [{ t: 'puertas', w: 80, n: 1, nb: 1 }, { t: 'puertas', w: 80, n: 1, nb: 1 }] },
+    'Mostrador en L de lamas (2 piezas)': { d: 60, alto: 105, zocalo: 10, color: '#c9a06a', colorFrente: '#c9a06a', encimera: { on: true, esp: 4, vuelo: 5, color: '#d8cfc0' }, extra: { lamas: true, zocaloLed: true }, modulos: [{ t: 'puertas', w: 80, n: 1, nb: 1 }, { t: 'puertas', w: 80, n: 1, nb: 1 }], ala: { w: 100 } },
   };
   const crearMueble = (nombre) => {
     const p = PLANTILLAS_MUEBLE[nombre], { ctrl } = api3d.current;
-    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'mueble', nombre: nombre.replace(/ \(.*\)/, ''), etiqueta: 'Muebles a medida', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: p.modulos.reduce((s, m) => s + m.w, 0), d: p.d, alto: p.alto, z0: 0, color: '#e8e2d8', colorFrente: '#f4f1ec', mueble: { esp: 1.8, zocalo: p.zocalo, tirador: 'barra', ...(p.encimera ? { encimera: { ...p.encimera } } : {}), modulos: p.modulos.map(m => ({ ...m })) } };
-    setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setMuebleMenu(false);
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'mueble', nombre: nombre.replace(/ \(.*\)/, ''), etiqueta: 'Muebles a medida', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: p.modulos.reduce((s, m) => s + m.w, 0), d: p.d, alto: p.alto, z0: 0, color: p.color || '#e8e2d8', colorFrente: p.colorFrente || '#f4f1ec', mueble: { esp: 1.8, zocalo: p.zocalo, tirador: p.extra?.lamas ? 'ninguno' : 'barra', ...(p.extra || {}), ...(p.encimera ? { encimera: { ...p.encimera } } : {}), modulos: p.modulos.map(m => ({ ...m })) } };
+    const nuevos = [nuevo];
+    // mostrador en L: segunda pieza (ala) girada 90° que arranca del extremo izquierdo y avanza hacia delante
+    if (p.ala) { const Lw = nuevo.w, ala = { ...nuevo, id: nuevo.id + 'b', nombre: nuevo.nombre + ' (ala)', w: p.ala.w, rot: 90, cx: nuevo.cx - Lw / 2 + p.d / 2, cy: nuevo.cy + p.d / 2 + p.ala.w / 2, mueble: { ...nuevo.mueble, modulos: [{ t: 'puertas', w: p.ala.w / 2, n: 1, nb: 1 }, { t: 'puertas', w: p.ala.w / 2, n: 1, nb: 1 }] } }; nuevos.push(ala); }
+    setObjs(prev => [...prev, ...nuevos]); setSelObj(nuevo.id); setHerr('sel'); setMuebleMenu(false);
   };
   const crearSauna = (tipo) => {
     const { ctrl } = api3d.current, p = saunaPorDefecto(tipo);
@@ -8941,6 +8965,12 @@ export default function Visor3D({ cliente = false }) {
                   <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!M.costados?.der} onChange={e => cambiar(objSel.id, { mueble: { ...M, costados: { esp: 1.8, ...(M.costados || {}), der: e.target.checked } } })} /> Der.</label>
                   {(M.costados?.izq || M.costados?.der) && <label>Grosor cm <input type="number" step="0.1" min="1" max="6" value={M.costados.esp ?? 1.8} onChange={e => cambiar(objSel.id, { mueble: { ...M, costados: { ...M.costados, esp: parseFloat(e.target.value) || 1.8 } } })} style={{ ...btn, width: 50, padding: '2px 4px' }} /></label>}
                 </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', marginBottom: 6 }}>
+                  <label style={{ cursor: 'pointer' }} title="Cinta de luz cálida bajo cada balda de los huecos abiertos"><input type="checkbox" checked={!!M.ledBaldas} onChange={e => cambiar(objSel.id, { mueble: { ...M, ledBaldas: e.target.checked || undefined } })} /> 💡 Luz bajo las baldas</label>
+                  <label style={{ cursor: 'pointer' }} title="Cinta de luz en el suelo, bajo el frente, con halo sobre el suelo"><input type="checkbox" checked={!!M.zocaloLed} onChange={e => cambiar(objSel.id, { mueble: { ...M, zocaloLed: e.target.checked || undefined } })} /> 💡 Luz en el zócalo</label>
+                  <label style={{ cursor: 'pointer' }} title="Frentes de puertas y cajones con lamas verticales de madera"><input type="checkbox" checked={!!M.lamas} onChange={e => cambiar(objSel.id, { mueble: { ...M, lamas: e.target.checked || undefined } })} /> Frente de lamas</label>
+                  {(M.ledBaldas || M.zocaloLed) && <label>Color luz <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(M.colorLed || '') ? M.colorLed : '#ffd9a0'} onChange={e => cambiar(objSel.id, { mueble: { ...M, colorLed: e.target.value } })} /></label>}
+                </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Encimera</span><input type="checkbox" checked={!!M.encimera?.on} onChange={e => cambiar(objSel.id, { mueble: { ...M, encimera: { esp: 3, vuelo: 2, ...(M.encimera || {}), on: e.target.checked } } })} /> <span style={{ opacity: 0.7, fontSize: 12 }}>tablero superior de todo el mueble</span></label>
                 {M.encimera?.on && (
                   <div style={{ background: '#2a2a2a', borderRadius: 6, padding: 6, marginBottom: 5, fontSize: 12 }}>
