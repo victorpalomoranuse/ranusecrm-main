@@ -4503,6 +4503,25 @@ export default function Visor3D({ cliente = false }) {
     const n = { ...o, id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), cx: o.cx + 30, cy: o.cy + 30 };
     setObjs(prev => [...prev, n]); setSelObj(n.id);
   };
+  // Tira LED sin ir punto a punto: se pega al contorno de un objeto seleccionado o al perímetro de la sala donde estás mirando
+  const crearTiraLed = (abs, z0, nombre) => {
+    const xs = abs.map(p => p[0]), ys = abs.map(p => p[1]), cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'led', nombre, etiqueta: 'Iluminación', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 2, z0, pts: abs.map(p => [p[0] - cx, p[1] - cy]), led: { ancho: 1.2, k: 3000, lm: 800, dir: 'abajo', cerrado: true } };
+    setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setGuardado('Tira LED puesta: en su ficha ajustas altura, temperatura y hacia dónde alumbra');
+  };
+  const tiraLedContornoSel = () => {
+    const o = objs.find(x => x.id === selObj); if (!o) { setAviso('Selecciona primero un objeto (volumen, zona, mueble…) y la tira se pega a su contorno'); return; }
+    if (o.rot) { setAviso('Pon el objeto sin girar (rotación 0) para pegarle la tira'); return; }
+    const rel = o.pts && o.pts.length >= 3 ? o.pts : [[-o.w / 2, -o.d / 2], [o.w / 2, -o.d / 2], [o.w / 2, o.d / 2], [-o.w / 2, o.d / 2]];
+    crearTiraLed(rel.map(p => [o.cx + p[0], o.cy + p[1]]), (o.z0 || 0) + (o.alto || 0), 'Tira LED · ' + (o.nombre || 'objeto'));
+  };
+  const tiraLedSala = () => {
+    const m = api3d.current.modelo, t = api3d.current.ctrl?.target; if (!m || !t) { setAviso('Abre un plano para poner la tira en una sala'); return; }
+    const px = t.x / CM, py = t.z / CM, dentro = P => { let r = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) if ((P[i][1] > py) !== (P[j][1] > py) && px < ((P[j][0] - P[i][0]) * (py - P[i][1])) / (P[j][1] - P[i][1]) + P[i][0]) r = !r; return r; };
+    const sala = (m.plantas || [m]).flatMap(p => p.salas || []).find(s => s.pts && s.pts.length >= 3 && dentro(s.pts));
+    if (!sala) { setAviso('Centra la vista dentro de una sala y vuelve a pulsar'); return; }
+    crearTiraLed(sala.pts.map(p => [p[0], p[1]]), Math.max(50, (m.altura || 260) - 8), 'Tira LED · ' + (sala.nombre || 'sala'));
+  };
   // Espejo, Escala y Equidistancia (como SketchUp) para objetos dibujados con puntos (volúmenes, zonas, tiras...)
   const objSelPts = () => { const o = objs.find(x => x.id === selObj); if (!o) { setAviso('Selecciona primero un objeto'); return null; } if (o.bloqueado) { setAviso('Está bloqueado 🔒'); return null; } return o; };
   const cajaDe = pts => { const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]); return { w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys) }; };
@@ -4618,6 +4637,8 @@ export default function Visor3D({ cliente = false }) {
     { g: 'Herramientas', n: 'Muro', k: 'M', t: 'm', f: () => setHerr('muro') },
     { g: 'Herramientas', n: 'Zona en el suelo', k: 'Z', t: 'z', f: () => setHerr('zonaS') },
     { g: 'Herramientas', n: 'Tira LED', k: 'L', t: 'l', f: () => setHerr('led') },
+    { g: 'Herramientas', n: 'Tira LED pegada al contorno del objeto seleccionado', k: '', f: () => tiraLedContornoSel() },
+    { g: 'Herramientas', n: 'Tira LED en el perímetro de la sala', k: '', f: () => tiraLedSala() },
     { g: 'Herramientas', n: 'Luminaria', k: 'F', t: 'f', f: () => { setKindLuz('foco'); setHerr('luz'); } },
     { g: 'Herramientas', n: 'Pintura', k: 'B', t: 'b', f: () => { setMatAbierto(true); setHerr('pincel'); } },
     { g: 'Herramientas', n: 'Cuentagotas', k: 'I', t: 'i', f: () => setHerr('gotero') },
@@ -6197,7 +6218,9 @@ export default function Visor3D({ cliente = false }) {
             {[['foco', 'Foco empotrado'], ['spot', 'Spot orientable'], ['plaf', 'Plafón'], ['colg', 'Luminaria colgante'], ['aplq', 'Aplique de pared'], ['pie', 'Lámpara de pie'], ['suel', 'Empotrado de suelo']].map(([k, n]) => <div key={k} onClick={() => { setKindLuz(k); setHerr('luz'); setCarrilMenu(false); }} style={itemMenu}>{n}</div>)}
             <div style={{ opacity: 0.6, fontSize: 11, padding: '6px 8px 2px', borderTop: '1px solid #333', marginTop: 4, lineHeight: 1.35 }}>Las tiras LED, carriles y spots que dibujas en Planos ya salen aquí solos: haz clic en uno y ajustas lúmenes, apertura y temperatura a la derecha. Lo de abajo solo si quieres dibujar uno nuevo a mano.</div>
             <div style={{ opacity: 0.6, fontSize: 11, padding: '6px 8px 2px', borderTop: '1px solid #333', marginTop: 4 }}>Luz lineal</div>
-            <div onClick={() => { setHerr('led'); setCarrilMenu(false); }} style={itemMenu} title="Cinta LED que sigue un recorrido y alumbra hacia abajo, arriba o a un lado">Tira LED</div>
+            <div onClick={() => { tiraLedSala(); setCarrilMenu(false); }} style={itemMenu} title="Pone la tira LED en todo el contorno de la sala que tienes en el centro de la vista, de un clic">Tira LED en la sala (1 clic)</div>
+            <div onClick={() => { tiraLedContornoSel(); setCarrilMenu(false); }} style={itemMenu} title="Selecciona antes un volumen, zona o mueble: la tira se pega a su contorno">Tira LED en el objeto seleccionado</div>
+            <div onClick={() => { setHerr('led'); setCarrilMenu(false); }} style={itemMenu} title="Cinta LED que sigue un recorrido y alumbra hacia abajo, arriba o a un lado">Tira LED punto a punto</div>
             <div style={{ opacity: 0.6, fontSize: 11, padding: '6px 8px 2px', borderTop: '1px solid #333', marginTop: 4 }}>Carriles (después se les añaden spots, lineales, proyectores o colgantes)</div>
             {[['magnetico', 'Carril magnético (48 V, ultrafino)'], ['trifasico', 'Carril trifásico (230 V)']].map(([v, n]) => <div key={v} onClick={() => { setCarrilSis(v); setHerr('carril'); setCarrilMenu(false); }} style={itemMenu}>{n}</div>)}
           </>), 270),
