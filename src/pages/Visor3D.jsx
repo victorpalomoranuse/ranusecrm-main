@@ -381,7 +381,7 @@ function texturaDe(t, uvEnCm) {
       img.src = t.url;
     } else x = new THREE.TextureLoader().load(t.url, () => { try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } });
     x.wrapS = x.wrapT = THREE.RepeatWrapping; x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 4; x.repeat.set(k, kH);
-    x.userData.texId = t.id;
+    x.userData.texId = t.id; x.userData.uvEnCm = !!uvEnCm;
     if (t.pbr) x.userData.pbr = t.pbr;
     if (t.maps) { x.userData.mapsUrl = KTX2L && t.ktx ? { ...t.maps, ...Object.fromEntries(Object.entries(t.ktx).filter(([k]) => ['normal', 'rough', 'ao'].includes(k))) } : t.maps; x.userData.mapsAlt = t.maps; }
     if (t.rot || t.ox || t.oy) { x.center.set(0.5, 0.5); x.rotation = (t.rot || 0) * Math.PI / 180; x.offset.set((t.ox || 0) / t.tam, (t.oy || 0) / (t.tamH || t.tam)); }
@@ -5869,7 +5869,39 @@ export default function Visor3D({ cliente = false }) {
       aplicaEspejos(sc); api3d.current.despertar?.();
     } catch { /* si algo falla, el repintado normal lo aplica igualmente */ }
   };
+  // tamaño, giro y desplazamiento de la textura: se cambian en las texturas que ya están puestas (y en sus mapas de normales, rugosidad y AO), sin repintar la escena entera
+  const aplicaTransEnCaliente = (tid, t) => {
+    try {
+      const sc = api3d.current.scene; if (!sc || !(t.tam > 0)) return; const hechos = new Set();
+      sc.traverse(o => {
+        if (!o.isMesh) return;
+        (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => {
+          if (!m || !m.map || !m.map.userData || m.map.userData.texId !== tid) return;
+          const cm = !!m.map.userData.uvEnCm, k = cm ? 1 / t.tam : 1 / (t.tam * CM), kH = t.tamH > 0 ? (cm ? 1 / t.tamH : 1 / (t.tamH * CM)) : k;
+          [m.map, m.normalMap, m.roughnessMap, m.aoMap, m.bumpMap, m.metalnessMap].forEach(tx => {
+            if (!tx) return; hechos.add(tx); tx.repeat.set(k, kH); tx.center.set(0.5, 0.5); tx.rotation = (t.rot || 0) * Math.PI / 180; tx.offset.set((t.ox || 0) / t.tam, (t.oy || 0) / (t.tamH || t.tam));
+          });
+        });
+      });
+      cacheTex.forEach((x, k2) => { if (hechos.has(x)) cacheTex.delete(k2); }); // ya no coinciden con su clave: el repintado normal las rehace
+      api3d.current.despertar?.();
+    } catch { /* si algo falla, el repintado normal lo aplica igualmente */ }
+  };
+  const aplicaColorEnCaliente = (tid, hex) => {
+    try {
+      const sc = api3d.current.scene; if (!sc) return; const hechos = new Set();
+      const cv = document.createElement('canvas'); cv.width = cv.height = 8; const cx2 = cv.getContext('2d'); cx2.fillStyle = hex; cx2.fillRect(0, 0, 8, 8);
+      sc.traverse(o => {
+        if (!o.isMesh) return;
+        (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { const tx = m && m.map; if (!tx || !tx.userData || tx.userData.texId !== tid || hechos.has(tx)) return; hechos.add(tx); tx.image = cv; tx.needsUpdate = true; });
+      });
+      cacheTex.forEach((x, k2) => { if (hechos.has(x)) cacheTex.delete(k2); });
+      api3d.current.despertar?.();
+    } catch { /* si algo falla, el repintado normal lo aplica igualmente */ }
+  };
   const ajustaMat = (tid, cambios) => {
+    if (['tam', 'tamH', 'rot', 'ox', 'oy'].some(k => k in cambios)) { const ant0 = texturasRef.current.find(x => x.id === tid); if (ant0) aplicaTransEnCaliente(tid, { ...ant0, ...cambios }); }
+    if (cambios.color && /^#[0-9a-fA-F]{6}$/.test(cambios.color)) aplicaColorEnCaliente(tid, cambios.color);
     if (cambios.pbr) { const ant = texturasRef.current.find(x => x.id === tid), p = { ...(ant?.pbr || {}), ...cambios.pbr }; Object.keys(p).forEach(k => { if (p[k] === null) delete p[k]; }); aplicaPbrEnCaliente(tid, Object.keys(p).length ? p : undefined); }
     setTexturas(xs => xs.map(x => {
       if (x.id !== tid) return x; const n = { ...x, ...cambios };
