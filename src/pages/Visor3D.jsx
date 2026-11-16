@@ -1081,11 +1081,8 @@ function ledPerimetro(holder, pts, hex, zLed, lado, haciaFuera) {
     let ix = c[0] - mx, iy = c[1] - my; const il = Math.hypot(ix, iy) || 1; ix /= il; iy /= il;
     const sg = haciaFuera ? -1 : 1, px = mx + sg * ix * 0.4, py = my + sg * iy * 0.4;
     const b = new THREE.Mesh(new THREE.BoxGeometry(Ls * CM * 1.02, 0.022, 0.02), mat); b.position.set(px * CM, py * CM, zLed); b.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); holder.add(b);
-    if (i % paso === 0 && luces < 4) {
-      luces++;
-      const dir = new THREE.Vector3(sg * ix * 0.55, sg * iy * 0.55, lado * 0.85).normalize(), rl = new THREE.RectAreaLight(col, 9, Math.max(0.05, Ls * paso * CM), 0.05);
-      rl.position.set(px * CM, py * CM, zLed); rl.up.copy(new THREE.Vector3().crossVectors(dir.clone().negate(), new THREE.Vector3(ex, ey, 0))); rl.lookAt(rl.position.clone().add(dir)); holder.add(rl);
-    }
+    // brillo suave alrededor de la cinta (sin luces de área: cada luz de área recompila todos los materiales y bloqueaba la página)
+    { const g2 = new THREE.Mesh(new THREE.PlaneGeometry(Ls * CM * 1.02, 0.16), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false })); g2.position.set(px * CM, py * CM, zLed + lado * 0.002); g2.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); holder.add(g2); }
   }
 }
 function luzLedObjeto(g, o, presup, amb) {
