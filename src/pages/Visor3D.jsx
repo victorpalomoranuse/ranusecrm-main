@@ -5369,7 +5369,8 @@ export default function Visor3D({ cliente = false }) {
     setZon({ on: false, corte: false }); if (zonRealPrev.current) { zonRealPrev.current = false; setRealista(true); }
   };
   // Vista de zonas: muros cortados a ~1,1 m, máquinas teñidas por tipo, zonas de color en el suelo y rótulos
-  const [zon, setZon] = useState({ on: false, corte: false }), [zonInfo, setZonInfo] = useState(null), zonDatos = useRef(null), zonRealPrev = useRef(false);
+  const [zon, setZon] = useState({ on: false, corte: false }), [zonInfo, setZonInfo] = useState(null), zonDatos = useRef(null), zonRealPrev = useRef(false), [zonEditar, setZonEditar] = useState(false), [zonRev, setZonRev] = useState(0);
+  const cambiaZon = (clave, k, v) => { const d = zonDatos.current; if (!d) return; d.maquinas = d.maquinas.map(m => (m.clave === clave ? { ...m, [k]: v } : m)); setZonRev(x => x + 1); clearTimeout(window.__zonT); window.__zonT = setTimeout(() => api.put('/lamina-zonas/' + id, { maquinas: zonDatos.current.maquinas }).catch(() => setAviso('No se pudo guardar la corrección')), 700); };
   const entrarZonas = () => { if (!axo) entrarAxo(); setZon({ on: true, corte: true }); if (realista) { zonRealPrev.current = true; setRealista(false); } };
   const apagaZonas = () => { setZon(z => ({ ...z, on: false })); if (zonRealPrev.current) { zonRealPrev.current = false; setRealista(true); } };
   useEffect(() => {
@@ -5404,7 +5405,7 @@ export default function Visor3D({ cliente = false }) {
       });
       const tonos = {}; maq.forEach(m => { const t = (tonos[m.info.tipo] = tonos[m.info.tipo] || []); if (!t.includes(m.info.grupo)) t.push(m.info.grupo); });
       const cache = {}, matDe = (hex) => cache[hex] || (cache[hex] = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.55, metalness: 0.05 }));
-      maq.forEach(m => { const gs = tonos[m.info.tipo], k = gs.length > 1 ? gs.indexOf(m.info.grupo) / (gs.length - 1) * 0.42 : 0, mt = matDe(zonMezcla(ZON_COLOR[m.info.tipo], k)); m.o.traverse(x => { if (x.isMesh && x.visible && !x.userData.hit) { L.mats.push([x, x.material]); x.material = mt; } }); });
+      maq.forEach(m => { const gs = tonos[m.info.tipo], k = gs.length > 1 ? gs.indexOf(m.info.grupo) / (gs.length - 1) * 0.42 : 0, mt = matDe(zonMezcla(ZON_COLOR[m.info.tipo], k)); m.o.traverse(x => { if (!x.isMesh || !x.visible || x.userData.hit) return; const m0 = Array.isArray(x.material) ? x.material[0] : x.material; if (!m0 || m0.visible === false) return; /* la caja azul de la máquina, oculta mientras llega su modelo, se deja como está */ L.mats.push([x, x.material]); x.material = mt; }); });
       const dBox = (A, B) => Math.hypot(Math.max(0, Math.max(A[0], B[0]) - Math.min(A[2], B[2])), Math.max(0, Math.max(A[1], B[1]) - Math.min(A[3], B[3]))), resumen = [];
       Object.keys(ZON_COLOR).forEach(tipo => {
         const l = maq.filter(m => m.info.tipo === tipo); if (!l.length) return; const padre = l.map((_, i) => i), raiz = (i) => (padre[i] === i ? i : (padre[i] = raiz(padre[i])));
@@ -5429,7 +5430,7 @@ export default function Visor3D({ cliente = false }) {
       setZonInfo(resumen);
     })();
     return () => { vivo = false; limpia(); };
-  }, [!!axo, zon.on, zon.corte, rev, estado]);
+  }, [!!axo, zon.on, zon.corte, rev, estado, zonRev]);
   // Zona por medidas: se escriben posición y tamaño exactos (cm) y se crea sobre el muro, el suelo o el techo que se está viendo
   const crearZonaMedidas = () => {
     const a = api3d.current, m = a.modelo, ipZ = m && alz ? plantaAlz(m, alz.tipo, alz.id) : 0, pl0 = m && (m.plantas || [m])[ipZ], [oxZ, oyZ] = (a.offsPl || [])[ipZ] || [0, 0]; if (!alz || !pl0) return;
@@ -5873,6 +5874,7 @@ export default function Visor3D({ cliente = false }) {
       <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" checked={zon.corte} onChange={e => setZon(z => ({ ...z, corte: e.target.checked }))} />Muros cortados</label>
       {!cliente && <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" checked={zon.on} onChange={e => (e.target.checked ? entrarZonas() : apagaZonas())} />Zonas</label>}
       {zon.on && !zonInfo && <span style={{ opacity: 0.7 }}>Leyendo las máquinas…</span>}
+      {zon.on && zonInfo && <button style={bTop} onClick={() => setZonEditar(v => !v)} title="Cambia el tipo o el grupo de una máquina si la IA se ha equivocado">✏ Corregir zonas</button>}
       {zon.on && zonInfo && zonInfo.map(z => <span key={z.tipo} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><i style={{ width: 10, height: 10, borderRadius: 3, background: z.color, display: 'inline-block' }} />{z.nombre} · {z.n}</span>)}
       <button style={bTop} onClick={salirAxo}>Salir</button>
       <span style={{ opacity: 0.6, width: '100%' }}>Rueda = zoom · arrastrar = girar libre · botón derecho = mover · Exportar la imagen con 📷 / Render HD</span>
@@ -6166,6 +6168,19 @@ export default function Visor3D({ cliente = false }) {
       {barra2d}
       {modoRender && !axo && <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', zIndex: 6, background: 'rgba(22,20,18,0.88)', color: '#fff', borderRadius: 20, padding: '5px 14px', fontSize: 12, pointerEvents: 'none' }}>✨ Modo render · el modelo está bloqueado · solo materiales y luces <span style={{ opacity: 0.6 }}>(desactiva «Realista» para modelar)</span></div>}
       {barraAxo}
+      {axo && zon.on && zonEditar && zonDatos.current && (
+        <div style={{ position: 'absolute', right: 12, top: 56, zIndex: 7, width: 340, maxHeight: '72vh', overflow: 'auto', background: 'rgba(22,20,18,0.96)', color: '#fff', borderRadius: 10, padding: 10, fontSize: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}><b style={{ flex: 1 }}>Corregir zonas</b><button style={bTop} onClick={() => setZonEditar(false)}>Cerrar</button></div>
+          <div style={{ opacity: 0.6, marginBottom: 8, lineHeight: 1.4 }}>La IA clasifica cada máquina por su nombre. Si se ha equivocado, cámbialo aquí: se ve al momento y se guarda para la lámina del cliente también.</div>
+          {zonDatos.current.maquinas.map(m => (
+            <div key={m.clave} style={{ display: 'grid', gridTemplateColumns: '1fr 104px 88px', gap: 4, alignItems: 'center', marginBottom: 4 }}>
+              <span title={m.nombre} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.nombre} <span style={{ opacity: 0.5 }}>×{m.cantidad}</span></span>
+              <select value={m.tipo} onChange={e => cambiaZon(m.clave, 'tipo', e.target.value)} style={{ ...btn, padding: '2px' }}>{zonDatos.current.tipos.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}</select>
+              <select value={m.grupo} onChange={e => cambiaZon(m.clave, 'grupo', e.target.value)} style={{ ...btn, padding: '2px' }}>{zonDatos.current.grupos.map(g => <option key={g} value={g}>{g}</option>)}</select>
+            </div>
+          ))}
+        </div>
+      )}
       <div ref={caja} data-vista="1" style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
       {!cliente && limitadasN > 0 && limiteTri < 1e9 && (
         <div style={{ position: 'absolute', left: '50%', bottom: 14, transform: 'translateX(-50%)', zIndex: 6, display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(22,20,18,0.92)', color: '#fff', borderRadius: 12, padding: '8px 14px', fontSize: 12.5, boxShadow: '0 4px 16px rgba(0,0,0,0.4)', maxWidth: '92%' }}>
