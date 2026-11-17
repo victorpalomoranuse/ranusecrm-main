@@ -88,7 +88,7 @@ function texHoja() {
   for (let k = 0; k < 6; k++) { const y = 20 + k * 15; for (const sx of [-1, 1]) { cx.beginPath(); cx.moveTo(64, y); cx.quadraticCurveTo(64 + sx * 22, y - 4, 64 + sx * (40 - k * 3), y + 10); cx.stroke(); } }
   _texHoja = new THREE.CanvasTexture(cv); _texHoja.colorSpace = THREE.SRGBColorSpace; return _texHoja;
 }
-function texLuzMural() {
+export function texLuzMural() {
   if (_texLuz || typeof document === 'undefined') return _texLuz;
   const cv = document.createElement('canvas'); cv.width = 128; cv.height = 256; const cx = cv.getContext('2d');
   const v = cx.createLinearGradient(0, 0, 0, 256); v.addColorStop(0, 'rgba(255,255,255,0.95)'); v.addColorStop(0.18, 'rgba(255,255,255,0.55)'); v.addColorStop(0.55, 'rgba(255,255,255,0.14)'); v.addColorStop(1, 'rgba(255,255,255,0)'); cx.fillStyle = v; cx.fillRect(0, 0, 128, 256);
@@ -98,11 +98,20 @@ function texLuzMural() {
 function geoHoja() { // corazón con la punta hacia abajo, de unos 2 × 2 unidades; se escala al tamaño de cada hoja
   if (_geoHoja) return _geoHoja;
   const pts = []; for (let i = 0; i < 16; i++) { const t = (i / 16) * Math.PI * 2; pts.push(new THREE.Vector2(16 * Math.sin(t) ** 3 / 16, (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) / 16 + 0.18)); }
-  const g = new THREE.ShapeGeometry(new THREE.Shape(pts)), p = g.attributes.position, uv = new Float32Array(p.count * 2);
-  for (let i = 0; i < p.count; i++) { uv[i * 2] = (p.getX(i) + 1) / 2; uv[i * 2 + 1] = (p.getY(i) + 1) / 2; }
-  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); return (_geoHoja = g);
+  const vertices = [0, 0, 0.24], uv = [0.5, 0.5], indices = [];
+  pts.forEach(({ x, y }, i) => {
+    vertices.push(x, y, 0.08 * y - 0.16 * x * x);
+    uv.push((x + 1) / 2, (y + 1) / 2);
+    indices.push(0, 1 + (i + 1) % pts.length, i + 1);
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(indices);
+  g.computeVertexNormals();
+  return (_geoHoja = g);
 }
-function jardineraHiedra(o, w, dd, h, c1, c2) {
+function jardineraHiedra(o, w, dd, h, c1, c2, iluminado) {
   const g = new THREE.Group(), dens = Math.max(0.3, Math.min(2, parseFloat(o.deco?.dens) || 1)), wCm = w / CM;
   let seed = 7; for (const ch of String(o.id || 'x')) seed = (Math.imul(seed, 31) + ch.charCodeAt(0)) >>> 0;
   const rnd = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -112,7 +121,7 @@ function jardineraHiedra(o, w, dd, h, c1, c2) {
   const tierra = new THREE.Mesh(new THREE.BoxGeometry(w * 0.94, 0.02, dd * 0.8), new THREE.MeshStandardMaterial({ color: '#2a211b', roughness: 1 })); tierra.position.set(0, yTop - 0.004, 0); g.add(tierra);
   // luz LED bajo la caja: cinta fina y baño de luz cálido sobre la pared (efecto, sin luces reales)
   const luz = o.deco?.luz;
-  if (luz !== 'off') {
+  if (iluminado && luz !== 'off') {
     const lc = new THREE.Color(hexOk(luz, '#ffd9a0'));
     const cinta = new THREE.Mesh(new THREE.BoxGeometry(w * 0.94, 0.007, 0.012), new THREE.MeshBasicMaterial({ color: lc })); cinta.position.set(0, yTop - boxH - 0.002, dd / 2 - 0.03); g.add(cinta);
     const tx = texLuzMural(); if (tx) { const baño = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.1, Math.min(0.5, h * 0.55)), new THREE.MeshBasicMaterial({ map: tx, color: lc.clone().multiplyScalar(0.55), transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false })); baño.position.set(0, yTop - boxH - Math.min(0.5, h * 0.55) / 2 + 0.01, -dd / 2 + 0.004); g.add(baño); }
@@ -148,7 +157,7 @@ function jardineraHiedra(o, w, dd, h, c1, c2) {
   }
   return g;
 }
-export function construirDeco(o) {
+export function construirDeco(o, iluminado = true) {
   const w = (o.w || 50) * CM, dd = (o.d || 50) * CM, h = (o.alto || 100) * CM, r = Math.min(w, dd) / 2, kind = o.deco?.kind || 'planta';
   const c1 = new THREE.Color(hexOk(o.color, kind.startsWith('planta') || kind === 'arbusto' ? '#8a5a3c' : '#c9b9a0')), c2 = new THREE.Color(hexOk(o.deco?.color2, '#3f7d3a'));
   const mat = (c, rough = 0.7, met = 0.05) => new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: met });
@@ -283,7 +292,7 @@ export function construirDeco(o) {
       for (let i = 0; i < 5; i++) { cx.fillStyle = 'rgba(255,255,255,' + (0.05 + i * 0.03) + ')'; cx.beginPath(); cx.arc(cv.width * (0.2 + 0.15 * i), cv.height * (0.3 + 0.1 * ((i * 3) % 4)), cv.width * (0.08 + 0.03 * i), 0, 6.283); cx.fill(); }
       const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; const me = add(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: t, roughness: 0.8 }), 0, h / 2, 0.022); me.castShadow = false; break;
     }
-    case 'jardinera_hiedra': { g.add(jardineraHiedra(o, w, dd, h, c1, c2)); break; }
+    case 'jardinera_hiedra': { g.add(jardineraHiedra(o, w, dd, h, c1, c2, iluminado)); break; }
     default: {
       if (kind === 'grupo_hablando') {
         const a = figuraHumana(h, POSES.persona_de_pie, c1, new THREE.Color(hexOk(o.deco?.color2, '#2a2a3a')), new THREE.Color('#c9a98c')), b = figuraHumana(h * 0.94, POSES.grupo_hablando, c1.clone().offsetHSL(0.12, 0, 0), new THREE.Color('#2f3a4a'), new THREE.Color('#b88f72'));

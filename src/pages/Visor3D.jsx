@@ -12,7 +12,7 @@ import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import opentype from 'opentype.js';
 import { PRESETS_REVEST, PERFILES_MOLDURA, construirRevest, colocaEnMuro, normalizaRevest, preset as presetRevest, cajaRevest, espesorRevest } from '../components/revestimientos';
 import ChatImagenes from '../components/ChatImagenes';
-import { construirDeco, KINDS_DECO, MEDIDAS_DECO, KINDS_PERSONAS, KINDS_MOBILIARIO } from '../components/deco3d';
+import { texLuzMural, construirDeco, KINDS_DECO, MEDIDAS_DECO, KINDS_PERSONAS, KINDS_MOBILIARIO } from '../components/deco3d';
 import { construirRack, rackPorDefecto, normalizaRack, calculosRack, textoRack, dimRack, TIPOS_RACK, TIPOS_BAHIA, ACCESORIOS, PERFILES_RACK, COLORES_RACK, bahiaPorDefecto } from '../components/rack3d';
 import { construirCesped, cespedPorDefecto, normalizaCesped, calculosCesped, textoCesped, PRESETS_CESPED, PRESETS_MARCAJE, aplicaPresetMarcaje, COLORES_CESPED, COLORES_LINEA } from '../components/cesped3d';
 import { construirCubierta, cubiertaPorDefecto, normalizaCubierta, calculosCubierta, textoCubierta, altoCubierta, TIPOS_CUBIERTA, PANELES, COLORES_PANEL } from '../components/cubierta3d';
@@ -265,7 +265,7 @@ function aplicaEspejos(scene) {
     (arr || [o.material]).forEach((m0, i) => {
       let m = m0;
       if (m.metalness === undefined) return;
-      const pb = m.map?.userData?.pbr, mp = m.map?.userData?.mapsUrl, esp = m.map?.userData?.espejo;
+      const pb = m.map?.userData?.pbr, mp = m.map?.userData?.mapsUrl, esp = o.userData.espejoDeco || m.map?.userData?.espejo;
       if (esp) {
         if (!m.userData.espOn) { m.userData.espOn = true; m.userData.esp0 = { metalness: m.metalness, roughness: m.roughness, envMapIntensity: m.envMapIntensity }; }
         hayEspejos = true; m.metalness = 1; m.roughness = 0.04; m.envMap = envEsp; m.envMapIntensity = 1.4; m.bumpMap = null; m.needsUpdate = true;
@@ -799,7 +799,7 @@ function geoUnero(largo) {
   const g = new THREE.ExtrudeGeometry(sh, { depth: Math.max(0.02, largo), bevelEnabled: false });
   g.rotateY(-Math.PI / 2); g.translate(Math.max(0.02, largo) / 2, 0, 0); return g;
 }
-export function construirMueble(o, texturas) {
+export function construirMueble(o, texturas, iluminado = true) {
   const M = o.mueble || {}, esp = (M.esp || 1.8) * CM, zoc = (M.zocalo ?? 10) * CM, ef = 1.9 * CM;
   const D = o.d * CM, H = o.alto * CM, mods = M.modulos || [];
   const total = mods.reduce((s, m) => s + m.w, 0) * CM;
@@ -836,8 +836,8 @@ export function construirMueble(o, texturas) {
     const pAb = mod.t === 'abierto' ? Math.max(0, mod.pAb || 0) * CM : 0, pAr = mod.t === 'abierto' ? Math.max(0, mod.pAr || 0) * CM : 0, zy0 = y0 + (pAb > 0 ? pAb : esp), zy1 = y0 + hc - (pAr > 0 ? pAr : esp);
     for (let i = 1; i <= nb; i++) cajaM(W - 2 * esp, esp, Dm - 0.02, cx, zy0 + (zy1 - zy0) * (i / (nb + 1)), -0.01, cuerpo, 'cuerpo');
     // luz LED escondida bajo cada balda y bajo la tapa del hueco abierto: cinta cálida junto al frente y brillo suave sobre la trasera
-    if (M.ledBaldas && mod.t === 'abierto') {
-      const cl = new THREE.Color(/^#[0-9a-fA-F]{6}$/.test(M.colorLed || '') ? M.colorLed : '#ffd9a0'), ledM = new THREE.MeshBasicMaterial({ color: cl }), glowM = new THREE.MeshBasicMaterial({ color: cl, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    if (iluminado && M.ledBaldas && mod.t === 'abierto') {
+      const cl = new THREE.Color(/^#[0-9a-fA-F]{6}$/.test(M.colorLed || '') ? M.colorLed : '#ffd9a0'), ledM = new THREE.MeshBasicMaterial({ color: cl }), glowM = new THREE.MeshBasicMaterial({ color: cl, map: texLuzMural(), transparent: true, opacity: 0.42, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
       const bajos = []; for (let i = 1; i <= nb; i++) bajos.push(zy0 + (zy1 - zy0) * (i / (nb + 1)) - esp / 2); bajos.push(y0 + hc - (pAr > 0 ? pAr + esp : esp) + (pAr > 0 ? esp : 0));
       bajos.forEach(yb => { cajaM(W - 2 * esp - 0.03, 0.008, 0.012, cx, yb - 0.004, Dm / 2 - 0.04, ledM, 'led'); const gp = new THREE.Mesh(new THREE.PlaneGeometry(W - 2 * esp - 0.02, 0.2), glowM); gp.position.set(cx, yb - 0.1, -Dm / 2 + 0.01); gM.add(gp); });
     }
@@ -940,10 +940,10 @@ export function construirMueble(o, texturas) {
       im.castShadow = im.receiveShadow = true; im.userData.zona = 'frente'; gM.add(im);
     }
     // zócalo con luz: cinta fina en el suelo bajo el frente y un halo cálido sobre el suelo
-    if (M.zocaloLed && !elev && zoc > 0) {
+    if (iluminado && M.zocaloLed && !elev && zoc > 0) {
       const cl = new THREE.Color(/^#[0-9a-fA-F]{6}$/.test(M.colorLed || '') ? M.colorLed : '#ffd9a0');
       cajaM(W - 0.01, 0.01, 0.008, cx, zoc * 0.45, Dm / 2 - 0.04, new THREE.MeshBasicMaterial({ color: cl }), 'led');
-      const hp = new THREE.Mesh(new THREE.PlaneGeometry(W + 0.1, 0.22), new THREE.MeshBasicMaterial({ color: cl, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false })); hp.rotation.x = -Math.PI / 2; hp.position.set(cx, 0.004, Dm / 2 + 0.06); gM.add(hp);
+      const hp = new THREE.Mesh(new THREE.PlaneGeometry(W + 0.1, 0.22), new THREE.MeshBasicMaterial({ color: cl, map: texLuzMural(), transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false })); hp.rotation.x = -Math.PI / 2; hp.position.set(cx, 0.004, Dm / 2 + 0.06); gM.add(hp);
     }
     x += W;
   });
@@ -1142,10 +1142,37 @@ function ovalLimpio(o) {
   return { ...o, pts: Array.from({ length: 120 }, (_, i) => [cx + rx * Math.cos((i / 120) * 2 * Math.PI), cy + ry * Math.sin((i / 120) * 2 * Math.PI)]) };
 }
 // Borde luminoso de una forma en la pared (cm, plano de la pared): cinta visible + luces de área reales. hacia fuera=true: halo que baña la pared alrededor (resalte/plana); false: baña el interior del nicho
+function haloLed(pts, color, tramoActivo = () => true) {
+  const vertices = [], colores = [], indices = [];
+  const perfil = [[-0.14, 0], [-0.045, 0.22], [0, 1], [0.045, 0.22], [0.14, 0]];
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const p = pts[i], anterior = pts[(i + n - 1) % n], siguiente = pts[(i + 1) % n];
+    const dx = siguiente[0] - anterior[0], dy = siguiente[1] - anterior[1];
+    const largo = Math.hypot(dx, dy) || 1;
+    for (const [distancia, brillo] of perfil) {
+      vertices.push(p[0] * CM - dy / largo * distancia, p[1] * CM + dx / largo * distancia, 0);
+      colores.push(color.r * brillo, color.g * brillo, color.b * brillo);
+    }
+    if (!tramoActivo(p, siguiente)) continue;
+    for (let j = 0; j < perfil.length - 1; j++) {
+      const a = i * perfil.length + j, b = ((i + 1) % n) * perfil.length + j;
+      indices.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colores, 3));
+  geo.setIndex(indices);
+  const halo = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  halo.raycast = () => {};
+  return halo;
+}
 function ledPerimetro(holder, pts, hex, zLed, lado, haciaFuera) {
   if (pts.length >= 24) { // forma curva: una sola cinta continua (tubo) y un halo suave, sin los trozos rectos que daban bultos
     const col0 = new THREE.Color(hex), cur = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(p[0] * CM, p[1] * CM, zLed)), true), cinta = new THREE.Mesh(new THREE.TubeGeometry(cur, Math.min(480, pts.length * 3), 0.011, 6, true), new THREE.MeshBasicMaterial({ color: col0 }));
-    const halo = new THREE.Mesh(new THREE.TubeGeometry(cur, Math.min(360, pts.length * 2), 0.055, 8, true), new THREE.MeshBasicMaterial({ color: col0, transparent: true, opacity: 0.13, blending: THREE.AdditiveBlending, depthWrite: false })); halo.scale.z = 0.25; halo.position.z = zLed * 0.75;
+    const halo = haloLed(pts, col0);
+    halo.position.z = zLed + lado * 0.002;
     holder.add(cinta); holder.add(halo); return;
   }
   const col = new THREE.Color(hex), mat = new THREE.MeshBasicMaterial({ color: col }), n = pts.length, c = pts.reduce((q, p) => [q[0] + p[0] / n, q[1] + p[1] / n], [0, 0]), paso = Math.max(1, Math.ceil(n / 4));
@@ -1167,14 +1194,15 @@ function luzLedObjeto(g, o, presup, amb) {
   luzArea(g, new THREE.Vector3(...cfg[0]), new THREE.Vector3(...cfg[1]), cfg[2], cfg[3], col, 8 * amb, presup);
 }
 // Tira LED: cinta luminosa que sigue un recorrido y alumbra de verdad hacia donde se le indique
-function construirLed(o, presup, amb, seleccionado) {
+function construirLed(o, presup, amb, seleccionado, iluminado) {
   const g = new THREE.Group(), pts = o.pts || [], L = o.led || { ancho: 1.2, k: 3000, lm: 800, dir: 'abajo' }; if (pts.length < 2) return g;
   const n = pts.length, m = L.cerrado ? n : n - 1, y = (o.z0 || 250) * CM, ancho = Math.max(0.3, L.ancho) * CM, hex = /^#[0-9a-fA-F]{6}$/.test(o.color || '') ? o.color : kelvinHex(L.k), col = new THREE.Color(hex); // si la tira tiene un color elegido, manda sobre la temperatura
-  const mat = new THREE.MeshBasicMaterial({ color: seleccionado ? 0x9cc8ff : col });
+  const mat = iluminado ? new THREE.MeshBasicMaterial({ color: col }) : new THREE.MeshStandardMaterial({ color: seleccionado ? 0x9cc8ff : 0xbebbb7 });
   for (let i = 0; i < m; i++) {
     const a = pts[i], b = pts[(i + 1) % n], largo = Math.hypot(b[0] - a[0], b[1] - a[1]) * CM; if (largo < 0.01) continue;
     const ux = (b[0] - a[0]) / (largo / CM), uy = (b[1] - a[1]) / (largo / CM), mid = new THREE.Vector3(((a[0] + b[0]) / 2) * CM, y, ((a[1] + b[1]) / 2) * CM);
     const tira = new THREE.Mesh(new THREE.BoxGeometry(largo, 0.008, ancho), mat); tira.position.copy(mid); tira.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]); g.add(tira);
+    if (!iluminado) continue;
     const u = new THREE.Vector3(ux, 0, uy), dir = { abajo: new THREE.Vector3(0, -1, 0), arriba: new THREE.Vector3(0, 1, 0), izq: new THREE.Vector3(-uy, 0, ux), der: new THREE.Vector3(uy, 0, -ux) }[L.dir || 'abajo'];
     luzArea(g, mid.clone().add(dir.clone().multiplyScalar(0.006)), dir, largo, Math.max(0.03, ancho * 3), col, Math.max(1, Math.min(40, (L.lm || 800) / 80)) * amb, presup, u);
   }
@@ -2297,7 +2325,7 @@ export default function Visor3D({ cliente = false }) {
   const ultTab = useRef({ mat: 'pintura', comp: 'catalogo' }); // última pestaña usada de cada bloque (Materiales / Componentes)
   useEffect(() => { const f = () => { setRailCols(1); setRailTick(t => t + 1); }; window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
   useLayoutEffect(() => { const el = railRef.current; if (el && railCols < 4 && (el.scrollHeight > el.clientHeight + 2 || el.scrollWidth > el.clientWidth + 2)) setRailCols(c => c + 1); }, [railCols, railTick, estado]);
-  const railW = railCols * 56 + 10;
+  const railW = modoRender ? railCols * 56 + 10 : 148;
   const [camAbierta, setCamAbierta] = useState(false);
   const [camInfo, setCamInfo] = useState(null);
   const [shiftY, setShiftY] = useState(0);
@@ -2565,18 +2593,25 @@ export default function Visor3D({ cliente = false }) {
       if (!movi && ahora - ultSombra > 500) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
       if (espejoSucio && ahora - (a0.ultEsp || 0) > 250) { espejoSucio = false; a0.ultEsp = ahora; aplicaEspejos(scene); }
       if (ctrl.update()) { a0.despierta = ahora + 400; }
-      if (!(movi || ahora < (a0.despierta || 0))) {
-        if (a0.actualizarReflejos) {
+      const quieta = !(movi || ahora < (a0.despierta || 0));
+      const refinar = quieta && modoRenderRef.current && a0.composer && !a0.reposo && !GL_SOFTWARE;
+      if (quieta) {
+        if (a0.actualizarReflejos || (refinar && hayEspejos && !a0.reflejoRT && !a0.intentoReflejo)) {
+          a0.intentoReflejo = true;
           a0.actualizarReflejos = false;
           if (a0.composer && hayEspejos) {
-            const destino = new THREE.WebGLCubeRenderTarget(128, { type: THREE.HalfFloatType });
+            const destino = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType });
             const cubo = new THREE.CubeCamera(0.1, 200, destino);
             const ayudas = [a0.gizmoG, a0.cotasG, a0.nodoG, a0.guiaG].filter(Boolean);
+            let espejo;
+            scene.traverse(o => { if (!espejo && o.visible && (o.userData.espejoDeco || o.material?.map?.userData?.espejo)) espejo = o; });
+            if (espejo) ayudas.push(espejo);
             const visibles = ayudas.map(o => o.visible);
             const pm = new THREE.PMREMGenerator(renderer);
             try {
               ayudas.forEach(o => { o.visible = false; });
-              cubo.position.copy(cam.position);
+              if (espejo) new THREE.Box3().setFromObject(espejo).getCenter(cubo.position);
+              else cubo.position.copy(cam.position);
               cubo.update(renderer, scene);
               const nuevo = pm.fromCubemap(destino.texture);
               const anterior = a0.reflejoRT;
@@ -2594,7 +2629,7 @@ export default function Visor3D({ cliente = false }) {
             }
           }
         }
-        if (!(ahora < (a0.despierta || 0))) {
+        if (!refinar && !(ahora < (a0.despierta || 0))) {
           a0.reposo = true;
           cancelAnimationFrame(raf);
           // Sigue comprobando cargas asíncronas y reflejos pendientes mientras la escena descansa.
@@ -2605,7 +2640,18 @@ export default function Visor3D({ cliente = false }) {
           return;
         }
       } // nada ha cambiado: no se dibuja y la tarjeta gráfica descansa
-      a0.reposo = false; renderer.info.reset();
+      if (refinar) {
+        const limite = Math.sqrt(6000000 / Math.max(1, el.clientWidth * el.clientHeight));
+        const ratio = Math.min(limite, Math.max(a0.prBase || 1, 1.5));
+        if (ratio > renderer.getPixelRatio()) {
+          renderer.setPixelRatio(ratio);
+          a0.resRefinada = true;
+        }
+      } else if (a0.resRefinada) {
+        renderer.setPixelRatio((a0.prBase || 1) * escala);
+        a0.resRefinada = false;
+      }
+      a0.reposo = !!refinar; renderer.info.reset();
 
       if (a0.composer) {
         const sz = renderer.getSize(vR2); if (a0.compW !== sz.x || a0.compH !== sz.y || a0.compPr !== renderer.getPixelRatio()) { a0.compW = sz.x; a0.compH = sz.y; a0.compPr = renderer.getPixelRatio(); a0.composer.setPixelRatio(a0.compPr); a0.composer.setSize(sz.x, sz.y); }
@@ -2614,7 +2660,7 @@ export default function Visor3D({ cliente = false }) {
       } else renderer.render(scene, cam);
       if (a0.pedirFoto) { const cb = a0.pedirFoto; a0.pedirFoto = null; let u = null; try { u = renderer.domElement.toDataURL('image/jpeg', 0.9); } catch { /* sin imagen */ } cb(u); } // foto del fotograma recién dibujado, tal como se ve
       // regulador automático: si va a menos de ~25 fps baja la resolución y, si aun así va lento, quita las sombras; si sobra potencia, la recupera
-      if (ahora - ultGob > 1000) {
+      if (!refinar && ahora - ultGob > 1000) {
         ultGob = ahora; const base = a0.prBase || 1;
         if (ema > 42 && escala > 0.5) { escala = Math.max(0.5, escala - 0.15); renderer.setPixelRatio(base * escala); }
         else if (ema > 42 && !a0.sinSombrasMaq) { a0.sinSombrasMaq = true; scene.traverse(o => { if (o.isMesh && o.castShadow && o.parent?.userData?.modeloEq) o.castShadow = false; else if (o.isMesh && o.castShadow) { let q = o.parent, esMaq = false; while (q) { if (q.userData?.modeloEq) { esMaq = true; break; } q = q.parent; } if (esMaq) o.castShadow = false; } }); } // primero se quitan las sombras de las máquinas (lo que más pesa); las del local se mantienen
@@ -4101,6 +4147,8 @@ export default function Visor3D({ cliente = false }) {
     const a = api3d.current; if (!a.esc) return;
     while (a.esc.children.length) { const o = a.esc.children[0]; a.esc.remove(o); o.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); }
     const presup = { n: 0 };
+    const mostrarLuz = modoRender || cliente;
+    espejoSucio = true;
     const todosMuros = (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.muros || []);
     // cada muro pertenece a una planta que puede estar desplazada y a otra altura: lo que se pega a un muro tiene que ir con ella
     const plantaDelMuro = (muId) => { const pls = api3d.current.modelo?.plantas || [api3d.current.modelo], ip = pls.findIndex(p => (p?.muros || []).some(m => m.id === muId)); const [ox, oy] = (api3d.current.offsPl || [])[Math.max(0, ip)] || [0, 0]; return { ox, oy, z: (pls[Math.max(0, ip)]?.z || 0) * CM }; };
@@ -4122,14 +4170,14 @@ export default function Visor3D({ cliente = false }) {
           if (prof > 0) { // resalte: un volumen con la forma de la zona que sale del muro hacia la sala
             const prisma = new THREE.Mesh(new THREE.ExtrudeGeometry(new THREE.Shape(o.pts.map(p => new THREE.Vector2(p[0] * CM, p[1] * CM))), { depth: Math.max(0.5, prof) * CM, bevelEnabled: false }), mt);
             prisma.position.z = lado * (tCm / 2) * CM; prisma.scale.z = lado; prisma.castShadow = prisma.receiveShadow = true; holder.add(prisma);
-            if (/^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) ledPerimetro(holder, o.pts, o.luzZ, lado * ((tCm / 2) * CM + 0.006), lado, true);
+            if (mostrarLuz && /^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) ledPerimetro(holder, o.pts, o.luzZ, lado * ((tCm / 2) * CM + 0.006), lado, true);
           } else if (prof < 0) { // nicho: el muro se abre con esa forma y la zona hace de fondo, dentro del grosor del muro
             const dd = Math.min(Math.abs(prof), tCm - 1);
             mesh.position.z = lado * ((tCm / 2 - dd) * CM); if (mesh.material && mesh.material.color) { mesh.material = mesh.material.clone(); mesh.material.color.multiplyScalar(0.72); } holder.add(mesh); // el fondo del nicho se oscurece para que se lea el hueco
-            if (/^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) ledPerimetro(holder, o.pts, o.luzZ, lado * ((tCm / 2 - dd) * CM + 0.012), lado, false);
+            if (mostrarLuz && /^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) ledPerimetro(holder, o.pts, o.luzZ, lado * ((tCm / 2 - dd) * CM + 0.012), lado, false);
           } else {
             mesh.position.z = lado * ((tCm / 2) * CM + 0.004); holder.add(mesh);
-            if (/^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) ledPerimetro(holder, o.pts, o.luzZ, lado * ((tCm / 2) * CM + 0.01), lado, true);
+            if (mostrarLuz && /^#[0-9a-fA-F]{6}$/.test(o.luzZ || '')) ledPerimetro(holder, o.pts, o.luzZ, lado * ((tCm / 2) * CM + 0.01), lado, true);
           }
           gz.add(holder);
           gz.userData.sinArrastre = true;
@@ -4147,7 +4195,7 @@ export default function Visor3D({ cliente = false }) {
         return;
       }
       if (o.tipo === 'led' && Array.isArray(o.pts) && o.pts.length >= 2) {
-        const gl = construirLed(o, presup, ambiente.luces, selIdsRef.current.has(o.id));
+        const gl = construirLed(o, presup, ambiente.luces, selIdsRef.current.has(o.id), mostrarLuz);
         gl.position.set(o.cx * CM, 0, o.cy * CM); gl.userData.oid = o.id; gl.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
         a.esc.add(gl);
         return;
@@ -4232,9 +4280,17 @@ export default function Visor3D({ cliente = false }) {
           geo.rotateX(-Math.PI / 2);
         }
         const losa = new THREE.Mesh(geo, mt); losa.position.y = sube ? H + prof : (D >= 0 ? H - prof : H); losa.castShadow = losa.receiveShadow = true; gf.add(losa);
-        if (ft.luz !== false) {
+        if (mostrarLuz && ft.luz !== false) {
           const K = ft.k || 3000, colL = /^#[0-9a-fA-F]{6}$/.test(ft.colorLuz || '') ? new THREE.Color(ft.colorLuz) : colorK(K), led = new THREE.MeshBasicMaterial({ color: colL });
           const cen = inner.reduce((q, p) => [q[0] + p[0] / inner.length, q[1] + p[1] / inner.length], [0, 0]), pasoLed = inner.length > 10 ? Math.ceil(inner.length / 8) : 1; // en un círculo (muchos tramos) bastan 8 luces de área repartidas por igual
+          const halo = haloLed(inner, colL, (p, q) => {
+            const dx = (p[0] + q[0]) / 2 - cen[0], dy = (p[1] + q[1]) / 2 - cen[1];
+            const lado = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'e' : 'o') : (dy > 0 ? 's' : 'n');
+            return ft.lados?.[lado] !== false;
+          });
+          halo.rotation.x = Math.PI / 2;
+          halo.position.y = (sube ? H + prof : H - prof) - 0.003;
+          gf.add(halo);
           for (let i = 0; i < inner.length; i++) {
             const p = inner[i], q = inner[(i + 1) % inner.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]); if (L < 2) continue;
             { const dx = (p[0] + q[0]) / 2 - cen[0], dy = (p[1] + q[1]) / 2 - cen[1], lado = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'e' : 'o') : (dy > 0 ? 's' : 'n'); if (ft.lados && ft.lados[lado] === false) continue; }
@@ -4293,7 +4349,7 @@ export default function Visor3D({ cliente = false }) {
         return;
       }
       if (o.tipo === 'deco') {
-        const gd = new THREE.Group(), cont = construirDeco(o); cont.position.y = (o.z0 || 0) * CM; gd.add(cont);
+        const gd = new THREE.Group(), cont = construirDeco(o, mostrarLuz); cont.position.y = (o.z0 || 0) * CM; gd.add(cont);
         const hit = new THREE.Mesh(new THREE.BoxGeometry(Math.max(0.1, (o.w || 50) * CM), Math.max(0.1, (o.alto || 100) * CM), Math.max(0.05, (o.d || 50) * CM)), new THREE.MeshBasicMaterial({ visible: false }));
         hit.position.y = ((o.alto || 100) * CM) / 2 + (o.z0 || 0) * CM; hit.userData.hit = true; gd.add(hit);
         if (selIdsRef.current.has(o.id)) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(hit.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(hit.position); gd.add(l); }
@@ -4315,7 +4371,7 @@ export default function Visor3D({ cliente = false }) {
       }
       if (o.tipo === 'mueble') {
         const gm = new THREE.Group();
-        const cont = construirMueble(o, texturas); cont.position.y = (o.z0 || 0) * CM; gm.add(cont);
+        const cont = construirMueble(o, texturas, mostrarLuz); cont.position.y = (o.z0 || 0) * CM; gm.add(cont);
         const hit = new THREE.Mesh(new THREE.BoxGeometry(o.w * CM, o.alto * CM, o.d * CM), new THREE.MeshBasicMaterial({ visible: false }));
         hit.position.y = (o.alto * CM) / 2 + (o.z0 || 0) * CM; hit.userData.hit = true; gm.add(hit);
         if (selIdsRef.current.has(o.id)) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(hit.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(hit.position); gm.add(l); }
@@ -4366,13 +4422,13 @@ export default function Visor3D({ cliente = false }) {
       }
       if (selIdsRef.current.has(o.id)) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(m.position); g.add(l); }
       g.position.set(o.cx * CM, 0, o.cy * CM); g.rotation.y = -(o.rot || 0) * Math.PI / 180; if (o.espejo) g.scale.x = -1;
-      luzLedObjeto(g, o, presup, ambiente.luces);
+      if (mostrarLuz) luzLedObjeto(g, o, presup, ambiente.luces);
       g.userData.oid = o.id;
       g.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
       a.esc.add(g);
     });
     a.esc.children.forEach(gr => aplicarRegiones(gr, 'o:' + gr.userData.oid + ':', acab.regiones, texturas));
-  }, [objs, selObj, selExtraKey, estado, biblioteca, ocultas, texturas, rev, ambiente.luces, ambiente.kLuces, acab.regiones]);
+  }, [objs, selObj, selExtraKey, estado, biblioteca, ocultas, texturas, rev, ambiente.luces, ambiente.kLuces, acab.regiones, modoRender, cliente]);
   // Lo que pones en una planta (ideas de IA, ventanas, césped, decoración…) se oculta con ella: la planta de un objeto se deduce de su altura y de dónde cae
   useEffect(() => {
     const A = api3d.current; if (!A.esc || !A.modelo) return;
@@ -6055,8 +6111,8 @@ export default function Visor3D({ cliente = false }) {
   }, [alz, vistaTool]); // eslint-disable-line react-hooks/exhaustive-deps
   const itemMenu = { padding: '6px 8px', cursor: 'pointer', borderRadius: 4 };
   const railBtn = (activo, icono, etiqueta, titulo, onClick, color) => (
-    <button key={etiqueta} title={titulo} onClick={onClick} style={{ width: 54, padding: '3px 0 2px', background: activo ? (color || '#2f6fa8') : 'transparent', color: activo && color === '#c9a21a' ? '#111' : '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-      <span style={{ lineHeight: 0, padding: '2px 0' }}>{typeof icono === 'string' && ICONOS[icono] ? <Ic n={icono} /> : <span style={{ fontSize: 16, lineHeight: '18px' }}>{icono}</span>}</span><span style={{ fontSize: 8.5, opacity: 0.85, whiteSpace: 'nowrap', letterSpacing: '-0.2px' }}>{etiqueta}</span>
+    <button key={etiqueta} title={titulo} onClick={onClick} style={{ width: modoRender ? 54 : '100%', padding: modoRender ? '3px 0 2px' : '6px 10px', background: activo ? (color || '#2f6fa8') : 'transparent', color: activo && color === '#c9a21a' ? '#111' : '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', display: 'flex', flexDirection: modoRender ? 'column' : 'row', alignItems: 'center', gap: modoRender ? 1 : 8 }}>
+      <span style={{ lineHeight: 0, padding: '2px 0' }}>{typeof icono === 'string' && ICONOS[icono] ? <Ic n={icono} /> : <span style={{ fontSize: 16, lineHeight: '18px' }}>{icono}</span>}</span><span style={{ fontSize: modoRender ? 8.5 : 12, opacity: 0.95, whiteSpace: 'nowrap', letterSpacing: '-0.2px' }}>{etiqueta}</span>
     </button>
   );
   const abrirEnPlanos = () => { if (!window.open('/planos/editor?abrir=' + encodeURIComponent(id), '_blank')) setAviso('El navegador ha bloqueado la pestaña nueva: permite las ventanas emergentes para esta página'); };
@@ -6072,6 +6128,7 @@ export default function Visor3D({ cliente = false }) {
       </>}
     </span>
   );
+  const descargarRender = async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.' + (formatoRender === 'png' ? 'png' : 'jpg'); el.click(); setGuardado('Render descargado ✓'); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); };
   const grupoRail = (hijos, ultimo, titulo) => <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '2px 0 4px', marginBottom: ultimo ? 0 : 4, breakInside: 'avoid', borderBottom: ultimo ? 'none' : '1px solid #3a3a3a' }}>{titulo && <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', opacity: 0.8, color: '#d4c9bb', padding: '2px 0', width: '100%', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden' }}>{titulo}</span>}{hijos}</div>;
   // Un solo bloque «Materiales» (Pintura · Texturas · Mis texturas) y un solo bloque «Componentes» (Catálogo · Muebles · Mis modelos)
   const enMat = matAbierto || (b3dAbierta && (b3dTab === 'texturas' || b3dTab === 'mistex')), enComp = bibAbierta || (b3dAbierta && (b3dTab === 'modelos' || b3dTab === 'mios'));
@@ -6527,6 +6584,7 @@ export default function Visor3D({ cliente = false }) {
           ['Escenas' + (escenas.length ? ' (' + escenas.length + ')' : ''), () => setEscAbierta(v => !v), escAbierta, false, 'Vistas guardadas', '3'],
         ])}
         <span style={{ flex: 1 }} />
+        {modoRender && <button style={{ ...btn, background: '#e7d7bd', color: '#201c18', fontWeight: 700 }} disabled={renderizando || estado !== 'listo'} onClick={descargarRender}>{renderizando ? 'Renderizando…' : 'Crear render'}</button>}
         {menuTop2('Exportar', 'salida', [
           ['Captura de la vista', captura, false, false, 'Guarda la vista actual como imagen'],
           [renderizando ? 'Renderizando…' : 'Render HD', async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.jpg'; el.click(); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }, false, renderizando || estado !== 'listo', 'Render HD limpio con sombras suaves'],
@@ -6569,7 +6627,7 @@ export default function Visor3D({ cliente = false }) {
 
       {/* ── Carril de herramientas (izquierda), agrupadas por tarea ── */}
       {!cliente && <button type="button" onClick={alternaRail} title={railOculto ? 'Mostrar las herramientas' : 'Ocultar las herramientas'} style={{ position: 'absolute', top: 54, left: railOculto ? 8 : railW + 12, zIndex: 8, background: 'rgba(22,20,18,0.92)', color: '#fff', border: '1px solid #444', borderRadius: 8, padding: railOculto ? '6px 10px' : '6px 7px', fontSize: 12, cursor: 'pointer', fontWeight: 700, lineHeight: 1 }}>{railOculto ? '▶ Herramientas' : '◀'}</button>}
-      <div className={modoRender ? 'estudio-rail' : undefined} ref={railRef} style={{ display: railOculto ? 'none' : undefined, position: 'absolute', top: 54, left: 8, boxSizing: 'content-box', columnCount: railCols, columnGap: 0, width: railCols * 54, maxHeight: 'calc(100vh - 78px)', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', background: 'rgba(22,20,18,0.95)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+      <div className={modoRender ? 'estudio-rail' : undefined} ref={railRef} style={{ display: railOculto ? 'none' : undefined, position: 'absolute', top: 54, left: 8, boxSizing: 'content-box', columnCount: modoRender ? railCols : 1, columnGap: 0, width: modoRender ? railCols * 54 : 138, maxHeight: 'calc(100vh - 78px)', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', background: 'rgba(22,20,18,0.95)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
         {modoRender ? <>
           {railBtn(herr === 'sel' && !renderAbierto && !camAbierta, 'sel', 'Seleccionar', 'Seleccionar una superficie o luminaria', () => { setHerr('sel'); setRenderAbierto(false); setCamAbierta(false); })}
           {railBtn(herr === 'gotero', 'pintar', 'Materiales', 'Tomar el acabado de una superficie', () => { setLuzSel(null); setCamAbierta(false); setHerr('gotero'); setPestanaRender('inspector'); setRenderAbierto(true); })}
@@ -7381,7 +7439,7 @@ export default function Visor3D({ cliente = false }) {
               {sec('Exportar imagen', <>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>Resolución</span><select value={resRender} onChange={e => setResRender(parseInt(e.target.value, 10))} style={{ ...btn, flex: 1 }}>{Object.entries(nombreRes).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}><span style={{ width: 92, opacity: 0.75 }}>Formato</span><select value={formatoRender} onChange={e => setFormatoRender(e.target.value)} style={{ ...btn, flex: 1 }}><option value="jpg">JPG (ligero)</option><option value="png">PNG (sin pérdida)</option></select></label>
-                <button style={{ ...btn, width: '100%', background: '#8c8076', fontWeight: 700, padding: '9px 0', fontSize: 14 }} disabled={renderizando || estado !== 'listo'} onClick={async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.' + (formatoRender === 'png' ? 'png' : 'jpg'); el.click(); setGuardado('Render descargado ✓'); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }}>{renderizando ? 'Renderizando…' : '🎬 Renderizar y descargar'}</button>
+                <button style={{ ...btn, width: '100%', background: '#8c8076', fontWeight: 700, padding: '9px 0', fontSize: 14 }} disabled={renderizando || estado !== 'listo'} onClick={descargarRender}>{renderizando ? 'Renderizando…' : '🎬 Renderizar y descargar'}</button>
                 <button style={{ ...btn, width: '100%', marginTop: 6 }} disabled={renderizando || estado !== 'listo'} onClick={async () => { setRenderizando(true); try { const u = await renderHDurl(); await guardarRender('hd', u, metaActual(), undefined); setGuardado('Render guardado en la galería ✓'); } catch (e) { setAviso('No se ha podido guardar el render'); } setRenderizando(false); }}>Guardar en la galería</button>
                 <button style={{ ...btn, width: '100%', marginTop: 6 }} onClick={() => setIaForm(true)} title="Mejora la vista con IA usando tus materiales como referencia">🤖 Render con IA</button>
                 <button style={{ ...btn, width: '100%', marginTop: 6 }} onClick={exportarGLB} title="Descarga el modelo para abrirlo en D5 o Blender">⬇ Exportar a D5 (.glb)</button>
