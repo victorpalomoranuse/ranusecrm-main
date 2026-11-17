@@ -1128,6 +1128,16 @@ function kelvinColor(K) {
 const kelvinHex = K => '#' + kelvinColor(KGLOBAL.luces || K).getHexString();
 RectAreaLightUniformsLib.init();
 // Luz de área (la que usan las tiras LED y los paneles luminosos): mira hacia dir; u = eje largo de la tira (si va en horizontal o vertical)
+// Integra el perfil smoothstep del foco para conservar el flujo al variar el haz.
+function candelasFoco(lumenes, apertura, penumbra = 0.45) {
+  const angulo = Math.min(170, Math.max(5, apertura)) * Math.PI / 360;
+  const exterior = Math.cos(angulo), interior = Math.cos(angulo * (1 - penumbra));
+  const anguloSolido = 2 * Math.PI * (1 - (interior + exterior) / 2);
+  return Math.max(0, lumenes) / anguloSolido;
+}
+function luminanciaArea(lumenes, ancho, alto) {
+  return Math.max(0, lumenes) / (Math.PI * Math.max(0.0001, ancho * alto));
+}
 function luzArea(g, pos, dir, w, h, col, inten, presup, u) {
   if (presup.n >= 24) return; presup.n++;
   const rl = new THREE.RectAreaLight(col, inten, Math.max(0.01, w), Math.max(0.01, h));
@@ -1206,11 +1216,31 @@ function construirLed(o, presup, amb, seleccionado, iluminado) {
     const tira = new THREE.Mesh(new THREE.BoxGeometry(largo, 0.008, ancho), mat); tira.position.copy(mid); tira.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]); g.add(tira);
     if (!iluminado) continue;
     const u = new THREE.Vector3(ux, 0, uy), dir = { abajo: new THREE.Vector3(0, -1, 0), arriba: new THREE.Vector3(0, 1, 0), izq: new THREE.Vector3(-uy, 0, ux), der: new THREE.Vector3(uy, 0, -ux) }[L.dir || 'abajo'];
-    luzArea(g, mid.clone().add(dir.clone().multiplyScalar(0.006)), dir, largo, Math.max(0.03, ancho * 3), col, Math.max(1, Math.min(40, (L.lm || 800) / 80)) * amb, presup, u);
+    luzArea(g, mid.clone().add(dir.clone().multiplyScalar(0.006)), dir, largo, Math.max(0.03, ancho * 3), col, luminanciaArea((L.lm ?? 800) * largo, largo, Math.max(0.03, ancho * 3)) * amb, presup, u);
   }
   return g;
 }
 // Luminarias del plano con forma (antes solo eran un punto): foco empotrado, plafón, colgante, aplique, lámpara de pie y empotrado de suelo
+function perforarFocos(forma, luces, ajustes, overrides, ox, oz, altura, signoZ = 1) {
+  const contorno = forma.getPoints();
+  const dentro = (x, z, puntos) => puntoEnPoligono([x, z], puntos.map(p => [p.x, p.y]));
+  for (const original of luces) {
+    const luz = { ...original, ...overrides[original.id] }, ajuste = ajustes[luz.id] || {};
+    if (luz.kid !== 'foco' || ajuste.v || ajuste.mod?.url || luz.vs || ajuste.rx || ajuste.rz) continue;
+    if (luz.h != null && Math.abs(luz.h - altura) > 2) continue;
+    const x = (luz.x - ox) * CM, z = (luz.y - oz) * CM * signoZ;
+    const rx = 0.045 * (ajuste.dim?.w ? ajuste.dim.w / 11 : 1);
+    const rz = 0.045 * (ajuste.dim?.d ? ajuste.dim.d / 11 : 1);
+    const borde = Array.from({ length: 48 }, (_, i) => {
+      const t = i * Math.PI * 2 / 48;
+      return new THREE.Vector2(x + rx * Math.cos(t), z + rz * Math.sin(t));
+    });
+    if (!borde.every(p => dentro(p.x, p.y, contorno))) continue;
+    if (forma.holes.some(h => borde.some(p => dentro(p.x, p.y, h.getPoints())))) continue;
+    forma.holes.push(new THREE.Path(borde));
+  }
+}
+
 function construirLuminaria(kid, col, sel, variante, tilt, yaw) {
   const g = new THREE.Group(), glow = new THREE.MeshBasicMaterial({ color: sel ? 0x4da3ff : col }), cuerpo = new THREE.MeshStandardMaterial({ color: sel ? 0x9cc8ff : 0xf2f2f2, roughness: 0.5 });
   let luzPos = new THREE.Vector3(0, -0.02, 0);
@@ -1229,7 +1259,22 @@ function construirLuminaria(kid, col, sel, variante, tilt, yaw) {
     luzPos = cab.position.clone().add(dir.clone().multiplyScalar(largo));
     return { grupo: g, luzPos, dir };
   }
-  if (kid === 'foco') { const aro = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.012, 24), cuerpo); aro.position.y = -0.006; const d = new THREE.Mesh(new THREE.CircleGeometry(0.036, 24), glow); d.rotation.x = Math.PI / 2; d.position.y = -0.0125; g.add(aro, d); }
+  if (kid === 'foco') {
+    const aro = new THREE.Mesh(new THREE.RingGeometry(0.045, 0.055, 48), cuerpo);
+    aro.rotation.x = Math.PI / 2;
+    aro.position.y = -0.001;
+    const interior = new THREE.MeshStandardMaterial({ color: 0x242424, roughness: 0.6, side: THREE.BackSide });
+    const cavidad = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.045, 0.06, 48, 1, true), interior);
+    cavidad.position.y = 0.03;
+    const fondo = new THREE.Mesh(new THREE.CircleGeometry(0.028, 48), interior.clone());
+    fondo.material.side = THREE.FrontSide;
+    fondo.rotation.x = Math.PI / 2;
+    fondo.position.y = 0.06;
+    const lente = new THREE.Mesh(new THREE.CircleGeometry(0.022, 48), glow);
+    lente.rotation.x = Math.PI / 2;
+    lente.position.y = 0.059;
+    g.add(aro, cavidad, fondo, lente);
+  }
   else if (kid === 'plaf') { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.07, 32), cuerpo); c.position.y = -0.035; const d = new THREE.Mesh(new THREE.CircleGeometry(0.15, 32), glow); d.rotation.x = Math.PI / 2; d.position.y = -0.0705; g.add(c, d); luzPos = new THREE.Vector3(0, -0.08, 0); }
   else if (kid === 'colg') { const cab = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.55, 6), cuerpo); cab.position.y = -0.275; const pant = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.16, 0.18, 24, 1, true), new THREE.MeshStandardMaterial({ color: sel ? 0x9cc8ff : 0xe8e2d8, roughness: 0.6, side: THREE.DoubleSide })); pant.position.y = -0.64; const b = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 12), glow); b.position.y = -0.66; g.add(cab, pant, b); luzPos = new THREE.Vector3(0, -0.68, 0); }
   else if (kid === 'aplq') { const c = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.22, 0.06), cuerpo); const d = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.02), glow); d.position.z = 0.04; g.add(c, d); luzPos = new THREE.Vector3(0, 0, 0.1); }
@@ -1654,12 +1699,12 @@ function construirCarril(o, presup, amb, seleccionado) {
   if (o.suspendido) [pts[0], pts[pts.length - 1]].forEach(p => { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.4, 6), mat); c.position.set(p[0] * CM, y + 0.2, p[1] * CM); g.add(c); });
   const luz = (cd, ap, pos, dir, K) => {
     if (presup.n >= 24) return; presup.n++;
-    const s = new THREE.SpotLight(colorK(K), cd * amb, 0, Math.max(0.1, (ap / 2) * Math.PI / 180), 0.45, 2);
+    const s = new THREE.SpotLight(colorK(K), cd * amb, 0, Math.min(170, Math.max(5, ap)) * Math.PI / 360, 0.45, 2);
     s.position.copy(pos); s.target.position.copy(pos.clone().add(dir.clone().multiplyScalar(2.5))); g.add(s); g.add(s.target);
   };
   (o.focos || []).forEach(f => {
     const P = puntoEnCamino(pts, f.s || 0); if (!P) return;
-    const px = P.x * CM, pz = P.y * CM, yy = y - alto, K = f.k || 3000, lm = f.lm ?? 800, cd = (lm / 12.57) * 0.5 * 4;
+    const px = P.x * CM, pz = P.y * CM, yy = y - alto, K = f.k || 3000, lm = f.lm ?? 800, cd = candelasFoco(lm, f.ap || (f.t === 'lineal' ? 110 : 36));
     const tiltR = ((f.tilt ?? 20) * Math.PI) / 180, yawR = ((f.yaw || 0) * Math.PI) / 180;
     const dir = new THREE.Vector3(Math.sin(tiltR) * Math.cos(yawR), -Math.cos(tiltR), Math.sin(tiltR) * Math.sin(yawR)).normalize();
     const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
@@ -1678,12 +1723,12 @@ function construirCarril(o, presup, amb, seleccionado) {
       barra.position.set(px, yy - 0.06, pz); barra.rotation.y = -yawR; barra.castShadow = true; g.add(barra);
       const tubo = new THREE.Mesh(new THREE.BoxGeometry(len * 0.96, 0.006, 0.022), glow); tubo.position.set(px, yy - 0.077, pz); tubo.rotation.y = -yawR; g.add(tubo);
       const colg = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.04, 0.008), mat); colg.position.set(px, yy - 0.02, pz); g.add(colg);
-      luz(cd * 0.8, f.ap || 110, new THREE.Vector3(px, yy - 0.08, pz), new THREE.Vector3(0, -1, 0), K);
+      luz(cd, f.ap || 110, new THREE.Vector3(px, yy - 0.08, pz), new THREE.Vector3(0, -1, 0), K);
     } else if (f.t === 'colgante') {
       const cab = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.35, 6), mat); cab.position.set(px, yy - 0.175, pz); g.add(cab);
       const pant = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.13, 0.15, 24, 1, true), new THREE.MeshStandardMaterial({ color: col, roughness: 0.5, metalness: 0.3, side: THREE.DoubleSide })); pant.position.set(px, yy - 0.425, pz); pant.castShadow = true; g.add(pant);
       const bulbo = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 12), glow); bulbo.position.set(px, yy - 0.47, pz); g.add(bulbo);
-      if (presup.n < 24) { presup.n++; const p = new THREE.PointLight(colorK(K), (lm / 12.57) * 0.5 * amb, 0, 2); p.position.set(px, yy - 0.48, pz); g.add(p); }
+      if (presup.n < 24) { presup.n++; const p = new THREE.PointLight(colorK(K), Math.max(0, lm) / (4 * Math.PI) * amb, 0, 2); p.position.set(px, yy - 0.48, pz); g.add(p); }
     }
   });
   return g;
@@ -2751,7 +2796,7 @@ export default function Visor3D({ cliente = false }) {
       api3d.current.modelo = modelo;
       {
         const nodos = Object.fromEntries((pl?.nodes || []).map(n => [n.id, n]));
-        setLucesPl((pl?.pts || []).filter(p => p.v === 'ilum' && p.s !== 'dem' && nodos[p.n] && !String(p.id).startsWith('l3_')).map(p => ({ id: p.id, kid: p.k, lid: p.lid || null, h: p.h, lm: p.lm > 0 ? p.lm : null, ap: p.ap > 0 ? p.ap : null, a: p.a || 0, w: p.w > 0 ? p.w : null, x: nodos[p.n].x + p.dx, y: nodos[p.n].y + p.dy,
+        setLucesPl((pl?.pts || []).filter(p => p.v === 'ilum' && p.s !== 'dem' && nodos[p.n] && !String(p.id).startsWith('l3_')).map(p => ({ id: p.id, kid: p.k, lid: p.lid || null, h: p.h, lm: Number.isFinite(p.lm) && p.lm >= 0 ? p.lm : null, ap: p.ap > 0 ? p.ap : null, a: p.a || 0, w: p.w > 0 ? p.w : null, x: nodos[p.n].x + p.dx, y: nodos[p.n].y + p.dy,
           vs: ['carril', 'led', 'lineal', 'linealc'].includes(p.k) ? ((p.vx && p.vx.length >= 2) ? p.vx.map(v => [nodos[p.n].x + v.x, nodos[p.n].y + v.y]) : [[nodos[p.n].x + p.dx, nodos[p.n].y + p.dy], [nodos[p.n].x + (p.dx2 ?? p.dx), nodos[p.n].y + (p.dy2 ?? p.dy)]]) : null })));
       }
       puntosSnapRef.current = (modelo.plantas || [modelo]).flatMap((pl, ip) => { const [ox, oy] = (offsPl[ip] || [0, 0]); return [
@@ -2775,7 +2820,7 @@ export default function Visor3D({ cliente = false }) {
     const dom = renderer.domElement;
     const onDown = e => { abajo = [e.clientX, e.clientY]; };
     const onUp = e => {
-      if (herrRef.current === 'caja') return;
+      if (herrRef.current === 'caja' || (modoRenderRef.current && ['luz', 'led', 'carril'].includes(herrRef.current))) return;
       if (editModRef.current && abajo && Math.hypot(e.clientX - abajo[0], e.clientY - abajo[1]) <= 4) {
         const r0 = dom.getBoundingClientRect(); p2.set(((e.clientX - r0.left) / r0.width) * 2 - 1, -((e.clientY - r0.top) / r0.height) * 2 + 1); rayo.setFromCamera(p2, cam);
         const vis0 = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
@@ -2824,7 +2869,15 @@ export default function Visor3D({ cliente = false }) {
         if (hl) { setLuzSel(hl.object.userData.luzId); setSeleccion(null); setSelAcab(null); setSelObj(null); return; }
         setLuzSel(null);
       }
-      if (modoRenderRef.current) { setSeleccion(null); setSelObj(null); const u0 = primero?.object?.userData || {}; if (u0.muroId) setSelAcab({ tipo: 'muro', id: u0.muroId }); return; } // modo render: no se seleccionan máquinas, objetos ni huecos (sí un muro, para ajustar su material)
+      if (modoRenderRef.current) {
+        const hit = rayo.intersectObjects(esc.children, true).find(h => visible(h.object));
+        let objeto = hit?.object;
+        while (objeto && !objeto.userData.oid) objeto = objeto.parent;
+        const luzObjeto = objsRef.current.find(o => o.id === objeto?.userData.oid && ['led', 'carril'].includes(o.tipo));
+        if (luzObjeto && (!primero || hit.distance <= primero.distance)) {
+          setSelObj(luzObjeto.id); setSeleccion(null); setSelAcab(null); setRenderAbierto(false); return;
+        }
+        setSeleccion(null); setSelObj(null); const u0 = primero?.object?.userData || {}; if (u0.muroId) setSelAcab({ tipo: 'muro', id: u0.muroId }); return; } // modo render: no se seleccionan máquinas, objetos ni huecos (sí un muro, para ajustar su material)
       const uh = primero?.object?.userData?.hueco;
       if (uh) { setSelHueco({ ...uh, nuevo: { w: uh.w, h: uh.h, sill: uh.sill, p: uh.p, tip: uh.tip, mat: uh.mat } }); setSeleccion(null); setSelAcab(null); setSelObj(null); return; }
       let eq = null; if (primero) { let o = primero.object; while (o && !o.userData.equipo) o = o.parent; eq = o; }
@@ -2886,6 +2939,21 @@ export default function Visor3D({ cliente = false }) {
       const r = dom.getBoundingClientRect();
       p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       rayo.setFromCamera(p2, cam);
+      if (modoRenderRef.current && ['luz', 'led', 'carril'].includes(herrRef.current)) {
+        if (herrRef.current !== 'luz' && poli[0]?.z != null) {
+          const plano = new THREE.Plane(new THREE.Vector3(0, 1, 0), -poli[0].z * CM);
+          if (!rayo.ray.intersectPlane(plano, pt)) return null;
+          return { x: snap(pt.x / CM), y: snap(pt.z / CM), z: poli[0].z };
+        }
+        const hit = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(h => {
+          let o = h.object;
+          if (!o.isMesh || o.userData.hit) return false;
+          while (o) { if (!o.visible) return false; o = o.parent; }
+          return true;
+        });
+        if (!hit) return null;
+        return { x: snap(hit.point.x / CM), y: snap(hit.point.z / CM), z: hit.point.y / CM };
+      }
       return rayo.ray.intersectPlane(suelo, pt) ? imantar({ x: snap(pt.x / CM), y: snap(pt.z / CM) }) : null;
     };
     const sueloRaw = e => {
@@ -2976,7 +3044,7 @@ export default function Visor3D({ cliente = false }) {
       const ptsF = arcoF ? arcoF.map(([x, y]) => ({ x, y })) : (cursor && poli.length === 1 && ['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current !== 'poli' && !esArco ? puntosForma(formaRef.current, poli[0].x, poli[0].y, cursor.x, cursor.y).map(([x, y]) => ({ x, y })) : null);
       const pts = ptsF ? [...ptsF, ptsF[0]] : (cursor ? [...poli, cursor] : poli);
       if (pts.length < 2) return;
-      poliLinea = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x * CM, 0.03, p.y * CM))), new THREE.LineBasicMaterial({ color: ejeBloq === 'x' ? 0xe03131 : ejeBloq === 'y' ? 0x2f9e44 : 0x1b6dd6 }));
+      poliLinea = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x * CM, modoRenderRef.current && herrRef.current === 'led' ? (poli[0]?.z ?? p.z ?? 0) * CM - 0.003 : 0.03, p.y * CM))), new THREE.LineBasicMaterial({ color: ejeBloq === 'x' ? 0xe03131 : ejeBloq === 'y' ? 0x2f9e44 : 0x1b6dd6 }));
       scene.add(poliLinea);
     };
     const cerrarPoli = () => {
@@ -2984,7 +3052,7 @@ export default function Visor3D({ cliente = false }) {
       if (herrRef.current === 'led' && poli.length >= 2) {
         const xs = poli.map(p => p.x), ys = poli.map(p => p.y);
         const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-        const nuevo = { id: idNuevo(), tipo: 'led', nombre: 'Tira LED', etiqueta: 'Iluminación', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 2, z0: Math.max(50, ((api3d.current.modelo?.altura) || 260) - 8), pts: poli.map(p => [p.x - cx, p.y - cy]), led: { ancho: 1.2, k: 3000, lm: 800, dir: 'abajo', cerrado: cierraLazo && poli.length >= 3 } };
+        const nuevo = { id: idNuevo(), tipo: 'led', nombre: 'Tira LED', etiqueta: 'Iluminación', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 2, z0: poli[0]?.z != null ? poli[0].z - 0.5 : Math.max(50, ((api3d.current.modelo?.altura) || 260) - 8), pts: poli.map(p => [p.x - cx, p.y - cy]), led: { ancho: 1.2, k: 3000, lm: 800, dir: 'abajo', cerrado: cierraLazo && poli.length >= 3 } };
         setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id);
       } else if (herrRef.current === 'carril' && poli.length >= 2) {
         const xs = poli.map(p => p.x), ys = poli.map(p => p.y);
@@ -3352,7 +3420,7 @@ export default function Visor3D({ cliente = false }) {
         const d0 = Math.hypot(e.clientX - luzAbajo[0], e.clientY - luzAbajo[1]); luzAbajo = null;
         if (d0 < 4) {
           const p = puntoSuelo(e);
-          if (p) { const tipo = kindLuzRef.current, esSpot = tipo === 'spot'; api.post('/medicion/' + id + '/luminaria', { x: p.x, y: p.y, kid: esSpot ? 'foco' : tipo }).then(r => { if (esSpot && r.data?.id) setLucesAj(a => ({ ...a, [r.data.id]: { ap: 36, v: 'spot', tilt: 25, yaw: 0 } })); setGuardado('Luminaria colocada en el plano ✓'); api3d.current.recargar?.(); }).catch(er => setGuardado(er.response?.data?.error || 'No se pudo colocar la luminaria')); }
+          if (p) { const tipo = kindLuzRef.current, esSpot = tipo === 'spot'; api.post('/medicion/' + id + '/luminaria', { x: p.x, y: p.y, kid: esSpot ? 'foco' : tipo }).then(r => { if (r.data?.id) { if (modoRenderRef.current) setHerr('sel'); setLuzSel(r.data.id); setRenderAbierto(false); if (modoRenderRef.current && p.z != null) setLuzOver(prev => ({ ...prev, [r.data.id]: { ...prev[r.data.id], h: p.z } })); } if (esSpot && r.data?.id) setLucesAj(a => ({ ...a, [r.data.id]: { ap: 36, v: 'spot', tilt: 25, yaw: 0 } })); setGuardado('Luminaria colocada en el plano ✓'); api3d.current.recargar?.(); }).catch(er => setGuardado(er.response?.data?.error || 'No se pudo colocar la luminaria')); }
         }
         return;
       }
@@ -3391,7 +3459,7 @@ export default function Visor3D({ cliente = false }) {
           let p = puntoSuelo(e);
           if (p) {
             const formaTool = ['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current !== 'poli';
-            if (!formaTool) p = ortoPoli(p, e);
+            if (!formaTool) p = { ...ortoPoli(p, e), ...(p.z != null ? { z: p.z } : {}) };
             if (formaTool && formaRef.current === 'arco') {
               // Arco de 3 clics: inicio, final y un punto por donde pasa la curva
               if (poli.length === 1) { if (Math.hypot(p.x - poli[0].x, p.y - poli[0].y) > 5) { poli.push(p); dibujarPoli(null); } }
@@ -3511,14 +3579,15 @@ export default function Visor3D({ cliente = false }) {
       if (!m.isMesh || m.userData.techoKey === undefined || !m.userData.ptsSala) return;
       const gp = m.parent, ox = gp ? gp.position.x / CM : 0, oy = gp ? gp.position.z / CM : 0, plz = m.userData.plz || 0, P = m.userData.ptsSala;
       const mios = sube.filter(o => Math.abs((o.z0 || 0) - plz) < 1 && puntoEnPoligono([o.cx - ox, o.cy - oy], P));
-      const clave = JSON.stringify(mios.map(o => [o.cx, o.cy, o.pts])) + ox + ',' + oy;
-      if ((m.userData.hKey || '') === (mios.length ? clave : '')) return;
-      m.userData.hKey = mios.length ? clave : '';
+      const clave = JSON.stringify([mios.map(o => [o.cx, o.cy, o.pts]), lucesPl, lucesAj, luzOver]) + ox + ',' + oy;
+      if (m.userData.hKey === clave) return;
+      m.userData.hKey = clave;
       const sh = new THREE.Shape((m.userData.ptsTecho || P).map(p => new THREE.Vector2(p[0] * CM, p[1] * CM)));
       mios.forEach(o => sh.holes.push(new THREE.Path(o.pts.map(p => new THREE.Vector2((p[0] + o.cx - ox) * CM, (p[1] + o.cy - oy) * CM)))));
+      perforarFocos(sh, lucesPl, lucesAj, luzOver, ox, oy, (m.userData.hSala || 260) + plz);
       const g2 = new THREE.ShapeGeometry(sh); g2.rotateX(Math.PI / 2); m.geometry.dispose(); m.geometry = g2;
     });
-  }, [objs, estado, rev]);
+  }, [objs, estado, rev, lucesPl, lucesAj, luzOver]);
 
   // Capas (etiquetas): se ven u ocultan grupos de elementos
   useEffect(() => {
@@ -3539,7 +3608,7 @@ export default function Visor3D({ cliente = false }) {
     if (a.luzG) { a.scene.remove(a.luzG); a.luzG.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); if (x.isLight && x.target) a.scene.remove(x.target); }); }
     const g = new THREE.Group(); g.userData.capa = 'luces'; g.visible = !ocultas.includes('luces') && !zonasOnRef.current;
     const HT = a.modelo?.altura || 260;
-    const ALT = { foco: HT - 1, plaf: HT - 1, colg: HT - 60, aplq: 180, pie: 120, suel: 5, esp: 160, mue: 90, spot: HT - 6, spotl: HT - 6 };
+    const ALT = { foco: HT, plaf: HT - 1, colg: HT - 60, aplq: 180, pie: 120, suel: 5, esp: 160, mue: 90, spot: HT - 6, spotl: HT - 6 };
     // el techo que hay sobre cada luminaria: si el techo se ha bajado (de toda la sala o solo de una parte dibujada), carriles, focos y colgantes bajan con él
     const pl0 = ((a.modelo && (a.modelo.plantas || [a.modelo])) || [])[0] || {};
     const techoEn = (x, y) => {
@@ -3549,7 +3618,7 @@ export default function Visor3D({ cliente = false }) {
       const sa = (pl0.salas || []).find(q => q.techo && q.techo.h > 0 && Array.isArray(q.pts) && puntoEnPoligono([x, y], q.pts));
       return sa ? sa.techo.h : HT;
     };
-    const altDe = (kid, Hc) => ({ foco: Hc - 1, plaf: Hc - 1, colg: Hc - 60, aplq: 180, pie: 120, suel: 5, esp: 160, mue: 90, spot: Hc - 6, spotl: Hc - 6 })[kid];
+    const altDe = (kid, Hc) => ({ foco: Hc, plaf: Hc - 1, colg: Hc - 60, aplq: 180, pie: 120, suel: 5, esp: 160, mue: 90, spot: Hc - 6, spotl: Hc - 6 })[kid];
     const matNegro = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.5, metalness: 0.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); // el desplazamiento evita que parpadee donde roza el techo
     // focos y spots: se encienden TODOS mientras la tarjeta gráfica lo aguante (el tope sube con la calidad y se limita por lo que admite la tarjeta);
     // solo si hay más de los que caben, los reales se reparten entre los más cercanos a la cámara
@@ -3558,11 +3627,11 @@ export default function Visor3D({ cliente = false }) {
     const porUnif = Math.max(8, Math.floor((maxVec - 200) / 8) - 24), porCal = { baja: 12, media: 40, alta: 64 }[calidad] || 24, POOL = Math.min(nSp, porCal, porUnif); a.luzPool = null;
     lucesPl.slice(0, 120).forEach(l0 => {
       const l = { ...l0, ...(luzOver[l0.id] || {}) };
-      const cat = lumCat.find(c => c.id === l.lid), lm = lucesAj[l.id]?.lm ?? (l.lm || cat?.lm || 800), K = lucesAj[l.id]?.k ?? (cat?.k || 3000);
+      const cat = lumCat.find(c => c.id === l.lid), lm = lucesAj[l.id]?.lm ?? (l.lm ?? cat?.lm ?? 800), K = lucesAj[l.id]?.k ?? (cat?.k || 3000);
       const col = colorK(K), aj = lucesAj[l.id] || {};
       const ap = aj.ap ?? l.ap ?? (l.kid === 'spotl' ? 80 : 60);
-      // luz fotométrica (como DIALux): candelas = lúmenes ÷ ángulo sólido del haz (un haz estrecho concentra más luz); KF pasa las candelas a las unidades de la escena (100 lux sobre un blanco mate ≈ 35 % de brillo)
-      const KF = 0.013, inten = (lm / (4 * Math.PI)) * KF * ambiente.luces, intSp = (lm / (2 * Math.PI * (1 - Math.cos((Math.min(170, Math.max(5, ap)) * Math.PI) / 360)))) * KF * ambiente.luces;
+      // Flujo en lúmenes, intensidad en candelas y distancias en metros.
+      const inten = Math.max(0, lm) / (4 * Math.PI) * ambiente.luces, intSp = candelasFoco(lm, ap) * ambiente.luces;
       const puede = () => nLuces < 24 && (nLuces++, true);
       // carriles, tiras LED y luminarias lineales: se modelan a lo largo de su recorrido
       if (l.vs) {
@@ -3574,7 +3643,7 @@ export default function Visor3D({ cliente = false }) {
           const m = new THREE.Mesh(new THREE.BoxGeometry(L, alto, ancho), esL || !esC ? new THREE.MeshBasicMaterial({ color: esL ? col : 0xf4f4f4, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : matNegro);
           m.position.set(((p[0] + q[0]) / 2) * CM, y, ((p[1] + q[1]) / 2) * CM); m.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); m.traverse(x => { x.userData.luzId = l.id; }); g.add(m);
           // tiras y lineales: luz LINEAL (de área, tan larga como el tramo) y no una luz puntual en el centro, que pegada al techo hacía un punto brillante; el tope de intensidad evita los quemados si los lúmenes están mal puestos
-          if (!esC) luzArea(g, new THREE.Vector3(m.position.x, y - 0.02, m.position.z), new THREE.Vector3(0, -1, 0), L, 0.04, col, Math.max(1, Math.min(40, lm / 80)) * ambiente.luces, presupL, new THREE.Vector3((q[0] - p[0]) / (L / CM), 0, (q[1] - p[1]) / (L / CM)));
+          if (!esC) luzArea(g, new THREE.Vector3(m.position.x, y - 0.02, m.position.z), new THREE.Vector3(0, -1, 0), L, 0.04, col, luminanciaArea(lm * L, L, 0.04) * ambiente.luces, presupL, new THREE.Vector3((q[0] - p[0]) / (L / CM), 0, (q[1] - p[1]) / (L / CM)));
         }
         return;
       }
@@ -3597,7 +3666,7 @@ export default function Visor3D({ cliente = false }) {
           luzPos = cab.position.clone().add(dir.clone().multiplyScalar(0.09));
         }
         grp.position.set(l.x * CM, yTop, l.y * CM); grp.traverse(x => { x.userData.luzId = l.id; }); g.add(grp);
-        cand.push({ seleccionada: !!sel2(l.id, luzSel), lp: grp.position.clone().add(luzPos), col, i: intSp, ang: Math.max(0.1, (ap / 2) * Math.PI / 180), dirE: dir.clone().multiplyScalar(2.5) });
+        cand.push({ seleccionada: !!sel2(l.id, luzSel), lp: grp.position.clone().add(luzPos), col, i: intSp, ang: Math.min(170, Math.max(5, ap)) * Math.PI / 360, dirE: dir.clone().multiplyScalar(2.5) });
         return;
       }
       const hcm = l.h != null ? l.h : (altDe(l.kid, techoEn(l.x, l.y)) ?? 250);
@@ -3639,7 +3708,7 @@ export default function Visor3D({ cliente = false }) {
         const proy = aj.proy || 'arriba_abajo', base = marca.position.clone().add(frente.clone().multiplyScalar(0.08));
         const haz = (dir, k, angulo, desde) => {
           if (!puede()) return;
-          const sl = new THREE.SpotLight(col, intSp * k, 0, Math.max(0.1, ((angulo ?? ap) / 2) * Math.PI / 180), 0.6, 2);
+          const sl = new THREE.SpotLight(col, candelasFoco(lm * k, angulo ?? ap, 0.6) * ambiente.luces, 0, Math.min(170, Math.max(5, angulo ?? ap)) * Math.PI / 360, 0.6, 2);
           sl.position.copy(desde || base); sl.target.position.copy(base.clone().add(dir.clone().multiplyScalar(2.5))); g.add(sl); g.add(sl.target);
         };
         if (proy === 'difusa') { if (puede()) { const p = new THREE.PointLight(col, inten, 0, 2); p.position.copy(luzMundo); g.add(p); } }
@@ -3649,14 +3718,14 @@ export default function Visor3D({ cliente = false }) {
         // hacia su propia pared: luz lineal rasante a lo largo del aplique (como las barras con luz trasera): dos luces de área pegadas al muro, una estrecha e intensa
         // y otra ancha y suave, del largo del aplique, que dejan un resplandor alargado junto a él. Siguen su orientación (si se voltea, el resplandor también)
         else if (proy === 'pared') {
-          const Lb = Math.max(0.05, (aj.mod?.url ? (aj.mh > 0 ? aj.mh : 24) : (aj.dim?.h || dimNominalLuz(l.kid)[1])) * CM * 0.92), atras = frente.clone().negate(), pos = marca.position.clone().add(frente.clone().multiplyScalar(0.025)), fuerza = Math.max(1, Math.min(40, lm / 80)) * ambiente.luces;
-          [[0.035, 1], [0.18, 0.3]].forEach(([ancho, k]) => { if (!puede()) return; const rl = new THREE.RectAreaLight(col, fuerza * k, ancho, Lb); rl.position.copy(pos); rl.up.copy(arribaL); rl.lookAt(pos.clone().add(atras)); g.add(rl); });
+          const Lb = Math.max(0.05, (aj.mod?.url ? (aj.mh > 0 ? aj.mh : 24) : (aj.dim?.h || dimNominalLuz(l.kid)[1])) * CM * 0.92), atras = frente.clone().negate(), pos = marca.position.clone().add(frente.clone().multiplyScalar(0.025)), fuerza = Math.max(0, lm) * ambiente.luces;
+          [[0.035, 1], [0.18, 0.3]].forEach(([ancho, k]) => { if (!puede()) return; const rl = new THREE.RectAreaLight(col, luminanciaArea(fuerza * k / 1.3, ancho, Lb), ancho, Lb); rl.position.copy(pos); rl.up.copy(arribaL); rl.lookAt(pos.clone().add(atras)); g.add(rl); });
         }
-        else { haz(arribaL, 0.6); haz(abajoL, 0.6); }
+        else { haz(arribaL, 0.5); haz(abajoL, 0.5); }
         return;
       }
       if (l.kid === 'foco' || l.kid === 'plaf') {
-        cand.push({ seleccionada: !!sel2(l.id, luzSel), lp: luzMundo.clone(), col, i: intSp, ang: Math.max(0.1, (ap / 2) * Math.PI / 180), dirE: dirL ? dirL.clone().multiplyScalar(2.5) : new THREE.Vector3(l.x * CM, 0, l.y * CM).sub(luzMundo) });
+        cand.push({ seleccionada: !!sel2(l.id, luzSel), lp: luzMundo.clone(), col, i: intSp, ang: Math.min(170, Math.max(5, ap)) * Math.PI / 360, dirE: dirL ? dirL.clone().multiplyScalar(2.5) : new THREE.Vector3(l.x * CM, 0, l.y * CM).sub(luzMundo) });
         return;
       }
       if (!puede()) return;
@@ -3728,7 +3797,7 @@ export default function Visor3D({ cliente = false }) {
       const presupuesto = { n: 0 };
       const tex = entorno.startsWith('hdri:') && a.hdrEntorno === entorno ? a.hdrTex : null;
       for (const { pos, dir, w, h, transmision } of ventanas.slice(0, 12)) {
-        const cielo = new THREE.Color(0xc5dcff).multiplyScalar(dia * 3);
+        const cielo = new THREE.Color(0xc5dcff).multiplyScalar(dia * 3000);
         if (tex?.image?.data) {
           const { width, height, data } = tex.image;
           cielo.setRGB(0, 0, 0);
@@ -3760,7 +3829,7 @@ export default function Visor3D({ cliente = false }) {
     const t = Math.max(0, Math.min(1, (hora - 6) / 15)), elev = Math.max(0.05, Math.sin(Math.PI * t)) * (65 * Math.PI / 180), az = Math.PI * (1 - t) + entRot * Math.PI / 180, k = Math.sin(Math.PI * t);
     const d = (a.R || 8) * 3;
     a.sol.position.set(a.centro.x + d * Math.cos(az) * Math.cos(elev), a.centro.y + d * Math.sin(elev) + 1, a.centro.z + d * Math.sin(az) * Math.cos(elev));
-    a.sol.intensity = (t > 0 && t < 1 ? 2.4 * Math.pow(k, 0.7) : 0) * (ambiente.solOn === false ? 0 : (ambiente.solI ?? 1));
+    a.sol.intensity = (t > 0 && t < 1 ? 100000 * Math.pow(k, 0.7) : 0) * (ambiente.solOn === false ? 0 : (ambiente.solI ?? 1));
     if (ambiente.kSol) a.sol.color.copy(kelvinColor(ambiente.kSol)); else a.sol.color.setHSL(0.09, 0.5 * (1 - k) + 0.05, 0.75 + 0.2 * k);
     if (a.hemi) a.hemi.intensity = 0;
     if (modelando) {
@@ -3768,9 +3837,9 @@ export default function Visor3D({ cliente = false }) {
       a.sol.color.set(0xffffff);
       if (a.hemi) a.hemi.intensity = 1.15;
     }
-    a.renderer.toneMappingExposure = modelando ? 1 : ambiente.exposicion;
-    try { localStorage.setItem('visor3dAmb', JSON.stringify({ exposicion: ambiente.exposicion, luces: ambiente.luces, kLuces: ambiente.kLuces ?? null, kSol: ambiente.kSol ?? null, solI: ambiente.solI ?? 1, solOn: ambiente.solOn !== false })); } catch { /* sin almacenamiento */ }
-  }, [hora, entRot, ambiente.exposicion, ambiente.luces, ambiente.kSol, ambiente.solI, ambiente.solOn, realista, modelando, estado, rev]);
+    a.renderer.toneMappingExposure = modelando ? 1 : ambiente.exposicion / (1.2 * Math.pow(2, ambiente.ev ?? 7));
+    try { localStorage.setItem('visor3dAmb', JSON.stringify({ exposicion: ambiente.exposicion, ev: ambiente.ev ?? 7, luces: ambiente.luces, kLuces: ambiente.kLuces ?? null, kSol: ambiente.kSol ?? null, solI: ambiente.solI ?? 1, solOn: ambiente.solOn !== false })); } catch { /* sin almacenamiento */ }
+  }, [hora, entRot, ambiente.ev, ambiente.exposicion, ambiente.luces, ambiente.kSol, ambiente.solI, ambiente.solOn, realista, modelando, estado, rev]);
 
   // Modo cliente: se empieza dentro del espacio, en la primera parada del tour (o en el centro), con refinado por trazado de rayos si la gráfica lo aguanta
   // y, si no, se ofrece el tour de panorámicas (que casi no pide nada al dispositivo)
@@ -4345,6 +4414,7 @@ export default function Visor3D({ cliente = false }) {
             if (!abs.every(p => puntoEnPoligono(p, inner))) return;
             forma.holes.push(new THREE.Path(abs.map(p => new THREE.Vector2(p[0] * CM, -p[1] * CM))));
           });
+          perforarFocos(forma, lucesPl, lucesAj, luzOver, o.cx, o.cy, (H - prof) / CM, -1);
           geo = new THREE.ExtrudeGeometry(forma, { depth: prof, bevelEnabled: false });
           geo.rotateX(-Math.PI / 2);
         }
@@ -4497,7 +4567,7 @@ export default function Visor3D({ cliente = false }) {
       a.esc.add(g);
     });
     a.esc.children.forEach(gr => aplicarRegiones(gr, 'o:' + gr.userData.oid + ':', acab.regiones, texturas));
-  }, [objs, selObj, selExtraKey, estado, biblioteca, ocultas, texturas, rev, ambiente.luces, ambiente.kLuces, acab.regiones, modoRender, cliente]);
+  }, [objs, selObj, selExtraKey, estado, biblioteca, ocultas, texturas, rev, ambiente.luces, ambiente.kLuces, acab.regiones, modoRender, cliente, lucesPl, lucesAj, luzOver]);
   // Lo que pones en una planta (ideas de IA, ventanas, césped, decoración…) se oculta con ella: la planta de un objeto se deduce de su altura y de dónde cae
   useEffect(() => {
     const A = api3d.current; if (!A.esc || !A.modelo) return;
@@ -5428,7 +5498,7 @@ export default function Visor3D({ cliente = false }) {
   };
   const metaActual = (txt = iaTxt) => {
     const { cam, ctrl } = api3d.current;
-    return { camara: { px: cam.position.x, py: cam.position.y, pz: cam.position.z, tx: ctrl.target.x, ty: ctrl.target.y, tz: ctrl.target.z, fov: cam.fov }, shift: api3d.current.shiftY || 0, hora, exposicion: ambiente.exposicion, luces: ambiente.luces, estancia: txt.estancia, estilo: txt.estilo, extra: txt.extra, libertad: txt.libertad };
+    return { camara: { px: cam.position.x, py: cam.position.y, pz: cam.position.z, tx: ctrl.target.x, ty: ctrl.target.y, tz: ctrl.target.z, fov: cam.fov }, shift: api3d.current.shiftY || 0, hora, exposicion: ambiente.exposicion, ev: ambiente.ev ?? 7, luces: ambiente.luces, estancia: txt.estancia, estilo: txt.estilo, extra: txt.extra, libertad: txt.libertad };
   };
   const salaBajoCamara = () => {
     const { cam } = api3d.current, m = api3d.current.modelo; if (!m) return '';
@@ -5519,7 +5589,7 @@ export default function Visor3D({ cliente = false }) {
           const rIA = await api.post('/render-ia', { imagen: redim(await carga(base), 1536, 1024), modo: 'panorama', proveedor: 'openai', fiel: true }, { timeout: 300000 });
           const sal = await carga(rIA.data.imagen); url = redim(sal, sal.naturalHeight * 2, sal.naturalHeight);
         } else url = capturarEquirect(a.renderer, a.scene, new THREE.Vector3(p.x, p.y, p.z), 0, 2048, [a.gizmoG, a.cotasG, a.nodoG, a.guiaG]);
-        const meta = { camara: { px: p.x, py: p.y, pz: p.z, tx: p.x, ty: p.y, tz: p.z + 1, fov: 75 }, shift: 0, hora, exposicion: ambiente.exposicion, luces: ambiente.luces, auto: true };
+        const meta = { camara: { px: p.x, py: p.y, pz: p.z, tx: p.x, ty: p.y, tz: p.z + 1, fov: 75 }, shift: 0, hora, exposicion: ambiente.exposicion, ev: ambiente.ev ?? 7, luces: ambiente.luces, auto: true };
         const r = await api.post('/medicion/' + id + '/render', { imagen: url, tipo: '360', nombre: p.nombre, nota: '', tour: true, meta }, { timeout: 120000 });
         setRenders(x => [r.data.render, ...x]); hechas++;
       } catch (e) { setAviso('Se paró en la parada ' + (hechas + 1) + ': ' + (e.response?.data?.error || e.message || 'error')); break; }
@@ -5936,11 +6006,11 @@ export default function Visor3D({ cliente = false }) {
   // hora del sol y un cálculo orientativo de lux medios. Es lo que permite que la IA reproduzca los focos y la luz natural sin inventarlos.
   const iluminacionTexto = () => {
     const HT = api3d.current.modelo?.altura || 260, NOM = { foco: 'foco empotrado', plaf: 'plafón', spot: 'spot de carril orientable', spotl: 'spot lineal de carril', colg: 'luminaria colgante', aplq: 'aplique de pared', pie: 'lámpara de pie', suel: 'empotrado de suelo', esp: 'luz de espejo', mue: 'luz de mueble', carril: 'carril electrificado', led: 'tira LED', lineal: 'luminaria lineal', linealc: 'luminaria lineal colgada' };
-    const ALT = { foco: HT - 1, plaf: HT - 1, colg: HT - 60, aplq: 180, pie: 120, suel: 5, esp: 160, mue: 90, spot: HT - 6, spotl: HT - 6 };
+    const ALT = { foco: HT, plaf: HT - 1, colg: HT - 60, aplq: 180, pie: 120, suel: 5, esp: 160, mue: 90, spot: HT - 6, spotl: HT - 6 };
     const grupos = new Map(); let lmTotal = 0, nTotal = 0;
     lucesPl.forEach(l0 => {
       const l = { ...l0, ...(luzOver[l0.id] || {}) }, aj = lucesAj[l.id] || {}, cat = lumCat.find(c => c.id === l.lid);
-      const lm = Math.round(aj.lm ?? (l.lm || cat?.lm || 800)), K = Math.round(aj.k ?? (cat?.k || 3000)), ap = Math.round(aj.ap ?? l.ap ?? (l.kid === 'spotl' ? 80 : 60));
+      const lm = Math.round(aj.lm ?? (l.lm ?? cat?.lm ?? 800)), K = Math.round(aj.k ?? (cat?.k || 3000)), ap = Math.round(aj.ap ?? l.ap ?? (l.kid === 'spotl' ? 80 : 60));
       if (l.vs) {
         let m = 0; for (let i = 0; i < l.vs.length - 1; i++) m += Math.hypot(l.vs[i + 1][0] - l.vs[i][0], l.vs[i + 1][1] - l.vs[i][1]) / 100;
         if (m < 0.05) return;
@@ -5965,7 +6035,7 @@ export default function Visor3D({ cliente = false }) {
     if (ausentes.length) L.push('NO existen en este proyecto (no los dibujes ni los inventes): ' + ausentes.join(', ') + '. Las únicas luminarias que hay son las de esta lista.');
     const mod = api3d.current.modelo, area = pts => Math.abs(pts.reduce((a, p, i) => { const q = pts[(i + 1) % pts.length]; return a + (p[0] * q[1] - q[0] * p[1]); }, 0)) / 2 / 1e4;
     const m2 = (mod?.plantas || (mod ? [mod] : [])).reduce((a, pl) => a + (pl.salas || []).reduce((b, sa) => b + (sa.pts?.length >= 3 ? area(sa.pts) : 0), 0), 0);
-    if (lmTotal > 0 && m2 > 0) L.push('Flujo luminoso artificial total ≈ ' + Math.round(lmTotal) + ' lm sobre ≈ ' + Math.round(m2) + ' m² (unos ' + Math.round((lmTotal * 0.45) / m2) + ' lux de media con las luces encendidas): la estancia debe verse con esa cantidad de luz, ni más ni menos.');
+    if (lmTotal > 0 && m2 > 0) L.push('Flujo luminoso nominal total ≈ ' + Math.round(lmTotal) + ' lm sobre ≈ ' + Math.round(m2) + ' m². Los lux dependen de la distribución, la distancia, las obstrucciones y los rebotes de luz.');
     if (ambiente.kLuces) L.push('Temperatura de color global de las luces forzada a ' + ambiente.kLuces + ' K.');
     // entradas de luz natural
     const huecos = [];
@@ -7040,7 +7110,7 @@ export default function Visor3D({ cliente = false }) {
               <select value={String(lucesAj[l.id]?.k ?? (cat?.k || 3000))} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, k: parseInt(e.target.value, 10) } }))} style={btn}>{[2200, 2700, 3000, 3500, 4000, 5000, 6500].map(k => <option key={k} value={k}>{k} K{k <= 2700 ? ' cálida' : k >= 5000 ? ' fría' : ''}</option>)}{![2200, 2700, 3000, 3500, 4000, 5000, 6500].includes(lucesAj[l.id]?.k ?? (cat?.k || 3000)) && <option value={lucesAj[l.id]?.k ?? (cat?.k || 3000)}>{lucesAj[l.id]?.k ?? (cat?.k || 3000)} K</option>}</select>
               <span style={{ width: 14, height: 14, borderRadius: 7, background: kelvinHex(lucesAj[l.id]?.k ?? (cat?.k || 3000)), border: '1px solid #666' }} />
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>{esLin ? 'Lúmenes por metro' : 'Lúmenes'}</span><input type="number" step="50" value={lucesAj[l.id]?.lm ?? (l.lm || cat?.lm || 800)} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, lm: parseFloat(e.target.value) || 0 } }))} style={{ ...btn, width: 80 }} /></label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>{esLin ? 'Lúmenes por metro' : 'Lúmenes'}</span><input type="number" step="50" value={lucesAj[l.id]?.lm ?? (l.lm ?? cat?.lm ?? 800)} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, lm: Math.max(0, parseFloat(e.target.value) || 0) } }))} style={{ ...btn, width: 80 }} /></label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Altura (cm)</span><input key={'h' + Math.round(l.h ?? -1)} type="number" defaultValue={Math.round(l.h != null ? l.h : (ALT_LUZ[l.kid] ?? 250))} onBlur={e => moverLuz(0, 0, 0, parseFloat(e.target.value) || 0)} style={{ ...btn, width: 80 }} /></label>
             {['foco', 'plaf', 'colg'].includes(l.kid) && <button style={{ ...btn, width: '100%', marginBottom: 6, background: '#6b6159' }} onClick={() => moverLuz(0, 0, 0, alturaTecho(l.x, l.y))} title="Sube la luminaria hasta el techo de esa sala">⬆ Pegar al techo ({Math.round(alturaTecho(l.x, l.y))} cm)</button>}
             <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 6 }}>Con la luminaria seleccionada: <b>flechas</b> la mueven 5 cm (con Mayús 50) y <b>Re Pág / Av Pág</b> la suben y bajan.</div>
@@ -7352,6 +7422,18 @@ export default function Visor3D({ cliente = false }) {
 
             {pestanaRender === 'ambiente' && <>
               {realista && hayEspejos && <button style={btn} onClick={() => { api3d.current.actualizarReflejos = true; api3d.current.despertar?.(); }}>Actualizar reflejos de la sala</button>}
+              {sec('Añadir luz', <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  {[['foco', 'Foco empotrado'], ['spot', 'Spot orientable'], ['plaf', 'Plafón'], ['aplq', 'Aplique']].map(([tipo, nombre]) => <button key={tipo} style={btn} onClick={() => {
+                    setKindLuz(tipo); setHerr('luz'); setLuzSel(null); setSelObj(null); setRenderAbierto(false);
+                    setGuardado('Haz clic en la superficie donde quieres colocar la luz. Esc para terminar.');
+                  }}>{nombre}</button>)}
+                  <button style={btn} onClick={() => {
+                    setHerr('led'); setLuzSel(null); setSelObj(null); setRenderAbierto(false);
+                    setGuardado('Tira LED: marca el recorrido. Enter para terminar. Esc para cancelar.');
+                  }}>Tira LED</button>
+                </div>
+              </>)}
               {sec('Luminosidad global', <>
                 {seg([['geo', 'Geo Sky'], ['custom', 'Personalizado'], ['hdri', 'HDRI']], modo, cambiaModo)}
                 {modo === 'geo' && <>
@@ -7380,7 +7462,7 @@ export default function Visor3D({ cliente = false }) {
                 </>}
               </>)}
               {sec('Luces del proyecto', <>
-                {fila('Intensidad luces', ambiente.luces, 0.2, 4, 0.1, v => setAmbiente(a => ({ ...a, luces: v })), '×' + ambiente.luces.toFixed(1))}
+                {fila('Regulación luces', ambiente.luces, 0, 4, 0.1, v => setAmbiente(a => ({ ...a, luces: v })), Math.round(ambiente.luces * 100) + '%')}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={ambiente.kLuces != null} onChange={e => setAmbiente(a => ({ ...a, kLuces: e.target.checked ? 3000 : null }))} /> Misma temperatura para todas las luces</label>
                 {ambiente.kLuces != null && fila('Temperatura', ambiente.kLuces, 2200, 6500, 100, v => setAmbiente(a => ({ ...a, kLuces: v })), ambiente.kLuces + ' K')}
               </>)}
@@ -7407,6 +7489,7 @@ export default function Visor3D({ cliente = false }) {
             {pestanaRender === 'efecto' && <>
               {sec('Tratamiento posterior', <>
                 {fila('Compensación exposición', fx.exp, -3, 3, 0.1, v => setFx(x => ({ ...x, exp: v })), (fx.exp > 0 ? '+' : '') + fx.exp.toFixed(1))}
+                {fila('Exposición EV100', ambiente.ev ?? 7, -2, 16, 0.5, v => setAmbiente(a => ({ ...a, ev: v })), (ambiente.ev ?? 7).toFixed(1))}
                 {fila('Exposición base (cámara)', ambiente.exposicion, 0.3, 2.5, 0.05, v => setAmbiente(a => ({ ...a, exposicion: v })), ambiente.exposicion.toFixed(2))}
                 {fila('Contraste', fx.contraste, 0.6, 1.6, 0.02, v => setFx(x => ({ ...x, contraste: v })), fx.contraste.toFixed(2))}
                 {fila('Realce', fx.realce, -1, 1, 0.05, v => setFx(x => ({ ...x, realce: v })), (fx.realce > 0 ? '+' : '') + fx.realce.toFixed(2))}
@@ -7571,7 +7654,7 @@ export default function Visor3D({ cliente = false }) {
       {ambAbierto && (
         <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', width: 300, background: 'rgba(22,20,18,0.95)', color: '#fff', borderRadius: 8, padding: '10px 14px', fontSize: 13, zIndex: 6 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>☀ Ambiente</div>
-          {[['Hora del sol', hora, 6, 21, 0.5, v => setHora(v), hora + ':00'.slice(0, 0) + ' h'], ['Exposición', ambiente.exposicion, 0.3, 2.5, 0.05, v => setAmbiente(a => ({ ...a, exposicion: v })), ambiente.exposicion.toFixed(2)], ['Intensidad luces', ambiente.luces, 0.2, 4, 0.1, v => setAmbiente(a => ({ ...a, luces: v })), '×' + ambiente.luces.toFixed(1)]].map(([n, v, mn, mx, st, fn, tx]) => (
+          {[['Hora del sol', hora, 6, 21, 0.5, v => setHora(v), hora + ':00'.slice(0, 0) + ' h'], ['Exposición EV100', ambiente.ev ?? 7, -2, 16, 0.5, v => setAmbiente(a => ({ ...a, ev: v })), (ambiente.ev ?? 7).toFixed(1)], ['Exposición', ambiente.exposicion, 0.3, 2.5, 0.05, v => setAmbiente(a => ({ ...a, exposicion: v })), ambiente.exposicion.toFixed(2)], ['Regulación luces', ambiente.luces, 0, 4, 0.1, v => setAmbiente(a => ({ ...a, luces: v })), Math.round(ambiente.luces * 100) + '%']].map(([n, v, mn, mx, st, fn, tx]) => (
             <label key={n} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 100, opacity: 0.75 }}>{n}</span><input type="range" min={mn} max={mx} step={st} value={v} onChange={e => fn(parseFloat(e.target.value))} style={{ flex: 1 }} /><span style={{ width: 44, textAlign: 'right' }}>{tx}</span></label>
           ))}
           <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
@@ -8776,7 +8859,7 @@ export default function Visor3D({ cliente = false }) {
               <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>Tira LED · {ml.toFixed(2)} m</div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Temperatura</span><select value={Lk.k} onChange={e => set({ k: parseInt(e.target.value, 10) })} style={btn}><option value={2700}>2700 K cálida</option><option value={3000}>3000 K</option><option value={4000}>4000 K neutra</option><option value={5000}>5000 K</option><option value={6500}>6500 K fría</option></select></label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Lúmenes / m</span><input type="number" step="50" value={Lk.lm} onChange={e => set({ lm: parseFloat(e.target.value) || 800 })} style={{ ...btn, width: 80 }} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Lúmenes / m</span><input type="number" step="50" value={Lk.lm} onChange={e => set({ lm: Math.max(0, parseFloat(e.target.value) || 0) })} style={{ ...btn, width: 80 }} /></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Ancho cm</span><input type="number" step="0.2" value={Lk.ancho} onChange={e => set({ ancho: parseFloat(e.target.value) || 1 })} style={{ ...btn, width: 80 }} /></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Alumbra hacia</span><select value={Lk.dir || 'abajo'} onChange={e => set({ dir: e.target.value })} style={btn}><option value="abajo">Abajo</option><option value="arriba">Arriba (techo)</option><option value="izq">Lado izquierdo</option><option value="der">Lado derecho</option></select></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}><input type="checkbox" checked={!!Lk.cerrado} onChange={e => set({ cerrado: e.target.checked })} /> Cerrar en lazo</label>
