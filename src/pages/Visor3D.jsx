@@ -1,4 +1,6 @@
 import './VisorEstudio.css';
+import { impactoVisible } from '../components/seleccion3d';
+import { completarSalas } from '../components/recintos3d';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
@@ -45,6 +47,7 @@ const esMovil = () => { try { return window.matchMedia('(pointer: coarse)').matc
 const RADIO_PERSONA = 0.28, MARGEN_SALA = 40;
 function dentroDelEspacio(modelo, x, z, offs, soloPlanta) {
   const plantas = modelo.plantas || [modelo];
+      plantas.forEach(p => { p.salas = completarSalas(p); });
   let hay = false;
   for (let ip = 0; ip < plantas.length; ip++) {
     if (soloPlanta != null && ip !== soloPlanta) continue; // solo la planta donde está el visitante (las otras están a otra altura)
@@ -148,6 +151,11 @@ const ESPEJOS = [
   { id: 'espejo', nombre: 'Espejo', hex: '#e9f0f4' }, { id: 'espejo-bronce', nombre: 'Espejo bronce', hex: '#b08d6a' },
   { id: 'espejo-ahumado', nombre: 'Espejo ahumado', hex: '#4a5258' }, { id: 'cromo', nombre: 'Cromo', hex: '#ffffff' },
 ].map(e => ({ id: e.id, nombre: e.nombre, tam: 100, espejo: e.hex, fijo: true, url: (() => { try { const cv = document.createElement('canvas'); cv.width = 96; cv.height = 56; const cx = cv.getContext('2d'), g = cx.createLinearGradient(0, 0, 96, 56); g.addColorStop(0, '#fff'); g.addColorStop(0.45, e.hex); g.addColorStop(0.55, '#fff'); g.addColorStop(1, e.hex); cx.fillStyle = g; cx.fillRect(0, 0, 96, 56); return cv.toDataURL(); } catch { return ''; } })() }));
+const HDRI_PAISAJES = [
+  { id: 'forest_slope', nombre: 'Bosque · luz suave', url: '/hdri/forest_slope_2k.hdr' },
+  { id: 'garden_nook', nombre: 'Jardín · vegetación', url: '/hdri/garden_nook_2k.hdr' },
+  { id: 'kiara_1_dawn', nombre: 'Paisaje abierto · amanecer', url: '/hdri/kiara_1_dawn_2k.hdr' },
+];
 const CRISTALES = [
   { id: 'cristal-transparente', nombre: 'Cristal transparente', tono: '#e8f1f3', opac: 0.16, rough: 0.04 },
   { id: 'cristal-ahumado', nombre: 'Cristal ahumado', tono: '#515b61', opac: 0.45, rough: 0.08 },
@@ -407,8 +415,17 @@ function texturaDe(t, uvEnCm) {
 }
 // Aplica un color (#hex) o una textura ('tex:ID') a una malla; si no hay valor, vuelve a su color de origen
 const MODOS_SUELO = { moteado: { antirep: true, junta: false, tono: 0.03 }, aguas: { antirep: true, junta: false, tono: 0.05, crop: 0.6 }, liso: { antirep: true, junta: false, tono: 0.04 } };
+function pinturaMate(m) {
+  for (const key of ['map', 'emissiveMap', 'normalMap', 'bumpMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'envMap']) m[key] = null;
+  m.metalness = 0; m.roughness = 0.9; m.opacity = 1; m.transparent = false; m.depthWrite = true;
+  if (m.emissive) { m.emissive.setHex(0); m.emissiveIntensity = 0; }
+  if (m.isMeshPhysicalMaterial) { m.clearcoat = 0; m.transmission = 0; }
+  for (const key of ['espOn', 'esp0', 'opac0', 'emisPbr', 'ledColor', 'mapasClave', 'adjOn', 'sueloKey']) delete m.userData[key];
+  m.onBeforeCompile = () => {}; m.customProgramCacheKey = () => ''; m.needsUpdate = true;
+}
 function pintar(mesh, valor, texturas, uvEnCm, repBox, modoSuelo) {
   const u = mesh.userData;
+  if (/^#[0-9a-f]{6}$/i.test(valor || '')) pinturaMate(mesh.material);
   if (u.col0 === undefined) u.col0 = mesh.material.color.getHex();
   const t = valor && String(valor).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === valor) : null;
   if (t) {
@@ -436,7 +453,7 @@ function aplicarValorMat(m, val, texturas, o) {
   if (String(val).startsWith('tinte:')) { if (/^#[0-9a-f]{6}$/i.test(val.slice(6))) { m.color.set(val.slice(6)); m.needsUpdate = true; } return; } // tinte: se mantiene el mapa del modelo
   const t = String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
   if (t) { const mp = texturaDe(t, true).clone(); mp.needsUpdate = true; const r = Math.max(1, (o?.w || 100) / t.tam); mp.repeat.set(r, t.tamH ? Math.max(1, (o?.w || 100) / t.tamH) : r); m.map = mp; m.color.setHex(0xffffff); }
-  else if (/^#/.test(val)) { m.map = null; m.color.setHex(parseInt(val.slice(1), 16)); ledEm(m, val); }
+  else if (/^#/.test(val)) { if (/^#[0-9a-f]{6}$/i.test(val)) pinturaMate(m); m.map = null; m.color.setHex(parseInt(val.slice(1), 16)); ledEm(m, val); }
   m.needsUpdate = true;
 }
 // Cada copia de un modelo tiene sus propios materiales para poder pintarla sin tocar las demás; cada parte (malla) se puede pintar por separado
@@ -502,9 +519,9 @@ function nombreParte(grupo, malla) {
   return res;
 }
 function claveRegion(hit) {
-  const x = hit.object; if (!x.isMesh || x.userData.overlay || x.userData.hit || hit.faceIndex == null) return null;
+  const x = hit.object; if (!x.isMesh || (x.userData.overlay && !x.userData.relleno) || x.userData.hit || hit.faceIndex == null) return null;
   const u = x.userData;
-  if (u.muroId) return 'm:' + u.muroId + ':i0';
+  if (u.muroId) return 'm:' + u.muroId + ':' + (u.parte ?? 'i0');
   let ge = x; while (ge && !ge.userData.equipo) ge = ge.parent;
   if (ge) { const parte = nombreParte(ge, x); return parte == null ? null : 'e:' + ge.userData.equipo.id + ':' + parte; }
   if (u.salaKey || u.techoKey || u.pilarId || u.hueco || ge) return null;
@@ -517,7 +534,7 @@ function aplicarRegiones(raizObj, prefijo, regiones, texturas) {
   const creados = []; if (!regiones) return creados;
   let n = 0;
   raizObj.traverse(x => {
-    if (!x.isMesh || x.userData.overlay || x.userData.hit) return;
+    if (!x.isMesh || (x.userData.overlay && !x.userData.relleno) || x.userData.hit) return;
     const nombre = x.userData.parte !== undefined ? x.userData.parte : ('i' + (n++)), lista = regiones[prefijo + nombre];
     if (!lista || !lista.length) return;
     lista.forEach(r => { const ov = crearOverlay(x, regionTriangulos(x.geometry, r.tri, r.ang || 25), r.valor, texturas, !!x.userData.muroId); if (ov) { x.add(ov); creados.push(ov); } });
@@ -1535,7 +1552,13 @@ export function construirHoja(o, mu, cfg, valHoja, texturas, valCristal) {
     : /azul/.test(tv) ? { color: 0x6fb2dc, roughness: 0.04, opacity: 0.4, metalness: 0.1 }
     : { color: 0xaed4ea, roughness: 0.04, opacity: 0.32, metalness: 0.1 };
   const vidM = new THREE.MeshPhysicalMaterial({ ...vp, transparent: true, side: THREE.DoubleSide, depthWrite: false, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.6, specularIntensity: 1 });
-  if (valCristal) { vidM.transparent = false; vidM.opacity = 1; vidM.depthWrite = true; aplicarValorMat(vidM, valCristal, texturas, o); }
+  if (valCristal) {
+    const preset = texturas.find(t => 'tex:' + t.id === valCristal), p = preset?.pbr;
+    vidM.opacity = p?.opac ?? 1; vidM.transparent = vidM.opacity < 1; vidM.depthWrite = !vidM.transparent;
+    vidM.metalness = preset?.espejo ? 1 : (p?.metal ?? 0); vidM.roughness = preset?.espejo ? 0.04 : (p?.rough ?? 0.4);
+    aplicarValorMat(vidM, valCristal, texturas, o);
+    if (p?.tinte) vidM.color.set(p.tinte);
+  }
   const manM = new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.3, metalness: 0.8 });
   // herraje de la manilla en el color elegido: inox, negro, latón, blanco o cobre (metal pulido o satinado: se ve bien también sin entorno)
   const HERRAJES = { inox: [0xe0e2e4, 0.3, 0.45], negro: [0x1a1a1c, 0.45, 0.35], laton: [0xd6b25a, 0.32, 0.5], blanco: [0xf3f3f1, 0.45, 0.1], cobre: [0xcd8658, 0.34, 0.5] };
@@ -2045,7 +2068,7 @@ function muro(m, h0) {
   (m.rel || []).forEach(r => {
     const f = new THREE.Mesh(new THREE.BoxGeometry(r.ext * CM, alto * CM, t * CM), new THREE.MeshStandardMaterial({ color: m.estado === 'new' ? 0xf1ece6 : 0xe4e0db, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
     f.position.set((r.fin === 'a' ? -r.ext / 2 : L + r.ext / 2) * CM, (alto / 2) * CM, 0);
-    f.castShadow = f.receiveShadow = true; f.userData = { capa: 'muros', muroId: m.id, overlay: true, relleno: true }; mesh.add(f);
+    f.castShadow = f.receiveShadow = true; f.userData = { capa: 'muros', muroId: m.id, overlay: true, relleno: true, parte: 'canto-' + r.fin }; mesh.add(f);
   });
   // El plano va en (x, y); en 3D, y del plano es z. El muro se dibuja a lo largo de X local y se gira hasta a→b.
   mesh.position.set(ax * CM, 0, ay * CM);
@@ -2272,11 +2295,16 @@ export default function Visor3D({ cliente = false }) {
   const [entorno, setEntorno] = useState(() => { try { return localStorage.getItem('visor3dEntorno') || 'estudio'; } catch { return 'estudio'; } });
   const [entInt, setEntInt] = useState(0.55);
   const [entRot, setEntRot] = useState(0);
-  const [fondoCielo, setFondoCielo] = useState(false);
-  const [hdris, setHdris] = useState([]);
-  const hdrisRef = useRef([]);
+  const [fondoCielo, setFondoCielo] = useState(() => { try { return localStorage.getItem('visor3dFondoHdri') === 'true'; } catch { return false; } });
+  const [fondoBrillo, setFondoBrillo] = useState(1);
+  const [fondoNitidez, setFondoNitidez] = useState(0);
+  const [cieloTick, setCieloTick] = useState(0);
+  useEffect(() => { const actualizar = () => setCieloTick(n => n + 1); window.addEventListener('visor3d-cielo', actualizar); return () => window.removeEventListener('visor3d-cielo', actualizar); }, []);
+  useEffect(() => { try { localStorage.setItem('visor3dFondoHdri', String(fondoCielo)); } catch { /* sin almacenamiento */ } }, [fondoCielo]);
+  const [hdris, setHdris] = useState(HDRI_PAISAJES);
+  const hdrisRef = useRef(HDRI_PAISAJES);
   useEffect(() => { hdrisRef.current = hdris; }, [hdris]);
-  useEffect(() => { if (renderAbierto && !hdris.length) api.get('/medicion/hdri-ranuse').then(r => setHdris(r.data?.hdri || [])).catch(() => {}); }, [renderAbierto]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (renderAbierto) api.get('/medicion/hdri-ranuse').then(r => setHdris([...new Map([...HDRI_PAISAJES, ...(r.data?.hdri || [])].map(h => [h.id, h])).values()])).catch(() => {}); }, [renderAbierto]); // eslint-disable-line react-hooks/exhaustive-deps
   // Refinado con trazado de rayos (three-gpu-pathtracer): al parar la cámara la imagen se va afinando. Desactivado por defecto; solo en gráficas que lo aguantan
   const gpuApta = () => {
     const r = api3d.current.renderer; if (!r) return false;
@@ -2304,18 +2332,20 @@ export default function Visor3D({ cliente = false }) {
     const a = api3d.current; if (!a.scene) return;
     const g = entRot * Math.PI / 180; a.scene.environmentRotation.set(0, g, 0); a.scene.backgroundRotation.set(0, g, 0);
     if (!a.fondoOrig) a.fondoOrig = a.scene.background;
-    if (fondoCielo && realista && a.hdrTex) { a.scene.background = a.hdrTex; a.scene.backgroundBlurriness = 0.25; }
+    if (fondoCielo && modoRender && realista && a.hdrTex && a.hdrEntorno === entorno) { a.scene.background = a.hdrTex; a.scene.backgroundBlurriness = fondoNitidez; a.scene.backgroundIntensity = fondoBrillo; }
     else if (a.fondoOrig && !a.alzPrev) { a.scene.background = a.fondoOrig; a.scene.backgroundBlurriness = 0; }
-  }, [entRot, fondoCielo, realista, entorno, estado, hdris]);
+    a.despertar?.();
+  }, [entRot, fondoCielo, fondoBrillo, fondoNitidez, cieloTick, modoRender, realista, entorno, estado, hdris]);
   useEffect(() => { try { localStorage.setItem('visor3dEntorno', entorno); } catch { /* sin almacenamiento */ } }, [entorno]);
   useEffect(() => { const sc = api3d.current.scene; if (sc?.environment) sc.environmentIntensity = modelando ? 0.35 : 0; }, [entInt, realista, entorno, estado, modelando]);
   const [resRender, setResRender] = useState(() => { try { return parseInt(localStorage.getItem('visor3dRes') || '3200', 10) || 3200; } catch { return 3200; } });
   const [formatoRender, setFormatoRender] = useState('jpg');
   const [sombraSuave, setSombraSuave] = useState(true);
-  const fxActivo = fx.contraste !== 1 || fx.saturacion !== 1 || fx.calidez !== 0 || fx.vineta > 0 || fx.exp !== 0 || fx.realce !== 0 || fx.sombra !== 0 || fx.bb !== 6500 || fx.tinte !== 0;
+  const fxActivo = (fx.bloom || 0) > 0 || fx.contraste !== 1 || fx.saturacion !== 1 || fx.calidez !== 0 || fx.vineta > 0 || fx.exp !== 0 || fx.realce !== 0 || fx.sombra !== 0 || fx.bb !== 6500 || fx.tinte !== 0;
   useEffect(() => { try { localStorage.setItem('visor3dFx', JSON.stringify(fx)); localStorage.setItem('visor3dRes', String(resRender)); } catch { /* sin almacenamiento */ } }, [fx, resRender]);
   useEffect(() => {
-    const a = api3d.current; if (a.bloom) a.bloom.strength = 0.06 + Math.min(1, Math.max(0, fx.bloom || 0)) * 0.15; if (a.gradeU) { const u = a.gradeU; u.contraste.value = fx.contraste; u.saturacion.value = fx.saturacion; u.calidez.value = fx.calidez; u.vineta.value = fx.vineta; u.exposure.value = fx.exp; u.highlights.value = fx.realce; u.shadows.value = fx.sombra; u.wb.value = wbVec(fx.bb, fx.tinte); }
+    const a = api3d.current; if (a.bloom) a.bloom.strength = Math.min(2, Math.max(0, fx.bloom || 0)); if (a.gradeU) { const u = a.gradeU; u.contraste.value = fx.contraste; u.saturacion.value = fx.saturacion; u.calidez.value = fx.calidez; u.vineta.value = fx.vineta; u.exposure.value = fx.exp; u.highlights.value = fx.realce; u.shadows.value = fx.sombra; u.wb.value = wbVec(fx.bb, fx.tinte); }
+    a.despertar?.();
   }, [fx, realista, estado]);
   // Óptica: ángulo de visión vertical de la cámara (como el objetivo de una cámara). Menos grados = más zoom y menos deformación; más grados = gran angular
   const [lente, setLente] = useState(() => lenteGuardada());
@@ -2867,19 +2897,23 @@ export default function Visor3D({ cliente = false }) {
       }
       if (herrRef.current === 'pincel' || herrRef.current === 'gotero') {
         // la caja azul que se dibuja mientras llega el modelo de la máquina se oculta con material.visible=false (el rayo la sigue tocando): se salta para coger el material de la máquina de verdad
-        const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(x => x.object.isMesh && !x.object.userData.hit && !x.object.userData.overlay && visible(x.object) && (Array.isArray(x.object.material) ? x.object.material[x.face?.materialIndex ?? 0]?.visible === true : x.object.material?.visible !== false));
+        const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(impactoVisible);
         if (h) { if (herrRef.current === 'gotero' || e.altKey) tomarMaterial(h); else aplicarPincel(h, e.shiftKey || modoPincelRef.current === 'todo'); }
         return;
       }
-      const primero = rayo.intersectObjects(raiz.children, true).find(h => visible(h.object));
+      const primero = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(impactoVisible);
       if (sel) sel.userData.cuerpo.material.emissive.setHex(0x000000);
       sel = null;
       setSelHueco(null);
       {
         const hl = api3d.current.luzG ? rayo.intersectObjects(api3d.current.luzG.children, true).find(x => x.object.userData.luzId) : null;
-        if (hl) { setLuzSel(hl.object.userData.luzId); setSeleccion(null); setSelAcab(null); setSelObj(null); return; }
+        if (hl && impactoVisible(hl) && (!primero || hl.distance <= primero.distance)) { setLuzSel(hl.object.userData.luzId); setSeleccion(null); setSelAcab(null); setSelObj(null); return; }
         setLuzSel(null);
       }
+      const ventana = primero?.object?.userData?.hueco;
+      if (ventana && modoRenderRef.current) { setSelHueco({ ...ventana, nuevo: { w: ventana.w, h: ventana.h, sill: ventana.sill, p: ventana.p, tip: ventana.tip, mat: ventana.mat } }); setSeleccion(null); setSelObj(null); setSelAcab(null); setRenderAbierto(false); return; }
+      let objetoVisible = primero?.object; while (objetoVisible && !objetoVisible.userData.oid) objetoVisible = objetoVisible.parent;
+      if (objetoVisible && !modoRenderRef.current) { setSeleccion(null); setSelAcab(null); return; }
       if (modoRenderRef.current) {
         const hit = rayo.intersectObjects(esc.children, true).find(h => visible(h.object));
         let objeto = hit?.object;
@@ -2977,7 +3011,7 @@ export default function Visor3D({ cliente = false }) {
       const r = dom.getBoundingClientRect();
       p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       rayo.setFromCamera(p2, cam);
-      const h = rayo.intersectObjects(esc.children, true)[0];
+      const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(impactoVisible);
       let o = h?.object; while (o && !o.userData.oid) o = o.parent;
       return o && o.visible ? o : null;
     };
@@ -3938,7 +3972,7 @@ export default function Visor3D({ cliente = false }) {
             const pm2 = new THREE.PMREMGenerator(a.renderer), env = pm2.fromEquirectangular(tex).texture; pm2.dispose();
             a.envTex?.dispose?.(); a.envTex = env; a.hdrTex?.dispose?.(); a.hdrTex = tex; a.hdrEntorno = entorno; a.scene.environment = env; window.dispatchEvent(new Event('visor3d-cielo'));
             try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ }
-          });
+          }, undefined, () => { if (a.envToken === tok) setAviso('No se pudo cargar el paisaje HDRI. Elige otro o vuelve a intentarlo.'); });
         } else if (entorno !== 'estudio' && CIELOS[entorno]) {
           const [c1, c2, c3, sol] = CIELOS[entorno], cv = document.createElement('canvas'); cv.width = 1024; cv.height = 512; const cx = cv.getContext('2d'), g = cx.createLinearGradient(0, 0, 0, 512);
           g.addColorStop(0, c1); g.addColorStop(0.5, c2); g.addColorStop(0.52, c3); g.addColorStop(1, c3); cx.fillStyle = g; cx.fillRect(0, 0, 1024, 512);
@@ -3963,7 +3997,7 @@ export default function Visor3D({ cliente = false }) {
       }
       if (modoRender && !GL_SOFTWARE && calidad !== 'baja') {
         // Extrae las altas luces antes de comprimir el rango de color para la pantalla.
-        a.bloom = new UnrealBloomPass(sz, 0.06 + Math.min(1, Math.max(0, fx.bloom || 0)) * 0.15, 0.1, 2 / Math.max(0.0001, a.renderer.toneMappingExposure));
+        a.bloom = new UnrealBloomPass(sz, Math.min(2, Math.max(0, fx.bloom || 0)), 0.1, 2 / Math.max(0.0001, a.renderer.toneMappingExposure));
         comp.addPass(a.bloom);
       }
       comp.addPass(new OutputPass());
@@ -5116,7 +5150,8 @@ export default function Visor3D({ cliente = false }) {
   };
   const idsSel = [selObj, ...selExtra].filter(Boolean);
   // Ocultar lo seleccionado (objetos, máquinas del plano o muros): se oculta en la vista, no se borra. «Mostrar todo» lo devuelve
-  const nOcultos = ocultas.filter(k => k.startsWith('id:')).length + Object.values(modosEq).filter(v => v?.v3 === 'oculto').length;
+  const [mostrarOcultos, setMostrarOcultos] = useState(false);
+  const nOcultos = ocultas.length + Object.values(modosEq).filter(v => v?.v3 === 'oculto').length;
   const ocultarSel = () => {
     const claves = [...idsSel.map(i => 'id:' + i), ...(seleccion && !selObj ? ['id:' + seleccion.id] : []), ...(selAcab && selAcab.tipo === 'muro' ? ['id:' + selAcab.id] : [])];
     if (!claves.length) { setAviso('Selecciona algo y pulsa Ocultar (tecla H)'); return; }
@@ -6818,7 +6853,7 @@ export default function Visor3D({ cliente = false }) {
         {grupoRail([
           railBtn(herr === 'sel', 'sel', 'Seleccionar', modoRender ? 'Modo render: el modelo está bloqueado; aquí solo se eligen luces' : 'Seleccionar y mover objetos (Espacio)', () => setHerr('sel')),
           !modoRender && railBtn(false, 'ocultar', 'Ocultar', 'Oculta lo seleccionado sin borrarlo (H)', ocultarSel),
-          !modoRender && nOcultos > 0 && railBtn(false, 'mostrar', 'Mostrar (' + nOcultos + ')', 'Vuelve a mostrar todo lo que ocultaste', mostrarTodo),
+          !modoRender && nOcultos > 0 && railBtn(false, 'mostrar', 'Mostrar (' + nOcultos + ')', 'Ver la lista y recuperar elementos individualmente', () => setMostrarOcultos(v => !v)),
         ].filter(Boolean))}
         {!modoRender && grupoRail([
           railBtn(herr === 'muro', 'muro', 'Muro', 'Dibuja muros: clic para empezar y cada punto; Mayús = recto. Se crean también en Planos', () => setHerr('muro')),
@@ -7449,7 +7484,7 @@ export default function Visor3D({ cliente = false }) {
         const hdriOn = String(entorno).startsWith('hdri:');
         const hh = Math.floor(hora), mm = Math.round((hora - hh) * 60), horaTxt = String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
         const modo = modoAmb || (hdriOn ? 'hdri' : 'geo');
-        const cambiaModo = k => { setModoAmb(k); setRealista(true); if (k === 'hdri' && hdris.length && !hdriOn) setEntorno('hdri:' + hdris[0].id); else if (k !== 'hdri' && hdriOn) setEntorno('estudio'); };
+        const cambiaModo = k => { setModoAmb(k); setRealista(true); if (k === 'hdri' && hdris.length) { if (!hdriOn) setEntorno('hdri:' + hdris[0].id); setFondoCielo(true); } else if (k !== 'hdri' && hdriOn) setEntorno('estudio'); };
         return (
           <div className="estudio-inspector" style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 'min(320px, calc(100vw - 74px))', overflowY: 'auto', background: '#1d1d1e', color: '#fff', borderRadius: 8, padding: '0 14px 14px', fontSize: 13, zIndex: 8 }}>
             <div style={{ position: 'sticky', top: 0, background: 'rgb(29,29,30)', padding: '12px 0 0', zIndex: 2 }}>
@@ -7495,12 +7530,17 @@ export default function Visor3D({ cliente = false }) {
                   {fila('Rotar', entRot, 0, 360, 5, v => setEntRot(v), Math.round(entRot) + '°')}
                 </>}
                 {modo === 'hdri' && <>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 112, opacity: 0.75, fontSize: 12 }}>HDRI</span><select value={hdriOn ? entorno : ''} onChange={e => { if (e.target.value) { setRealista(true); setEntorno(e.target.value); } }} style={{ ...btn, flex: 1 }}>{!hdriOn && <option value="">Elige uno…</option>}{hdris.map(h => <option key={h.id} value={'hdri:' + h.id}>{h.nombre}</option>)}</select></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 112, opacity: 0.75, fontSize: 12 }}>HDRI</span><select value={hdriOn ? entorno : ''} onChange={e => { if (e.target.value) { setRealista(true); setEntorno(e.target.value); setFondoCielo(true); } }} style={{ ...btn, flex: 1 }}>{!hdriOn && <option value="">Elige uno…</option>}{hdris.map(h => <option key={h.id} value={'hdri:' + h.id}>{h.nombre}</option>)}</select></label>
                   {!hdris.length && <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 4 }}>Cargando los HDRI…</div>}
                   <label style={{ ...btn, display: 'block', textAlign: 'center', marginBottom: 6, cursor: 'pointer', fontSize: 12 }}>⬆ Subir mi HDRI (.hdr)<input type="file" accept=".hdr" style={{ display: 'none' }} onChange={async e => { const fl = e.target.files?.[0]; e.target.value = ''; if (!fl) return; setGuardado('Subiendo el HDRI…'); try { const fd = new FormData(); fd.append('file', fl); const r = await api.post('/medicion/hdri-ranuse', fd); setHdris(h => [...h, r.data.hdri]); setRealista(true); setEntorno('hdri:' + r.data.hdri.id); setGuardado('HDRI añadido ✓'); } catch (er) { setAviso(er.response?.data?.error || 'No se pudo subir el HDRI'); } }} /></label>
                   {fila('Luz', entInt, 0, 2, 0.05, v => setEntInt(v), entInt.toFixed(2))}
                   {fila('Rotar', entRot, 0, 360, 5, v => setEntRot(v), Math.round(entRot) + '°')}
-                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={fondoCielo} onChange={e => setFondoCielo(e.target.checked)} /> Ver el cielo del HDRI de fondo</label>
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={fondoCielo} onChange={e => setFondoCielo(e.target.checked)} /> Mostrar paisaje de fondo</label>
+                  {fondoCielo && <>
+                    {fila('Brillo del fondo', fondoBrillo, 0.1, 4, 0.1, v => setFondoBrillo(v), fondoBrillo.toFixed(1))}
+                    {fila('Desenfoque del fondo', fondoNitidez, 0, 0.5, 0.01, v => setFondoNitidez(v), fondoNitidez.toFixed(2))}
+                  </>}
+                  <div style={{ fontSize: 11, opacity: 0.65, marginTop: 6 }}>Paisajes 2K de Poly Haven · CC0. El brillo del fondo no cambia la luz interior.</div>
                 </>}
               </>)}
               {sec('Luces del proyecto', <>
@@ -7529,6 +7569,10 @@ export default function Visor3D({ cliente = false }) {
             </>}
 
             {pestanaRender === 'efecto' && <>
+              {sec('Bloom · resplandor', <>
+                {fila('Intensidad bloom', fx.bloom || 0, 0, 2, 0.05, v => setFx(x => ({ ...x, bloom: v })), (fx.bloom || 0).toFixed(2))}
+                <div style={{ opacity: 0.65, fontSize: 11 }}>0 desactiva el halo. Este efecto no cambia los lúmenes de las luces.</div>
+              </>)}
               {sec('Tratamiento posterior', <>
                 {fila('Compensación exposición', fx.exp, -3, 3, 0.1, v => setFx(x => ({ ...x, exp: v })), (fx.exp > 0 ? '+' : '') + fx.exp.toFixed(1))}
                 {fila('Exposición EV100', ambiente.ev ?? 7, -2, 16, 0.5, v => setAmbiente(a => ({ ...a, ev: v })), (ambiente.ev ?? 7).toFixed(1))}
@@ -7811,8 +7855,23 @@ export default function Visor3D({ cliente = false }) {
         if (planta2d || axo) return null;
         const nombres = { muros: 'Muros', suelos: 'Suelos', techos: 'Techos', huecos: 'Puertas y ventanas', pilares: 'Pilares' }, base = Object.keys(nombres).filter(k => ocultas.includes(k));
         if (!base.length) return null;
-        return (<div style={{ position: 'absolute', bottom: 44, left: '50%', transform: 'translateX(-50%)', maxWidth: 520, background: 'rgba(22,20,18,0.95)', color: '#fff', borderRadius: 8, padding: '8px 12px', fontSize: 13, zIndex: 7, display: 'flex', gap: 10, alignItems: 'center' }}><span>Capas ocultas: {base.map(k => nombres[k]).join(', ')}</span><button style={btn} onClick={() => setOcultas(o => o.filter(k => !base.includes(k)))}>Mostrar</button></div>);
+        return (<div style={{ position: 'absolute', bottom: 44, left: '50%', transform: 'translateX(-50%)', maxWidth: 520, background: 'rgba(22,20,18,0.95)', color: '#fff', borderRadius: 8, padding: '8px 12px', fontSize: 13, zIndex: 7, display: 'flex', gap: 10, alignItems: 'center' }}><span>Capas ocultas: {base.map(k => nombres[k]).join(', ')}</span><button style={btn} onClick={() => setMostrarOcultos(true)}>Mostrar</button></div>);
       })()}
+      {mostrarOcultos && <div role="dialog" aria-label="Elementos ocultos" style={{ position: 'absolute', top: 90, left: 145, width: 300, maxHeight: '65vh', overflowY: 'auto', background: '#24211e', color: '#fff', padding: 14, borderRadius: 10, zIndex: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}><b>Elementos ocultos</b><button style={btn} onClick={() => setMostrarOcultos(false)}>Cerrar</button></div>
+        {!nOcultos && <p>No hay elementos ocultos.</p>}
+        {ocultas.map(k => {
+          const idOculto = k.startsWith('id:') ? k.slice(3) : null;
+          const plano = api3d.current.modelo;
+          const elementos = (plano?.plantas || (plano ? [plano] : [])).flatMap(p => [...(p.equipos || []), ...(p.muros || [])]);
+          const ob = objs.find(o => o.id === idOculto) || elementos.find(o => o.id === idOculto);
+          const etiquetas = { techos: 'Techos', muros: 'Muros', suelos: 'Suelos', huecos: 'Puertas y ventanas', equipos: 'Equipos', luces: 'Luces', pilares: 'Pilares', rodapie: 'Rodapié' };
+          const nombre = ob ? (ob.nombre || ob.tipo || 'Muro') : (etiquetas[k] || k.replace('obj:', 'Categoría: ').replace('planta:', 'Planta: '));
+          return <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}><span style={{ flex: 1 }}>{nombre}</span><button style={btn} onClick={() => setOcultas(v => v.filter(x => x !== k))}>Mostrar</button></div>;
+        })}
+        {Object.entries(modosEq).filter(([, v]) => v?.v3 === 'oculto').map(([eid]) => <div key={eid} style={{ display: 'flex', gap: 8, marginBottom: 8 }}><span style={{ flex: 1 }}>{(api3d.current.modelo?.plantas || [api3d.current.modelo]).flatMap(p => p?.equipos || []).find(e => e.id === eid)?.nombre || 'Equipo ' + eid}</span><button style={btn} onClick={() => setModosEq(m => ({ ...m, [eid]: { ...m[eid], v3: undefined } }))}>Mostrar</button></div>)}
+        {nOcultos > 0 && <button style={{ ...btn, width: '100%', marginTop: 8 }} onClick={() => { mostrarTodo(); setOcultas([]); }}>Mostrar todo</button>}
+      </div>}
       {aviso && (
         <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', maxWidth: 560, background: 'rgba(22,20,18,0.95)', color: '#fff', borderRadius: 8, padding: '8px 12px', fontSize: 13, zIndex: 7, display: 'flex', gap: 10, alignItems: 'center' }}>
           <span>{aviso}</span><button style={btn} onClick={() => setAviso('')}>OK</button>
@@ -7841,6 +7900,12 @@ export default function Visor3D({ cliente = false }) {
                   <select value={tip} onChange={e => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, tip: e.target.value } }))} style={btn}>{[...new Set([...tips, tip])].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
                 {!esP && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Cristal</span>
                   <select value={selHueco.nuevo.mat || ''} onChange={e => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, mat: e.target.value || undefined } }))} style={btn}><option value="">(la del plano)</option>{['Vidrio transparente', ...VIDRIOS.slice(1)].map(n => <option key={n} value={n}>{n.replace('Vidrio ', '')}</option>)}</select></label>}
+                {!esP && <label style={{ display: 'flex', gap: 6, marginBottom: 8 }}><span>Material del cristal</span>
+                  <select aria-label="Material del cristal" value={acab.huecos?.[key]?.cristal || ''} onChange={e => { const valor = e.target.value; setAcab(a => ({ ...a, huecos: { ...(a.huecos || {}), [key]: { ...(a.huecos?.[key] || {}), cristal: valor || null } } })); }} style={{ ...btn, flex: 1, minWidth: 0 }}>
+                    <option value="">Original del plano</option>
+                    {[...CRISTALES, ...ESPEJOS.filter(t => t.id !== 'cromo'), ...texturasBase].map(t => <option key={t.id} value={'tex:' + t.id}>{t.nombre}</option>)}
+                  </select>
+                </label>}
                 {esP && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Hoja</span>
                   <select value={selHueco.nuevo.mat || ''} onChange={e => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, mat: e.target.value || undefined } }))} style={btn}><option value="">(la del plano)</option>{DOOR_MATS.map(n => <option key={n} value={n}>{n}</option>)}</select></label>}
                 {esP && !['Hueco', 'Seccional', 'Basculante', 'Enrollable', 'Plegable'].includes(tip) && <>
@@ -9150,6 +9215,8 @@ export default function Visor3D({ cliente = false }) {
             return (
               <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>Diseño de sauna</div>
+                {fila('Cabina de esquina', sel(S.frente.lateralCristal || 'ninguno', [['ninguno', 'Solo frente acristalado'], ['izq', 'Frente + lateral izquierdo'], ['der', 'Frente + lateral derecho']], v => cambiarSauna(objSel.id, s => { s.frente.lateralCristal = v; if (v !== 'ninguno') { s.frente.tipo = 'cristal'; s.frente.marco = false; s.frente.ventana = false; } return s; })))}
+                <div style={{ opacity: 0.65, fontSize: 11, marginBottom: 8 }}>Vista desde el frente: elige el lateral acristalado. Los paneles infrarrojos quedan en las paredes de madera.</div>
                 {fila('Tipo', sel(S.tipo, Object.entries(TIPOS_SAUNA).map(([k, v]) => [k, v.n]), v => { if (!window.confirm('Cambiar el tipo reinicia las medidas y los equipos a los valores de ' + TIPOS_SAUNA[v].n + '. ¿Seguir?')) return; const p = saunaPorDefecto(v); cambiar(objSel.id, { w: p.w, d: p.d, alto: p.alto, sauna: { ...p.sauna, madera: S.madera, precios: S.precios } }); }))}
                 {fila('Madera', sel(S.madera, Object.entries(MADERAS).map(([k, v]) => [k, v.n]), v => cambiarSauna(objSel.id, s => { s.madera = v; return s; })))}
                 {fila('Niveles de banco', sel(String(S.niveles), [['1', '1 banco'], ['2', '2 niveles'], ['3', '3 niveles']], v => cambiarSauna(objSel.id, s => { s.niveles = Number(v); return s; })))}

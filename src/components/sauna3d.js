@@ -52,11 +52,12 @@ function medidas(o, S) {
 export function calculosSauna(o) {
   const S = normalizaSauna(o), m = medidas(o, S);
   const vol = (m.iw * m.id * m.ih) / 1e6; // m³ interiores
-  const vidrioM2 = ((S.frente.tipo === 'cristal' ? (m.iw * Math.min(m.ih, 200)) : (S.frente.puerta * 190)) + (S.frente.ventana ? 60 * 80 : 0)) / 1e4;
+  const vidrioLateral = ['izq', 'der'].includes(S.frente.lateralCristal);
+  const vidrioM2 = ((vidrioLateral ? m.id * m.ih : 0) + (S.frente.tipo === 'cristal' ? (m.iw * Math.min(m.ih, 200)) : (S.frente.puerta * 190)) + (S.frente.ventana ? 60 * 80 : 0)) / 1e4;
   const volEf = vol + 1.2 * vidrioM2; // 1 m² de cristal se compensa con ~1,2 m³ extra
   const conEstufa = S.tipo !== 'infrarrojos', conIR = S.tipo !== 'tradicional';
   const kwEstufa = conEstufa ? (S.estufa.kw > 0 ? S.estufa.kw : (TAMANOS_ESTUFA.find(k => k >= volEf * (S.tipo === 'hibrida' ? 0.75 : 1)) || 15)) : 0;
-  const nIR = conIR ? (S.ir.fondo + 2 * S.ir.lateral + (S.ir.bajoBanco ? 1 : 0)) : 0;
+  const nIR = conIR ? (S.ir.fondo + (vidrioLateral ? 1 : 2) * S.ir.lateral + (S.ir.bajoBanco ? 1 : 0)) : 0;
   const wIR = conIR ? Math.round((vol * (S.tipo === 'hibrida' ? 250 : 650)) / 50) * 50 : 0; // W totales orientativos de paneles
   const largoBancos = (m.iw + (S.forma === 'L' ? m.id - m.prof : 0)) * (S.niveles === 1 ? 1 : 1);
   const personas = Math.max(1, Math.floor(largoBancos / 60));
@@ -65,7 +66,7 @@ export function calculosSauna(o) {
   const fase = potenciaTotalW <= 3600 ? 'Monofásica 230 V (16 A)' : 'Trifásica 400 V';
   const amp = fase.startsWith('Mono') ? Math.ceil(potenciaTotalW / 230) : Math.ceil(potenciaTotalW / (400 * 1.732));
   // Materiales (m² de superficie de madera, etc.)
-  const perim = 2 * (m.iw + m.id) - (S.frente.tipo === 'cristal' ? m.iw : 0);
+  const perim = 2 * (m.iw + m.id) - (vidrioLateral ? m.id : 0) - (S.frente.tipo === 'cristal' ? m.iw : 0);
   const m2Paredes = (perim * m.ih) / 1e4, m2Techo = S.techo ? (m.iw * m.id) / 1e4 : 0, m2Suelo = (m.iw * m.id) / 1e4;
   const m2Bancos = (S.niveles * largoBancos * m.prof) / 1e4 * (S.niveles >= 2 ? 0.75 : 1);
   const lista = [
@@ -124,14 +125,21 @@ export function construirSauna(o) {
     b.position.set(x * CM, (y + h / 2) * CM, z * CM); b.castShadow = b.receiveShadow = true; padre.add(b); return b;
   };
   const x0 = -W / 2, x1 = W / 2, zB = -D / 2, zF = D / 2;
+  const ladoCristal = S.frente.lateralCristal === 'izq' ? -1 : S.frente.lateralCristal === 'der' ? 1 : 0;
   // suelo (tarima) y paredes
   if (cab) { caja(iw, 2, id, 0, 0, 0, mat('#2a2522', 0.9)); const ns = Math.max(6, Math.round(iw / 9)), aw = iw / ns; for (let i = 0; i < ns; i++) caja(aw - 1.4, 3.2, id - 1, -iw / 2 + aw * (i + 0.5), 2, 0, woodLight); } else caja(iw, 5, id, 0, 0, 0, woodDark);
   caja(W, ih + 5 + T, T, 0, 0, zB + T / 2, wood); // fondo
-  caja(T, ih + 5 + T, D, x0 + T / 2, 0, 0, wood); // izquierda
-  caja(T, ih + 5 + T, D, x1 - T / 2, 0, 0, wood); // derecha
+  if (ladoCristal !== -1) caja(T, ih + 5 + T, D, x0 + T / 2, 0, 0, wood); // izquierda
+  if (ladoCristal !== 1) caja(T, ih + 5 + T, D, x1 - T / 2, 0, 0, wood); // derecha
+  if (ladoCristal) {
+    const x = ladoCristal * (W / 2 - T / 2);
+    const pane = caja(0.8, ih, id, x, 5, 0, glass); pane.castShadow = false;
+    [3, H - T].forEach(y => caja(2, 2, D, x, y, 0, frameM));
+    [zB + T / 2, zF - T / 2].forEach(z => caja(2, H, 2, x, 0, z, frameM));
+  }
   if (S.techo) caja(W, T, D, 0, H - T, 0, woodLight);
   // listones verticales (relieve) en el fondo y los costados
-  { const sp = cab ? 9 : 14; for (let i = 0; i < Math.floor(iw / sp); i++) caja(0.4, ih, 0.4, -iw / 2 + sp / 2 + i * sp, 5, zB + T + 0.2, woodDark); if (cab) for (let i = 0; i < Math.floor(id / sp); i++) { const zz = zB + T + sp / 2 + i * sp; caja(0.4, ih, 0.4, -iw / 2 + 0.2, 5, zz, woodDark); caja(0.4, ih, 0.4, iw / 2 - 0.2, 5, zz, woodDark); } }
+  { const sp = cab ? 9 : 14; for (let i = 0; i < Math.floor(iw / sp); i++) if (ladoCristal !== -1) caja(0.4, ih, 0.4, -iw / 2 + sp / 2 + i * sp, 5, zB + T + 0.2, woodDark); if (cab) for (let i = 0; i < Math.floor(id / sp); i++) { const zz = zB + T + sp / 2 + i * sp; caja(0.4, ih, 0.4, -iw / 2 + 0.2, 5, zz, woodDark); if (ladoCristal !== 1) caja(0.4, ih, 0.4, iw / 2 - 0.2, 5, zz, woodDark); } }
   // ── frente: fijo de cristal + puerta + fijo de cristal (la puerta puede ir a la izquierda, en el centro o a la derecha) ──
   const frente = new THREE.Group(); g.add(frente);
   const pw = Math.max(55, Math.min(S.frente.puerta, iw - 30)), ph = Math.min(ih - 6, 195);
@@ -172,7 +180,7 @@ export function construirSauna(o) {
   [12, ph - 22].forEach(y => { const b = new THREE.Mesh(new THREE.BoxGeometry(4 * CM, 9 * CM, 2.4 * CM), cromo); b.position.set(0, (5 + y + 4.5) * CM, 0); hoja.add(b); }); // bisagras cromadas
   g.add(hoja);
   // ventana lateral de cristal (pared derecha o izquierda según el lado contrario a la estufa)
-  if (S.frente.ventana) { const ladoV = S.estufa.lado === 'der' ? -1 : 1, wv = Math.min(70, id - 40), hv = 80, b = new THREE.Mesh(new THREE.BoxGeometry(0.8 * CM, hv * CM, wv * CM), glass); b.position.set(ladoV * (W / 2 - T / 2) * CM, (110 + hv / 2) * CM, (zB + T + wv / 2 + 20) * CM); g.add(b); [[2, hv, wv + 2, 0], [2, 2, wv + 2, hv / 2 - 1], [2, 2, wv + 2, -hv / 2 + 1]].forEach(([w, h, d, dy]) => { caja(w, h, d, ladoV * (W / 2 - T / 2), 110 + hv / 2 + dy - h / 2, zB + T + wv / 2 + 20, frameM); }); }
+  if (S.frente.ventana && !ladoCristal) { const ladoV = S.estufa.lado === 'der' ? -1 : 1, wv = Math.min(70, id - 40), hv = 80, b = new THREE.Mesh(new THREE.BoxGeometry(0.8 * CM, hv * CM, wv * CM), glass); b.position.set(ladoV * (W / 2 - T / 2) * CM, (110 + hv / 2) * CM, (zB + T + wv / 2 + 20) * CM); g.add(b); [[2, hv, wv + 2, 0], [2, 2, wv + 2, hv / 2 - 1], [2, 2, wv + 2, -hv / 2 + 1]].forEach(([w, h, d, dy]) => { caja(w, h, d, ladoV * (W / 2 - T / 2), 110 + hv / 2 + dy - h / 2, zB + T + wv / 2 + 20, frameM); }); }
   // ── bancos ──
   const bancoNivel = (i) => {
     const hSeat = alturas[i], dz = zB + T + prof * (alturas.length - i - 0.5) * (S.niveles === 1 ? 1 : 1) ; // el nivel más alto va pegado al fondo
@@ -214,7 +222,7 @@ export function construirSauna(o) {
     // laterales (derecha e izquierda, mirando hacia dentro)
     for (let i = 0; i < nL; i++) {
       const zz = zB + T + 30 + (nL > 1 ? (i * (id - 60)) / (nL - 1) : (id - 60) / 2), pw3 = 40, ph3 = 80, yy = alturas[Math.min(1, alturas.length - 1)] + 55;
-      pan(pw3, ph3, -iw / 2 + 1.2, yy, zz, Math.PI / 2); pan(pw3, ph3, iw / 2 - 1.2, yy, zz, -Math.PI / 2);
+      if (ladoCristal !== -1) pan(pw3, ph3, -iw / 2 + 1.2, yy, zz, Math.PI / 2); if (ladoCristal !== 1) pan(pw3, ph3, iw / 2 - 1.2, yy, zz, -Math.PI / 2);
     }
     if (S.ir.bajoBanco) pan(Math.min(100, iw - 20), 30, 0, 22, zB + T + prof * alturas.length - 0.5, 0);
   }
@@ -235,7 +243,7 @@ export function construirSauna(o) {
       for (let i = 0; i <= nF; i++) caja(3.4, 44, 2.4, -iw / 2 + 7 + ((iw - 14) * i) / nF, y0 + 20, zB + T + 3.4, woodLight);
     }
     const nL = S.ir.lateral;
-    for (let i = 0; i < nL; i++) { const zz = zB + T + 22 + (nL > 1 ? (i * (id - 52)) / (nL - 1) : (id - 44) / 2), alta = i % 2 === 0; calentador(10, alta ? 100 : 62, -iw / 2 + 0.2, alta ? alturas[0] + 18 : alturas[0] - 8 + 6, zz, Math.PI / 2); calentador(10, alta ? 100 : 62, iw / 2 - 0.2, alta ? alturas[0] + 18 : alturas[0] - 8 + 6, zz, -Math.PI / 2); }
+    for (let i = 0; i < nL; i++) { const zz = zB + T + 22 + (nL > 1 ? (i * (id - 52)) / (nL - 1) : (id - 44) / 2), alta = i % 2 === 0; if (ladoCristal !== -1) calentador(10, alta ? 100 : 62, -iw / 2 + 0.2, alta ? alturas[0] + 18 : alturas[0] - 8 + 6, zz, Math.PI / 2); if (ladoCristal !== 1) calentador(10, alta ? 100 : 62, iw / 2 - 0.2, alta ? alturas[0] + 18 : alturas[0] - 8 + 6, zz, -Math.PI / 2); }
     if (S.ir.bajoBanco) calentador(Math.min(100, iw - 36), 24, 0, 14, zB + T, 0); // calentador para las piernas bajo el banco
     if (S.techo && S.luz) { // tiras LED rojas en el perímetro del techo, altavoces, panel de control y lámpara
       caja(iw - 6, 1.2, 1.4, 0, H - T - 1.4, zB + T + 1, rojo); caja(iw - 6, 1.2, 1.4, 0, H - T - 1.4, zF - T - 1, rojo);
