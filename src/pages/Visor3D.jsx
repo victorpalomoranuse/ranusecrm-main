@@ -7565,17 +7565,17 @@ export default function Visor3D({ cliente = false }) {
               {sec('Plantillas de luz por espacio', <>
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                   {[
-                    ['Gimnasio', { ent: 'hdri:brown_photostudio_02', hora: 18, exp: 1.1, luces: 2.2, k: 4000, fx: { ...FX0, contraste: 1.08, saturacion: 1.05, calidez: 0.1, vineta: 0.15, bloom: 0.25 }, tono: 'agx' }],
-                    ['Recepción cálida', { ent: 'hdri:aft_lounge', hora: 19, exp: 1.15, luces: 2.4, k: 2700, fx: { ...FX0, contraste: 1.1, saturacion: 1.05, calidez: 0.35, vineta: 0.3, bloom: 0.4 }, tono: 'agx' }],
+                    ['Gimnasio', { sol: false, ent: 'hdri:brown_photostudio_02', hora: 18, exp: 1.1, luces: 2.2, k: 4000, fx: { ...FX0, contraste: 1.08, saturacion: 1.05, calidez: 0.1, vineta: 0.15, bloom: 0.25 }, tono: 'agx' }],
+                    ['Recepción cálida', { sol: false, ent: 'hdri:aft_lounge', hora: 19, exp: 1.15, luces: 2.4, k: 2700, fx: { ...FX0, contraste: 1.1, saturacion: 1.05, calidez: 0.35, vineta: 0.3, bloom: 0.4 }, tono: 'agx' }],
                     ['Vestuarios', { ent: 'estudio', hora: 12, exp: 1.05, luces: 1.8, k: 4000, fx: { ...FX0, vineta: 0.1 }, tono: 'neutral' }],
                     ['Oficina / sala', { ent: 'hdri:blue_photo_studio', hora: 12, exp: 1, luces: 1.6, k: 4500, fx: FX0, tono: 'neutral' }],
                     ['Exterior de día', { ent: 'hdri:autumn_field_puresky', hora: 14, exp: 1, luces: 1, k: null, fx: FX0, tono: 'aces', cielo: true }],
                     ['Día claro', { ent: 'dia', hora: 14, exp: 1, luces: 1, k: null, fx: FX0, tono: 'aces' }],
-                    ['Interior cálido', { ent: 'calido', hora: 21, exp: 1.2, luces: 2.4, k: 2700, fx: { ...FX0, contraste: 1.1, saturacion: 1.05, calidez: 0.35, vineta: 0.3, bloom: 0.45 }, tono: 'agx' }],
-                    ['Noche', { ent: 'noche', hora: 21, exp: 1.1, luces: 2.2, k: null, fx: { ...FX0, bloom: 0.35, vineta: 0.2 }, tono: 'aces' }],
+                    ['Interior cálido', { sol: false, ent: 'calido', hora: 21, exp: 1.2, luces: 2.4, k: 2700, fx: { ...FX0, contraste: 1.1, saturacion: 1.05, calidez: 0.35, vineta: 0.3, bloom: 0.45 }, tono: 'agx' }],
+                    ['Noche', { sol: false, ent: 'noche', hora: 21, exp: 1.1, luces: 2.2, k: null, fx: { ...FX0, bloom: 0.35, vineta: 0.2 }, tono: 'aces' }],
                   ].map(([n, p]) => <button key={n} style={btn} onClick={() => {
                     setRealista(true); setEntorno(p.ent.startsWith('hdri:') && !hdris.some(h => 'hdri:' + h.id === p.ent) ? 'calido' : p.ent); setHora(p.hora); setModoAmb(p.ent.startsWith('hdri:') ? 'hdri' : 'custom');
-                    setAmbiente(a => ({ ...a, exposicion: p.exp, luces: p.luces, kLuces: p.k })); setFx(p.fx); setTono(p.tono); setFondoCielo(!!p.cielo);
+                    setAmbiente(a => ({ ...a, exposicion: p.exp, luces: p.luces, kLuces: p.k, solOn: p.sol !== false })); setFx(p.fx); setTono(p.tono); setFondoCielo(!!p.cielo);
                   }} title="Ajusta a la vez el entorno, la hora, las luces, el color y el tono de cámara">{n}</button>)}
                 </div>
                 <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>Puntos de partida: después retoca cada ajuste. No colocan luminarias, solo el ambiente.</div>
