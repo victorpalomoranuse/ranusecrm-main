@@ -287,7 +287,7 @@ function aplicaEspejos(scene, renderActivo) {
         const usaEnv = (P.metal || 0) > 0.3 || P.env != null || (P.clearcoat || 0) > 0;
         const kEsp = P.espec != null ? P.espec / 0.3 : 1; // 0.3 = el aspecto de siempre
         if (m.isMeshPhysicalMaterial) m.specularIntensity = Math.max(0, Math.min(1, kEsp));
-        m.envMap = usaEnv ? (scene.environment || envEsp) : null; m.envMapIntensity = (P.env ?? 1.2) * Math.max(0, kEsp);
+        m.envMap = usaEnv && !renderActivo ? (scene.environment || envEsp) : null; m.envMapIntensity = (P.env ?? 1.2) * Math.max(0, kEsp);
         if (P.relieve > 0) { m.bumpMap = m.map; m.bumpScale = P.relieve * 0.001; // relieve superficial en milímetros, escena en metros
          } else m.bumpMap = null;
         if (!m.userData.opac0) m.userData.opac0 = { t: m.transparent, o: m.opacity, d: m.depthWrite, c: m.color.getHex() };
@@ -1485,7 +1485,7 @@ export function construirHoja(o, mu, cfg, valHoja, texturas) {
   const HERRAJES = { inox: [0xe0e2e4, 0.3, 0.45], negro: [0x1a1a1c, 0.45, 0.35], laton: [0xd6b25a, 0.32, 0.5], blanco: [0xf3f3f1, 0.45, 0.1], cobre: [0xcd8658, 0.34, 0.5] };
   const hv = HERRAJES[cfg.manillaColor] || HERRAJES.inox, herrajeM = new THREE.MeshStandardMaterial({ color: hv[0], roughness: hv[1], metalness: hv[2] });
   const info = { muroId: mu.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t, tip: o.tip, mat: o.mat };
-  const pieza = (padre, bw, bh, bd, px, py, pz, m, zona) => { const b = new THREE.Mesh(new THREE.BoxGeometry(Math.max(bw, 0.002), Math.max(bh, 0.002), Math.max(bd, 0.002)), m); b.position.set(px, py, pz); b.castShadow = true; b.userData = { capa: 'huecos', hueco: info, zona }; padre.add(b); return b; };
+  const pieza = (padre, bw, bh, bd, px, py, pz, m, zona) => { const b = new THREE.Mesh(new THREE.BoxGeometry(Math.max(bw, 0.002), Math.max(bh, 0.002), Math.max(bd, 0.002)), m); b.position.set(px, py, pz); b.castShadow = m !== vidM || /espejo/.test(tv); b.userData = { capa: 'huecos', hueco: info, zona }; padre.add(b); return b; };
   const cilindro = (padre, rad, largo, px, py, pz, m, eje) => { const c = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, Math.max(largo, 0.002), 20), m); c.position.set(px, py, pz); if (eje === 'z') c.rotation.x = Math.PI / 2; else if (eje === 'x') c.rotation.z = Math.PI / 2; c.castShadow = true; c.userData = { capa: 'huecos', hueco: info, zona: 'herraje' }; padre.add(c); return c; };
   const esfera = (padre, rad, px, py, pz, m) => { const e = new THREE.Mesh(new THREE.SphereGeometry(rad, 18, 14), m); e.position.set(px, py, pz); e.castShadow = true; e.userData = { capa: 'huecos', hueco: info, zona: 'herraje' }; padre.add(e); return e; };
   // Manilla por las dos caras de la hoja. hx, hy = centro; cara = distancia del plano medio a la cara; haciaBisagra = +1/-1 (la palanca apunta al lado de la bisagra)
@@ -1979,7 +1979,7 @@ function muro(m, h0) {
     if (y1 <= y0) continue;
     const w = (x1 - x0) * CM, h = (y1 - y0) * CM, cx = ((x0 + x1) / 2) * CM, cy = ((y0 + y1) / 2) * CM, tt = (m.t || 12) * CM;
     const fr = 0.05, marco = new THREE.MeshStandardMaterial({ color: o.t === 'door' || o.tipo === 'door' ? 0x8a6a4a : 0xf2f2f2, roughness: 0.6 });
-    const parte = (bw, bh, bd, px, py, mat, extra) => { const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat); b.position.set(px, py, 0); b.castShadow = true; b.userData = { capa: 'huecos', hueco: { muroId: m.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t, tip: o.tip, mat: o.mat }, zona: mat === marco ? 'marco' : (mat.transparent ? 'cristal' : 'hoja'), ...(extra || {}) }; mesh.add(b); return b; };
+    const parte = (bw, bh, bd, px, py, mat, extra) => { const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat); b.position.set(px, py, 0); b.castShadow = m !== vidM || /espejo/.test(tv); b.userData = { capa: 'huecos', hueco: { muroId: m.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t, tip: o.tip, mat: o.mat }, zona: mat === marco ? 'marco' : (mat.transparent ? 'cristal' : 'hoja'), ...(extra || {}) }; mesh.add(b); return b; };
     parte(w, fr, tt * 1.02, cx, y1 * CM - fr / 2, marco); parte(w, fr, tt * 1.02, cx, y0 * CM + fr / 2, marco);
     parte(fr, h, tt * 1.02, x0 * CM + fr / 2, cy, marco); parte(fr, h, tt * 1.02, x1 * CM - fr / 2, cy, marco);
     // la hoja o el cristal se construyen aparte (según el tipo: abatible, corredera, plegable…)
@@ -2252,7 +2252,7 @@ export default function Visor3D({ cliente = false }) {
     else if (a.fondoOrig && !a.alzPrev) { a.scene.background = a.fondoOrig; a.scene.backgroundBlurriness = 0; }
   }, [entRot, fondoCielo, realista, entorno, estado, hdris]);
   useEffect(() => { try { localStorage.setItem('visor3dEntorno', entorno); } catch { /* sin almacenamiento */ } }, [entorno]);
-  useEffect(() => { const sc = api3d.current.scene; if (sc?.environment) sc.environmentIntensity = entInt; }, [entInt, realista, entorno, estado]);
+  useEffect(() => { const sc = api3d.current.scene; if (sc?.environment) sc.environmentIntensity = modelando ? 0.35 : 0; }, [entInt, realista, entorno, estado, modelando]);
   const [resRender, setResRender] = useState(() => { try { return parseInt(localStorage.getItem('visor3dRes') || '3200', 10) || 3200; } catch { return 3200; } });
   const [formatoRender, setFormatoRender] = useState('jpg');
   const [sombraSuave, setSombraSuave] = useState(true);
@@ -2666,7 +2666,7 @@ export default function Visor3D({ cliente = false }) {
         ultGob = ahora; const base = a0.prBase || 1;
         if (ema > 42 && escala > 0.5) { escala = Math.max(0.5, escala - 0.15); renderer.setPixelRatio(base * escala); }
         else if (ema > 42 && !a0.sinSombrasMaq) { a0.sinSombrasMaq = true; scene.traverse(o => { if (o.isMesh && o.castShadow && o.parent?.userData?.modeloEq) o.castShadow = false; else if (o.isMesh && o.castShadow) { let q = o.parent, esMaq = false; while (q) { if (q.userData?.modeloEq) { esMaq = true; break; } q = q.parent; } if (esMaq) o.castShadow = false; } }); } // primero se quitan las sombras de las máquinas (lo que más pesa); las del local se mantienen
-        else if (ema > 42 && !sinSombras) { sinSombras = true; renderer.shadowMap.enabled = false; sol.castShadow = false; scene.traverse(o => { if (o.material) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.needsUpdate = true; }); } }); }
+        else if (ema > 42 && !sinSombras && !modoRenderRef.current && !cliente) { sinSombras = true; renderer.shadowMap.enabled = false; sol.castShadow = false; scene.traverse(o => { if (o.material) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.needsUpdate = true; }); } }); }
         else if (ema < 22 && escala < 1) { escala = Math.min(1, escala + 0.1); renderer.setPixelRatio(base * escala); }
         hud.textContent = Math.round(1000 / Math.max(1, ema)) + ' fps · ' + Math.round(renderer.info.render.triangles / 1000) + 'k triáng. · ' + renderer.info.render.calls + ' llamadas' + (escala < 1 ? ' · res ' + Math.round(escala * 100) + '%' : '') + (sinSombras ? ' · sin sombras' : '') + (a0.composer ? ' · con efectos' : '') + ' · ' + (gpuNombre || 'gpu ?') + ' · px ' + renderer.getPixelRatio().toFixed(1);
       }
@@ -3693,15 +3693,76 @@ export default function Visor3D({ cliente = false }) {
     a.despertar?.();
   }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas, ambiente.luces, ambiente.kLuces, luzOver, rev, calidad, modelando]);
 
+  // Luz difusa de la parte del cielo visible desde cada ventana de fachada.
+  useEffect(() => {
+    const a = api3d.current;
+    if (modelando || !a.modelo || !a.scene) return;
+    const grupo = new THREE.Group();
+    const horaSolar = Math.max(0, Math.min(1, (hora - 6) / 15));
+    const dia = entorno === 'noche' ? 0 : Math.sin(Math.PI * horaSolar);
+    const ventanas = [];
+    (a.modelo.plantas || [a.modelo]).forEach((pl, ip) => {
+      if (ocultas.includes('planta:' + ip)) return;
+      const [ox, oz] = a.offsPl?.[ip] || [0, 0];
+      for (const mu of pl.muros || []) {
+        const dx = mu.b[0] - mu.a[0], dz = mu.b[1] - mu.a[1], l = Math.hypot(dx, dz);
+        if (!l) continue;
+        for (const ab of mu.ab || []) {
+          if (!(ab.w > 0 && ab.h > 0) || /espejo/i.test(ab.mat || '')) continue;
+          if ((ab.tipo || ab.t) === 'door' && !/vidrio|cristal|glass/i.test(ab.mat || '')) continue;
+          const t = (ab.p + ab.w / 2) / l;
+          const x = mu.a[0] + dx * t, z = mu.a[1] + dz * t;
+          const nx = -dz / l, nz = dx / l, sep = (mu.t || 12) / 2 + 5;
+          const interior = signo => (pl.salas || []).some(sa => sa.pts && puntoEnPoligono([x + signo * nx * sep, z + signo * nz * sep], sa.pts));
+          const lado = Number(interior(1)) - Number(interior(-1));
+          if (!lado) continue;
+          const dir = new THREE.Vector3(nx * lado, 0, nz * lado);
+          const pos = new THREE.Vector3((x + ox) * CM, ((pl.z || 0) + (ab.sill || 0) + ab.h / 2) * CM, (z + oz) * CM);
+          ventanas.push({ pos, dir, w: ab.w * CM, h: ab.h * CM, transmision: /ahumado/i.test(ab.mat || '') ? 0.35 : 0.85 });
+        }
+      }
+    });
+    ventanas.sort((a, b) => b.w * b.h - a.w * a.h);
+    function actualizar() {
+      grupo.clear();
+      const presupuesto = { n: 0 };
+      const tex = entorno.startsWith('hdri:') && a.hdrEntorno === entorno ? a.hdrTex : null;
+      for (const { pos, dir, w, h, transmision } of ventanas.slice(0, 12)) {
+        const cielo = new THREE.Color(0xc5dcff).multiplyScalar(dia * 3);
+        if (tex?.image?.data) {
+          const { width, height, data } = tex.image;
+          cielo.setRGB(0, 0, 0);
+          let total = 0;
+          for (let j = 0; j < 4; j++) for (let i = 0; i < 16; i++) {
+            const u = (i + 0.5) / 16, v = 0.5 + (j + 0.5) / 8;
+            const az = (u - 0.5) * 2 * Math.PI - entRot * Math.PI / 180;
+            const peso = Math.max(0, -dir.x * Math.cos(az) - dir.z * Math.sin(az)) * Math.cos((v - 0.5) * Math.PI) ** 2;
+            const offset = 4 * (Math.floor((tex.flipY ? 1 - v : v) * height) * width + Math.floor(u * width));
+            const canal = k => tex.type === THREE.HalfFloatType ? THREE.DataUtils.fromHalfFloat(data[offset + k]) : data[offset + k];
+            cielo.r += peso * canal(0); cielo.g += peso * canal(1); cielo.b += peso * canal(2); total += peso;
+          }
+          cielo.multiplyScalar(1 / Math.max(total, 0.001));
+        }
+        const pico = Math.max(cielo.r, cielo.g, cielo.b);
+        if (pico > 0.0001 && entInt > 0) luzArea(grupo, pos, dir, w, h, cielo.multiplyScalar(1 / pico), entInt * pico * transmision, presupuesto);
+      }
+      a.despertar?.();
+    }
+    a.scene.add(grupo);
+    actualizar();
+    window.addEventListener('visor3d-cielo', actualizar);
+    return () => { window.removeEventListener('visor3d-cielo', actualizar); grupo.removeFromParent(); };
+  }, [modelando, estado, rev, entorno, entInt, entRot, hora, ocultas]);
+
   // Sol según la hora y exposición de la cámara
   useEffect(() => {
     const a = api3d.current; if (!a.sol || !a.centro) return;
-    const t = Math.max(0, Math.min(1, (hora - 6) / 15)), elev = Math.max(0.05, Math.sin(Math.PI * t)) * (65 * Math.PI / 180), az = Math.PI * (1 - t), k = Math.sin(Math.PI * t);
+    const t = Math.max(0, Math.min(1, (hora - 6) / 15)), elev = Math.max(0.05, Math.sin(Math.PI * t)) * (65 * Math.PI / 180), az = Math.PI * (1 - t) + entRot * Math.PI / 180, k = Math.sin(Math.PI * t);
     const d = (a.R || 8) * 3;
     a.sol.position.set(a.centro.x + d * Math.cos(az) * Math.cos(elev), a.centro.y + d * Math.sin(elev) + 1, a.centro.z + d * Math.sin(az) * Math.cos(elev));
-    a.sol.intensity = (0.12 + 1.6 * Math.pow(Math.max(0, k), 0.7)) * (ambiente.solOn === false ? 0 : (ambiente.solI ?? 1));
+    a.sol.intensity = (t > 0 && t < 1 ? 2.4 * Math.pow(k, 0.7) : 0) * (ambiente.solOn === false ? 0 : (ambiente.solI ?? 1));
     if (ambiente.kSol) a.sol.color.copy(kelvinColor(ambiente.kSol)); else a.sol.color.setHSL(0.09, 0.5 * (1 - k) + 0.05, 0.75 + 0.2 * k);
-    if (a.hemi) a.hemi.intensity = realista ? 0.14 + 0.35 * k : 0.35 + 0.8 * k;
+    if (a.hemi) a.hemi.intensity = 0;
     if (modelando) {
       a.sol.intensity = 1.15;
       a.sol.color.set(0xffffff);
@@ -3709,7 +3770,7 @@ export default function Visor3D({ cliente = false }) {
     }
     a.renderer.toneMappingExposure = modelando ? 1 : ambiente.exposicion;
     try { localStorage.setItem('visor3dAmb', JSON.stringify({ exposicion: ambiente.exposicion, luces: ambiente.luces, kLuces: ambiente.kLuces ?? null, kSol: ambiente.kSol ?? null, solI: ambiente.solI ?? 1, solOn: ambiente.solOn !== false })); } catch { /* sin almacenamiento */ }
-  }, [hora, ambiente.exposicion, ambiente.luces, ambiente.kSol, ambiente.solI, ambiente.solOn, realista, modelando, estado, rev]);
+  }, [hora, entRot, ambiente.exposicion, ambiente.luces, ambiente.kSol, ambiente.solI, ambiente.solOn, realista, modelando, estado, rev]);
 
   // Modo cliente: se empieza dentro del espacio, en la primera parada del tour (o en el centro), con refinado por trazado de rayos si la gráfica lo aguanta
   // y, si no, se ofrece el tour de panorámicas (que casi no pide nada al dispositivo)
@@ -3773,6 +3834,7 @@ export default function Visor3D({ cliente = false }) {
     const a = api3d.current; if (!a.renderer || estado === 'cargando') return;
     try { if (!cliente) localStorage.setItem('visor3dRealista', realista ? '1' : '0'); } catch { /* sin almacenamiento */ }
     a.contacto = null;
+    a.envToken = (a.envToken || 0) + 1;
     if (a.envTex) { a.envTex.dispose(); a.envTex = null; }
     a.scene.environment = null;
     a.gradeU = null;
@@ -3793,7 +3855,7 @@ export default function Visor3D({ cliente = false }) {
             if (a.envToken !== tok) { tex.dispose(); return; }
             tex.mapping = THREE.EquirectangularReflectionMapping;
             const pm2 = new THREE.PMREMGenerator(a.renderer), env = pm2.fromEquirectangular(tex).texture; pm2.dispose();
-            a.envTex?.dispose?.(); a.envTex = env; a.hdrTex?.dispose?.(); a.hdrTex = tex; a.scene.environment = env;
+            a.envTex?.dispose?.(); a.envTex = env; a.hdrTex?.dispose?.(); a.hdrTex = tex; a.hdrEntorno = entorno; a.scene.environment = env; window.dispatchEvent(new Event('visor3d-cielo'));
             try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ }
           });
         } else if (entorno !== 'estudio' && CIELOS[entorno]) {
@@ -3803,7 +3865,7 @@ export default function Visor3D({ cliente = false }) {
           const et = new THREE.CanvasTexture(cv); et.mapping = THREE.EquirectangularReflectionMapping; et.colorSpace = THREE.SRGBColorSpace;
           a.envTex = pm.fromEquirectangular(et).texture; et.dispose();
         } else a.envTex = pm.fromScene(new RoomEnvironment(), 0.04).texture;
-        pm.dispose(); a.scene.environment = a.envTex; a.scene.environmentIntensity = entInt;
+        pm.dispose(); a.scene.environment = a.envTex; a.scene.environmentIntensity = 0;
       }
       const sz = a.renderer.getSize(new THREE.Vector2());
       const rt = new THREE.WebGLRenderTarget(sz.x, sz.y, { type: THREE.HalfFloatType, samples: 0 });
@@ -5314,8 +5376,8 @@ export default function Visor3D({ cliente = false }) {
     const a = api3d.current; if (!a.renderer) return;
     const q = { baja: [1, 0, 512], media: [1, 1, 1024], alta: [window.devicePixelRatio, 1, 2048] }[calidad];
     a.prBase = q[0]; a.renderer.setPixelRatio(q[0]);
-    a.renderer.shadowMap.enabled = !modelando && !!q[1];
-    a.sol.castShadow = !modelando && !!q[1];
+    a.renderer.shadowMap.enabled = !modelando;
+    a.sol.castShadow = !modelando;
     a.sol.shadow.mapSize.set(q[2], q[2]);
     a.sol.shadow.map?.dispose(); a.sol.shadow.map = null;
     a.raiz.traverse(o => { if (o.material) o.material.needsUpdate = true; });
