@@ -283,7 +283,8 @@ function aplicaEspejos(scene) {
         const kEsp = P.espec != null ? P.espec / 0.3 : 1; // 0.3 = el aspecto de siempre
         if (m.isMeshPhysicalMaterial) m.specularIntensity = Math.max(0, Math.min(1, kEsp));
         m.envMap = usaEnv ? (scene.environment || envEsp) : null; m.envMapIntensity = (P.env ?? 1.2) * Math.max(0, kEsp);
-        if (P.relieve > 0) { m.bumpMap = m.map; m.bumpScale = P.relieve * 4; } else m.bumpMap = null;
+        if (P.relieve > 0) { m.bumpMap = m.map; m.bumpScale = P.relieve * 0.001; // relieve superficial en milímetros, escena en metros
+         } else m.bumpMap = null;
         if (!m.userData.opac0) m.userData.opac0 = { t: m.transparent, o: m.opacity, d: m.depthWrite, c: m.color.getHex() };
         if (P.opac != null && P.opac < 1) { m.transparent = true; m.opacity = P.opac; m.depthWrite = false; } else { m.transparent = m.userData.opac0.t; m.opacity = m.userData.opac0.o; m.depthWrite = m.userData.opac0.d; }
         if (P.tinte) m.color.set(P.tinte); else m.color.setHex(m.userData.opac0.c);
@@ -2092,12 +2093,20 @@ export default function Visor3D({ cliente = false }) {
     return () => { fin = true; clearInterval(iv); if (t) clearTimeout(t); window.removeEventListener('visor3d-carga', mira); };
   }, [estado]);
   // el modo Realista nunca arranca solo (es lo más pesado del visor): se enciende a mano cuando se quiere mirar o renderizar
-  const [realista, setRealista] = useState(false);
+  const [espacio, setEspacio] = useState('modelar');
+  const modoRender = espacio === 'render' && !cliente;
+  const [realistaEdicion, setRealistaEdicion] = useState(false);
+  const [realistaSalida, setRealistaSalida] = useState(true);
+  const [realista, setRealista] = modoRender
+    ? [realistaSalida, setRealistaSalida] : [realistaEdicion, setRealistaEdicion];
   const [titulo, setTitulo] = useState('');
-  // Modo render (el «Realista»): el modelo queda BLOQUEADO. No se mueve, gira, borra, dibuja ni modela nada; solo se ajustan materiales y luces (y la cámara y el ambiente).
-  const modoRender = realista && !cliente, modoRenderRef = useRef(false); modoRenderRef.current = modoRender;
+  // En el espacio Render: el modelo queda BLOQUEADO. No se mueve, gira, borra, dibuja ni modela nada; solo se ajustan materiales y luces (y la cámara y el ambiente).
+  const modoRenderRef = useRef(false); modoRenderRef.current = modoRender;
   useEffect(() => { if (!modoRender) return; setHerr(h => (['pincel', 'gotero', 'sel'].includes(h) ? h : 'sel')); setSelObj(null); setSeleccion(null); setSelHueco(null); try { api3d.current.limpiarSel?.(); } catch { /* sin selección */ } }, [modoRender]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [calidad, setCalidad] = useState(() => { try { return localStorage.getItem('visor3dCalidad') || 'media'; } catch { return 'media'; } });
+  const [calidadEdicion, setCalidadEdicion] = useState(() => { try { return localStorage.getItem('visor3dCalidad') || 'media'; } catch { return 'media'; } });
+  const [calidadSalida, setCalidadSalida] = useState(null);
+  const calidad = modoRender ? (calidadSalida ?? calidadEdicion) : calidadEdicion;
+  const setCalidad = modoRender ? setCalidadSalida : setCalidadEdicion;
   const api3d = useRef({});
   const [seleccion, setSeleccionR] = useState(null);
   const setSeleccion = cliente ? () => {} : setSeleccionR; // en modo cliente no se puede seleccionar nada
@@ -2507,7 +2516,7 @@ export default function Visor3D({ cliente = false }) {
     const base = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0xd9d4cd, roughness: 1 }));
     base.rotation.x = -Math.PI / 2; base.position.y = -0.02; base.receiveShadow = true;
     scene.add(base);
-    let raf = 0, vivo = true;
+    let raf = 0, pausa = null, vivo = true;
     const ajustar = () => {
       const w = el.clientWidth, h = el.clientHeight;
       renderer.setSize(w, h);
@@ -2573,10 +2582,20 @@ export default function Visor3D({ cliente = false }) {
             const vieja = envEsp; envEsp = tx; espejoSucio = true; a0.despierta = ahora + 450; if (vieja && vieja !== tx) vieja.dispose();
           } catch (e) { a0.ultEnvEsp = ahora + 60000; /* si falla, no se reintenta durante un minuto */ }
         }
-        if (!(ahora < (a0.despierta || 0))) { a0.reposo = true; return; }
+        if (!(ahora < (a0.despierta || 0))) {
+          a0.reposo = true;
+          cancelAnimationFrame(raf);
+          // Sigue comprobando cargas asíncronas y reflejos pendientes mientras la escena descansa.
+          pausa = window.setTimeout(() => {
+            pausa = null;
+            if (vivo) raf = requestAnimationFrame(bucle);
+          }, 200);
+          return;
+        }
       } // nada ha cambiado: no se dibuja y la tarjeta gráfica descansa
       a0.reposo = false; renderer.info.reset();
-        if (a0.composer) {
+      const vistaRapida = movi && ema > 33 && !a0.pedirFoto;
+      if (a0.composer && !vistaRapida) {
         const sz = renderer.getSize(vR2); if (a0.compW !== sz.x || a0.compH !== sz.y || a0.compPr !== renderer.getPixelRatio()) { a0.compW = sz.x; a0.compH = sz.y; a0.compPr = renderer.getPixelRatio(); a0.composer.setPixelRatio(a0.compPr); a0.composer.setSize(sz.x, sz.y); }
         a0.composer.render();
       } else renderer.render(scene, cam);
@@ -2594,12 +2613,21 @@ export default function Visor3D({ cliente = false }) {
     const enCampo = e => { const t = (e.target?.tagName || '').toLowerCase(); return t === 'input' || t === 'textarea' || t === 'select' || e.target?.isContentEditable; };
     const tDown = e => { if (enCampo(e) || e.ctrlKey || e.metaKey || e.altKey) return; const k = { arrowup: 'w', arrowdown: 's', arrowleft: 'a', arrowright: 'd' }[e.key.toLowerCase()] || e.key.toLowerCase(); if (!cliente && (k === '+' || k === '=' || k === '-' || k === '_')) { api3d.current.cambiaVel?.(k === '+' || k === '=' ? 1 : -1); e.preventDefault(); return; } if (k.length === 1 && 'wasdqe'.includes(k)) { teclas.add(k); e.preventDefault(); } else if (k === 'shift') teclas.add('shift'); };
     const tUp = e => { teclas.delete({ arrowup: 'w', arrowdown: 's', arrowleft: 'a', arrowright: 'd' }[e.key.toLowerCase()] || e.key.toLowerCase()); };
-    window.addEventListener('keydown', tDown); window.addEventListener('keyup', tUp); window.addEventListener('blur', () => teclas.clear());
+    window.addEventListener('keydown', tDown); window.addEventListener('keyup', tUp); const alPerderFoco = () => teclas.clear();
+    window.addEventListener('blur', alPerderFoco);
     ctrl.addEventListener('change', () => { ultMov = performance.now(); });
     ajustar(); bucle();
     window.addEventListener('resize', ajustar);
-    api3d.current = { renderer, scene, cam, ctrl, sol, raiz, esc, base, el, hemi, despierta: performance.now() + 2000, despertar: () => { api3d.current.despierta = performance.now() + 1500; } };
-    const despertar = () => api3d.current.despertar?.();
+    api3d.current = { renderer, scene, cam, ctrl, sol, raiz, esc, base, el, hemi, despierta: performance.now() + 2000, despertar: () => { api3d.current.despierta = performance.now() + 400;
+      if (pausa !== null && vivo) {
+        clearTimeout(pausa);
+        pausa = null;
+        raf = requestAnimationFrame(bucle);
+      } } };
+    const despertar = evento => {
+      if (evento?.type === 'pointermove' && !evento.buttons && !el.contains(evento.target)) return;
+      api3d.current.despertar?.();
+    };
     const evsD = ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown', 'keyup', 'contextmenu'];
     evsD.forEach(n => window.addEventListener(n, despertar, { passive: true })); window.addEventListener('visor3d-tex', despertar); window.addEventListener('resize', despertar); ctrl.addEventListener('change', despertar);
 
@@ -3335,7 +3363,7 @@ export default function Visor3D({ cliente = false }) {
     if (!cliente) window.addEventListener('pointermove', onMoveD);
     if (!cliente) window.addEventListener('pointerup', onUpD);
 
-    return () => { evsD.forEach(n => window.removeEventListener(n, despertar)); window.removeEventListener('visor3d-tex', despertar); window.removeEventListener('resize', despertar); window.removeEventListener('keydown', onTecla); el.removeEventListener('pointerdown', onDownD, true); window.removeEventListener('pointermove', onMoveD); window.removeEventListener('pointerup', onUpD); vivo = false; clearInterval(reloj); dom.removeEventListener('pointerdown', onDown); dom.removeEventListener('pointerup', onUp); dom.removeEventListener('dblclick', onDbl); cancelAnimationFrame(raf); window.removeEventListener('resize', ajustar); window.removeEventListener('keydown', tDown); window.removeEventListener('keyup', tUp); renderer.dispose(); el.removeChild(renderer.domElement); };
+    return () => { evsD.forEach(n => window.removeEventListener(n, despertar)); window.removeEventListener('visor3d-tex', despertar); window.removeEventListener('resize', despertar); window.removeEventListener('keydown', onTecla); el.removeEventListener('pointerdown', onDownD, true); window.removeEventListener('pointermove', onMoveD); window.removeEventListener('pointerup', onUpD); vivo = false; clearTimeout(pausa); window.removeEventListener('blur', alPerderFoco); ctrl.removeEventListener('change', despertar); ctrl.dispose(); clearInterval(reloj); dom.removeEventListener('pointerdown', onDown); dom.removeEventListener('pointerup', onUp); dom.removeEventListener('dblclick', onDbl); cancelAnimationFrame(raf); window.removeEventListener('resize', ajustar); window.removeEventListener('keydown', tDown); window.removeEventListener('keyup', tUp); renderer.dispose(); el.removeChild(renderer.domElement); };
   }, [id]);
 
   // Colores de muros y suelos (cambian sin rehacer el plano)
@@ -3505,7 +3533,7 @@ export default function Visor3D({ cliente = false }) {
           luzPos = cab.position.clone().add(dir.clone().multiplyScalar(0.09));
         }
         grp.position.set(l.x * CM, yTop, l.y * CM); grp.traverse(x => { x.userData.luzId = l.id; }); g.add(grp);
-        cand.push({ lp: grp.position.clone().add(luzPos), col, i: intSp, ang: Math.max(0.1, (ap / 2) * Math.PI / 180), dirE: dir.clone().multiplyScalar(2.5) });
+        cand.push({ seleccionada: !!sel2(l.id, luzSel), lp: grp.position.clone().add(luzPos), col, i: intSp, ang: Math.max(0.1, (ap / 2) * Math.PI / 180), dirE: dir.clone().multiplyScalar(2.5) });
         return;
       }
       const hcm = l.h != null ? l.h : (altDe(l.kid, techoEn(l.x, l.y)) ?? 250);
@@ -3564,7 +3592,7 @@ export default function Visor3D({ cliente = false }) {
         return;
       }
       if (l.kid === 'foco' || l.kid === 'plaf') {
-        cand.push({ lp: luzMundo.clone(), col, i: intSp, ang: Math.max(0.1, (ap / 2) * Math.PI / 180), dirE: dirL ? dirL.clone().multiplyScalar(2.5) : new THREE.Vector3(l.x * CM, 0, l.y * CM).sub(luzMundo) });
+        cand.push({ seleccionada: !!sel2(l.id, luzSel), lp: luzMundo.clone(), col, i: intSp, ang: Math.max(0.1, (ap / 2) * Math.PI / 180), dirE: dirL ? dirL.clone().multiplyScalar(2.5) : new THREE.Vector3(l.x * CM, 0, l.y * CM).sub(luzMundo) });
         return;
       }
       if (!puede()) return;
@@ -3573,13 +3601,28 @@ export default function Visor3D({ cliente = false }) {
     // los spots y focos alumbran de verdad por turnos: hay 16 focos reales que se colocan siempre en los que están más cerca de la cámara (al moverte, se van pasando a los nuevos)
     if (cand.length && POOL > 0) {
       const pool = []; for (let i = 0; i < Math.min(POOL, cand.length); i++) { const sl = new THREE.SpotLight(0xffffff, 0, 0, 0.5, 0.45, 2); g.add(sl); g.add(sl.target); pool.push(sl); }
-      const asigna = (c0) => {
-        const ord = cand.map((c, i) => [c.lp.distanceToSquared(c0), i]).sort((x, y) => x[0] - y[0]);
-        pool.forEach((sl, k) => { const c = cand[ord[k][1]]; sl.color.copy(c.col); sl.intensity = c.i; sl.angle = c.ang; sl.position.copy(c.lp); sl.target.position.copy(c.lp).add(c.dirE); sl.target.updateMatrixWorld(); });
+      const aplica = (sl, c) => {
+        sl.color.copy(c.col);
+        sl.intensity = c.i;
+        sl.angle = c.ang;
+        sl.position.copy(c.lp);
+        sl.target.position.copy(c.lp).add(c.dirE);
+        sl.target.updateMatrixWorld();
       };
-      asigna(a.cam.position); a.luzPool = { asigna, ult: a.cam.position.clone(), t: 0 };
+      if (pool.length === cand.length) {
+        pool.forEach((sl, i) => aplica(sl, cand[i]));
+      } else {
+        const asigna = posicion => {
+          const orden = cand.map(c => ({ c, distancia: c.lp.distanceToSquared(posicion) }));
+          orden.sort((a, b) => Number(b.c.seleccionada) - Number(a.c.seleccionada) || a.distancia - b.distancia);
+          pool.forEach((sl, i) => aplica(sl, orden[i].c));
+        };
+        asigna(a.cam.position);
+        a.luzPool = { asigna, ult: a.cam.position.clone(), t: 0 };
+      }
     }
     a.scene.add(g); a.luzG = g;
+    a.despertar?.();
   }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas, ambiente.luces, ambiente.kLuces, luzOver, rev, calidad]);
 
   // Sol según la hora y exposición de la cámara
@@ -3590,10 +3633,10 @@ export default function Visor3D({ cliente = false }) {
     a.sol.position.set(a.centro.x + d * Math.cos(az) * Math.cos(elev), a.centro.y + d * Math.sin(elev) + 1, a.centro.z + d * Math.sin(az) * Math.cos(elev));
     a.sol.intensity = (0.12 + 1.6 * Math.pow(Math.max(0, k), 0.7)) * (ambiente.solOn === false ? 0 : (ambiente.solI ?? 1));
     if (ambiente.kSol) a.sol.color.copy(kelvinColor(ambiente.kSol)); else a.sol.color.setHSL(0.09, 0.5 * (1 - k) + 0.05, 0.75 + 0.2 * k);
-    if (a.hemi) a.hemi.intensity = 0.35 + 0.8 * k;
+    if (a.hemi) a.hemi.intensity = realista ? 0.14 + 0.35 * k : 0.35 + 0.8 * k;
     a.renderer.toneMappingExposure = ambiente.exposicion;
     try { localStorage.setItem('visor3dAmb', JSON.stringify({ exposicion: ambiente.exposicion, luces: ambiente.luces, kLuces: ambiente.kLuces ?? null, kSol: ambiente.kSol ?? null, solI: ambiente.solI ?? 1, solOn: ambiente.solOn !== false })); } catch { /* sin almacenamiento */ }
-  }, [hora, ambiente.exposicion, ambiente.luces, ambiente.kSol, ambiente.solI, ambiente.solOn, estado, rev]);
+  }, [hora, ambiente.exposicion, ambiente.luces, ambiente.kSol, ambiente.solI, ambiente.solOn, realista, estado, rev]);
 
   // Modo cliente: se empieza dentro del espacio, en la primera parada del tour (o en el centro), con refinado por trazado de rayos si la gráfica lo aguanta
   // y, si no, se ofrece el tour de panorámicas (que casi no pide nada al dispositivo)
@@ -3678,7 +3721,7 @@ export default function Visor3D({ cliente = false }) {
         } else if (entorno !== 'estudio' && CIELOS[entorno]) {
           const [c1, c2, c3, sol] = CIELOS[entorno], cv = document.createElement('canvas'); cv.width = 1024; cv.height = 512; const cx = cv.getContext('2d'), g = cx.createLinearGradient(0, 0, 0, 512);
           g.addColorStop(0, c1); g.addColorStop(0.5, c2); g.addColorStop(0.52, c3); g.addColorStop(1, c3); cx.fillStyle = g; cx.fillRect(0, 0, 1024, 512);
-          if (sol) { const rg = cx.createRadialGradient(700, 220, 4, 700, 220, 150); rg.addColorStop(0, 'rgba(255,240,210,1)'); rg.addColorStop(1, 'rgba(255,200,140,0)'); cx.fillStyle = rg; cx.fillRect(0, 0, 1024, 512); }
+          if (sol) { const rg = cx.createRadialGradient(700, 220, 4, 700, 220, 150); rg.addColorStop(0, 'rgba(255,240,210,' + sol + ')'); rg.addColorStop(1, 'rgba(255,200,140,0)'); cx.fillStyle = rg; cx.fillRect(0, 0, 1024, 512); }
           const et = new THREE.CanvasTexture(cv); et.mapping = THREE.EquirectangularReflectionMapping; et.colorSpace = THREE.SRGBColorSpace;
           a.envTex = pm.fromEquirectangular(et).texture; et.dispose();
         } else a.envTex = pm.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -5155,7 +5198,7 @@ export default function Visor3D({ cliente = false }) {
     a.sol.shadow.map?.dispose(); a.sol.shadow.map = null;
     a.raiz.traverse(o => { if (o.material) o.material.needsUpdate = true; });
     a.renderer.setSize(caja.current.clientWidth, caja.current.clientHeight);
-    try { if (!cliente) localStorage.setItem('visor3dCalidad', calidad); } catch {}
+    try { if (!cliente && !modoRender) localStorage.setItem('visor3dCalidad', calidad); } catch {}
   }, [calidad, estado]);
 
   // Vista general: restablece focal y desplazamiento de lente (si no, tras un alzado o con otra focal se veía deformada) y encuadra TODO el plano
@@ -5173,32 +5216,19 @@ export default function Visor3D({ cliente = false }) {
   };
   // Render: una sola imagen grande con sombras suaves y de alta resolución (aunque el ordenador sea flojo, es un único fotograma)
   const [renderizando, setRenderizando] = useState(false);
-  const renderAlta = () => {
-    const { renderer, scene, cam, sol } = api3d.current;
+  const renderAlta = async () => {
     setRenderizando(true);
-    setTimeout(() => {
-      const el = caja.current, w0 = el.clientWidth, h0 = el.clientHeight, pr0 = renderer.getPixelRatio();
-      const sombra = sol.castShadow, mapa = sol.shadow.mapSize.x;
-      try {
-        const W = 3200, H = Math.round(W * h0 / w0);
-        renderer.setPixelRatio(1);
-        renderer.setSize(W, H, false);
-        cam.aspect = W / H; cam.updateProjectionMatrix();
-        renderer.shadowMap.enabled = true; sol.castShadow = true;
-        sol.shadow.mapSize.set(4096, 4096); sol.shadow.map?.dispose(); sol.shadow.map = null; sol.shadow.radius = 4;
-        renderer.render(scene, cam);
-        const a = document.createElement('a');
-        a.href = renderer.domElement.toDataURL('image/png');
-        a.download = (titulo || 'plano') + '-render.png';
-        a.click();
-      } catch (e) { alert('No se ha podido generar el render: ' + e.message + '. Prueba a bajar la calidad.'); }
-      finally {
-        renderer.setPixelRatio(pr0); renderer.setSize(w0, h0);
-        cam.aspect = w0 / h0; cam.updateProjectionMatrix();
-        sol.castShadow = sombra; sol.shadow.mapSize.set(mapa, mapa); sol.shadow.map?.dispose(); sol.shadow.map = null;
-        setRenderizando(false);
-      }
-    }, 60);
+    try {
+      const imagen = await renderHDurl({ ancho: 3200, fmt: 'png' });
+      const enlace = document.createElement('a');
+      enlace.href = imagen;
+      enlace.download = (titulo || 'plano') + '-render.png';
+      enlace.click();
+    } catch (e) {
+      alert('No se ha podido generar el render: ' + e.message);
+    } finally {
+      setRenderizando(false);
+    }
   };
   // Render fotorrealista con IA: se manda la vista actual y vuelve mejorada
   const [ia, setIa] = useState(null); // { estado: 'trabajando' | 'listo' | 'error', imagen, mensaje, estancia, estilo, extra }
@@ -5625,16 +5655,20 @@ export default function Visor3D({ cliente = false }) {
   const renderHDurl = async (opc = {}) => {
     await soltarSeleccion();
     const { renderer, scene, cam, sol } = api3d.current, el = caja.current, w0 = el.clientWidth, h0 = el.clientHeight, pr0 = renderer.getPixelRatio();
-    const sombra = sol.castShadow, mapa = sol.shadow.mapSize.x, restaura = ocultarAyudas();
+    const sombra = sol.castShadow, mapa = sol.shadow.mapSize.clone(), radio = sol.shadow.radius;
+    const sombrasActivas = renderer.shadowMap.enabled, restaura = ocultarAyudas();
     try {
       const W = opc.ancho || resRender, H = Math.round(W * h0 / w0), a1 = api3d.current;
       renderer.setPixelRatio(1); renderer.setSize(W, H, false); cam.aspect = W / H; cam.updateProjectionMatrix();
       renderer.shadowMap.enabled = true; sol.castShadow = true; sol.shadow.mapSize.set(4096, 4096); sol.shadow.map?.dispose(); sol.shadow.map = null; sol.shadow.radius = sombraSuave ? 4 : 1;
+      renderer.shadowMap.needsUpdate = true;
       if (a1.composer) { a1.composer.setPixelRatio(1); a1.composer.setSize(W, H); a1.composer.render(); } else renderer.render(scene, cam);
       return renderer.domElement.toDataURL((opc.fmt || formatoRender) === 'png' ? 'image/png' : 'image/jpeg', 0.92);
     } finally {
       restaura(); renderer.setPixelRatio(pr0); renderer.setSize(w0, h0); cam.aspect = w0 / h0; cam.updateProjectionMatrix(); api3d.current.compW = null;
-      sol.castShadow = sombra; sol.shadow.mapSize.set(mapa, mapa); sol.shadow.map?.dispose(); sol.shadow.map = null;
+      renderer.shadowMap.enabled = sombrasActivas; sol.castShadow = sombra; sol.shadow.radius = radio;
+      sol.shadow.mapSize.copy(mapa); sol.shadow.map?.dispose(); sol.shadow.map = null;
+      renderer.shadowMap.needsUpdate = true; api3d.current.despierta = performance.now() + 400;
     }
   };
   // Ficha de materiales y elementos de la escena para la IA: cada textura o color usado, con su muestra real, y el inventario de equipamiento
@@ -5806,7 +5840,7 @@ export default function Visor3D({ cliente = false }) {
   // Vista bonita (1 clic): Realista + calidad alta, sin aristas ni modo ligero. Es lo contrario del modo Ligero: para ver, mostrar y sacar renders.
   const poneBonita = () => { setLigero(false); antesLigero.current = null; setRealista(true); setCalidad('alta'); setAristas(false);
     // si todavía no has tocado el look, se aplica el de gimnasio: reflejos de estudio, resplandor en los LED y tono de cámara de cine; si ya lo ajustaste, se respeta
-    if (!(fx.bloom > 0)) { setFx(x => ({ ...x, contraste: 1.08, saturacion: 1.05, calidez: 0.1, vineta: 0.12, bloom: 0.3 })); setTono('agx'); setAmbiente(a => ({ ...a, exposicion: Math.max(a.exposicion || 1, 1.1), luces: Math.max(a.luces || 1, 2.2) })); if (hdris.some(h => 'hdri:' + h.id === 'hdri:brown_photostudio_02')) { setEntorno('hdri:brown_photostudio_02'); setModoAmb('hdri'); } }
+    if (!(fx.bloom > 0)) { setFx(x => ({ ...x, contraste: 1.04, saturacion: 1.0, calidez: 0.04, vineta: 0.05, bloom: 0.16 })); setTono('agx'); if (hdris.some(h => 'hdri:' + h.id === 'hdri:brown_photostudio_02')) { setEntorno('hdri:brown_photostudio_02'); setModoAmb('hdri'); } }
     setAviso('Vista bonita: Realista, calidad alta, reflejos reales en espejos y resplandor en los LED. Para trabajar más fluido, pulsa Ligero.'); };
   // Render rápido (1 clic): estilo revista, fiel al modelo, con la luz del proyecto; sin abrir el formulario
   const renderRapido = () => {
@@ -5814,16 +5848,10 @@ export default function Visor3D({ cliente = false }) {
     renderIA({ ...iaTxt, estancia: iaTxt.estancia || salaBajoCamara(), estilo: iaTxt.estilo || '', extra: iaTxt.extra || '', libertad: 'fiel', aspecto: 'revista', proveedor: iaTxt.proveedor || 'openai' });
   };
   const renderIA = async (ov, opc = {}) => {
-    const { renderer, scene, cam } = api3d.current, txt = ov && ov.estilo !== undefined ? ov : iaTxt;
+    const txt = ov && ov.estilo !== undefined ? ov : iaTxt;
     setIaForm(false); setIa({ estado: 'trabajando' });
     try {
-      await soltarSeleccion();
-      const el = caja.current, w0 = el.clientWidth, h0 = el.clientHeight, pr0 = renderer.getPixelRatio(), restaura = ocultarAyudas();
-      const W = 2048, H = Math.round(W * h0 / w0);
-      renderer.setPixelRatio(1); renderer.setSize(W, H, false); cam.aspect = W / H; cam.updateProjectionMatrix();
-      renderer.render(scene, cam);
-      const imagen = renderer.domElement.toDataURL('image/jpeg', 0.95);
-      restaura(); renderer.setPixelRatio(pr0); renderer.setSize(w0, h0); cam.aspect = w0 / h0; cam.updateProjectionMatrix();
+      const imagen = await renderHDurl({ ancho: 2048, fmt: 'jpg' });
       const meta = metaActual(txt);
       const ficha = await (fichaIA && !opc.autoGuardar ? Promise.resolve(compilaFicha()) : fichaMateriales()).catch(() => ({}));
       const r = await api.post('/render-ia', { imagen, ...txt, ...ficha, iluminacion: iaConLuz ? iluminacionSegura() : undefined }, { timeout: 180000 });
@@ -6332,7 +6360,6 @@ export default function Visor3D({ cliente = false }) {
       {pildora}
       {barraMaterial}
       {barra2d}
-      {modoRender && !axo && <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', zIndex: 6, background: 'rgba(22,20,18,0.88)', color: '#fff', borderRadius: 20, padding: '5px 14px', fontSize: 12, pointerEvents: 'none' }}>✨ Modo render · el modelo está bloqueado · solo materiales y luces <span style={{ opacity: 0.6 }}>(desactiva «Realista» para modelar)</span></div>}
       {barraAxo}
       {axo && zon.on && zonEditar && zonDatos.current && (
         <div style={{ position: 'absolute', right: 12, top: 56, zIndex: 7, width: 340, maxHeight: '72vh', overflow: 'auto', background: 'rgba(22,20,18,0.96)', color: '#fff', borderRadius: 10, padding: 10, fontSize: 12 }}>
@@ -6413,6 +6440,18 @@ export default function Visor3D({ cliente = false }) {
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 46, background: 'rgba(22,20,18,0.95)', color: '#fff', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', zIndex: 7, boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }}>
         <button style={bTop} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>
         <button style={bTop} onClick={() => abrirEnPlanos()} title="Abre este mismo plano en Planos, en otra pestaña (O)">Planos ↗</button>
+        <div role="group" aria-label="Espacio de trabajo" style={{ display: 'inline-flex', flexShrink: 0, padding: 2, border: '1px solid #56514c', borderRadius: 8, background: '#211f1d' }}>
+          {[['modelar', 'Modelar'], ['render', 'Render']].map(([k, nombre]) => (
+            <button key={k} aria-pressed={espacio === k} style={{ ...bTop, border: 0, background: espacio === k ? '#55514c' : 'transparent', fontWeight: 600 }}
+              onClick={() => {
+                if (k === 'render' && ligero) alternaLigero();
+                setLuzSel(null);
+                setEspacio(k);
+                setRenderAbierto(k === 'render');
+                if (k === 'render' && espacio !== k) setPestanaRender('ambiente');
+              }}>{nombre}</button>
+          ))}
+        </div>
         <b style={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titulo}</b>
         {guardado && guardado !== 'inicial' && <span style={{ opacity: 0.55, fontSize: 11, whiteSpace: 'nowrap' }}>{guardado}</span>}
         <span style={sepTop} />
@@ -6440,10 +6479,9 @@ export default function Visor3D({ cliente = false }) {
         </span>
         <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">Ambiente</button>
         <button style={{ ...bTop, ...(serieAbierto || acab.serie?.on ? bOn : {}) }} onClick={() => setSerieAbierto(v => !v)} title="Todas las máquinas con el mismo color y tapizado, y mucho más fluido">Serie</button>
-        <button style={{ ...bTop, ...(renderAbierto ? bOn : { background: '#8c8076' }), fontWeight: 700 }} onClick={() => { setRenderAbierto(v => !v); setSelObj(null); setSeleccion(null); }} title="Panel de render: luz, color, efectos y calidad de la imagen final">Render</button>
         <span style={{ flex: 1, minWidth: 8 }} />
-        <button style={{ ...bTop, ...(realista && calidad === 'alta' && !ligero ? { background: '#8c6a2f' } : {}) }} onClick={poneBonita} title="Vista bonita en un clic: modo Realista y calidad alta. Para mostrar el modelo y sacar renders">✨ Bonita</button>
-        <button style={{ ...bTop, ...(ligero ? { background: '#3f7d3a' } : {}) }} onClick={alternaLigero} title="Para editar sin que se ralentice: calidad baja, sin efectos ni aristas y solo la planta que estás mirando. Púlsalo otra vez para volver a como estaba">⚡ Ligero</button>
+        {modoRender && <button style={{ ...bTop, ...(realista && calidad === 'alta' && !ligero ? { background: '#8c6a2f' } : {}) }} onClick={poneBonita} title="Vista bonita en un clic: modo Realista y calidad alta. Para mostrar el modelo y sacar renders">✨ Bonita</button>}
+        {!modoRender && <button style={{ ...bTop, ...(ligero ? { background: '#3f7d3a' } : {}) }} onClick={alternaLigero} title="Para editar sin que se ralentice: calidad baja, sin efectos ni aristas y solo la planta que estás mirando. Púlsalo otra vez para volver a como estaba">⚡ Ligero</button>}
         <button style={{ ...bTop, ...(aristas ? { background: '#6b6159' } : {}) }} onClick={() => setAristas(v => !v)} title="Dibuja las aristas (los cantos) de muros, máquinas y objetos, como en SketchUp">Aristas</button>
         <button style={{ ...bTop, ...(realista ? { background: '#6b6159' } : {}) }} onClick={() => setRealista(v => !v)} title="Reflejos, sombras de contacto y bordes suaves. Si va lento, apágalo">Realista</button>
         <select style={bTop} value={calidad} onChange={e => setCalidad(e.target.value)} title="Si va lento, baja la calidad"><option value="baja">Calidad baja</option><option value="media">Calidad media</option><option value="alta">Calidad alta</option></select>
@@ -6749,8 +6787,9 @@ export default function Visor3D({ cliente = false }) {
         const ap = lucesAj[l.id]?.ap ?? l.ap ?? (l.kid === 'spotl' ? 80 : 60), spot = l.kid === 'foco' || l.kid === 'plaf' || l.kid === 'spot' || l.kid === 'spotl' || ((l.kid === 'aplq' || l.kid === 'esp') && (lucesAj[l.id]?.proy || 'arriba_abajo') !== 'difusa'), esLin = !!l.vs;
         const largoM = esLin ? l.vs.slice(1).reduce((t, q, i) => t + Math.hypot(q[0] - l.vs[i][0], q[1] - l.vs[i][1]), 0) / 100 : 0;
         return (
-          <div style={{ position: 'absolute', right: 12, top: 56, width: 260, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>💡 {nombres[l.kid] || 'Luminaria'} <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>(del plano)</span></div>
+          <div style={{ position: 'absolute', right: 12, top: 56, width: 'min(300px, calc(100vw - 64px))', maxHeight: 'calc(100% - 88px)', overflowY: 'auto', background: '#222224', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+            <button type="button" aria-label="Cerrar inspector de luz" onClick={() => setLuzSel(null)} style={{ ...bTop, float: 'right' }}>×</button>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>{nombres[l.kid] || 'Luminaria'} <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>(del plano)</span></div>
             <div style={{ opacity: 0.75, marginBottom: 6 }}>{cat ? cat.n + ' · ' + (cat.lm || '?') + ' lm · ' + (cat.w || '?') + ' W · ' + (cat.k || '?') + ' K' : 'Sin luminaria del catálogo asignada (se usa una estándar de 800 lm)'}</div>
             {(l.kid === 'aplq' || l.kid === 'esp') && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }} title="Hacia dónde reparte la luz este aplique"><span style={{ width: 90, opacity: 0.7 }}>Proyección</span>
               <select value={lucesAj[l.id]?.proy || 'arriba_abajo'} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, proy: e.target.value } }))} style={{ ...btn, flex: 1 }}>
@@ -7103,7 +7142,7 @@ export default function Visor3D({ cliente = false }) {
           <div style={{ opacity: 0.55, fontSize: 11 }}>Para fotos de interior: <b>nivela</b> la cámara (horizonte recto) y usa «Verticales rectas» para encuadrar más arriba o más abajo sin inclinarla, así las paredes no se «caen». El horizonte nunca se ladea. La altura, la focal y el desplazamiento se guardan en las escenas.</div>
         </div>
       )}
-      {renderAbierto && (() => {
+      {renderAbierto && !luzSel && (() => {
         const fila = (n, v, mn, mx, st, fn, tx) => (
           <label key={n} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 112, opacity: 0.75, fontSize: 12 }}>{n}</span><input type="range" min={mn} max={mx} step={st} value={v} onChange={e => fn(parseFloat(e.target.value))} style={{ flex: 1 }} /><span style={{ width: 50, textAlign: 'right', fontSize: 11 }}>{tx}</span></label>
         );
