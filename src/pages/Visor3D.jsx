@@ -2327,7 +2327,7 @@ export default function Visor3D({ cliente = false }) {
   const ultTab = useRef({ mat: 'pintura', comp: 'catalogo' }); // última pestaña usada de cada bloque (Materiales / Componentes)
   useEffect(() => { const f = () => { setRailCols(1); setRailTick(t => t + 1); }; window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
   useLayoutEffect(() => { const el = railRef.current; if (el && railCols < 4 && (el.scrollHeight > el.clientHeight + 2 || el.scrollWidth > el.clientWidth + 2)) setRailCols(c => c + 1); }, [railCols, railTick, estado]);
-  const railW = modoRender ? railCols * 56 + 10 : 148;
+  const railW = modoRender ? 92 : 148;
   const [camAbierta, setCamAbierta] = useState(false);
   const [camInfo, setCamInfo] = useState(null);
   const [shiftY, setShiftY] = useState(0);
@@ -6696,7 +6696,7 @@ export default function Visor3D({ cliente = false }) {
 
       {/* ── Carril de herramientas (izquierda), agrupadas por tarea ── */}
       {!cliente && <button type="button" onClick={alternaRail} title={railOculto ? 'Mostrar las herramientas' : 'Ocultar las herramientas'} style={{ position: 'absolute', top: 54, left: railOculto ? 8 : railW + 12, zIndex: 8, background: 'rgba(22,20,18,0.92)', color: '#fff', border: '1px solid #444', borderRadius: 8, padding: railOculto ? '6px 10px' : '6px 7px', fontSize: 12, cursor: 'pointer', fontWeight: 700, lineHeight: 1 }}>{railOculto ? '▶ Herramientas' : '◀'}</button>}
-      <div className={modoRender ? 'estudio-rail' : undefined} ref={railRef} style={{ display: railOculto ? 'none' : undefined, position: 'absolute', top: 54, left: 8, boxSizing: 'content-box', columnCount: modoRender ? railCols : 1, columnGap: 0, width: modoRender ? railCols * 54 : 138, maxHeight: 'calc(100vh - 78px)', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', background: 'rgba(22,20,18,0.95)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+      <div className={modoRender ? 'estudio-rail' : undefined} ref={railRef} style={{ display: railOculto ? 'none' : undefined, position: 'absolute', top: 54, left: 8, boxSizing: 'content-box', columnCount: 'auto', columnGap: 0, width: modoRender ? 82 : 138, maxHeight: 'calc(100% - 70px)', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'thin', scrollbarColor: '#9a8c7a #272421', overscrollBehavior: 'contain', background: 'rgba(22,20,18,0.95)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
         {modoRender ? <>
           {railBtn(herr === 'sel' && !renderAbierto && !camAbierta, 'sel', 'Seleccionar', 'Seleccionar una superficie o luminaria', () => { setHerr('sel'); setRenderAbierto(false); setCamAbierta(false); })}
           {railBtn(herr === 'gotero', 'pintar', 'Materiales', 'Tomar el acabado de una superficie', () => { setLuzSel(null); setCamAbierta(false); setHerr('gotero'); setPestanaRender('inspector'); setRenderAbierto(true); })}
