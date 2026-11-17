@@ -3854,7 +3854,7 @@ export default function Visor3D({ cliente = false }) {
       const presupuesto = { n: 0 };
       const tex = entorno.startsWith('hdri:') && a.hdrEntorno === entorno ? a.hdrTex : null;
       for (const { pos, dir, w, h, transmision } of ventanas.slice(0, 12)) {
-        const cielo = new THREE.Color(0xc5dcff).multiplyScalar(dia * 3000);
+        const cielo = new THREE.Color(0xc5dcff).multiplyScalar(dia * 900 /* luz de ventana más suave: con 3000 el techo y los muros junto a la ventana salían quemados */);
         if (tex?.image?.data) {
           const { width, height, data } = tex.image;
           cielo.setRGB(0, 0, 0);
