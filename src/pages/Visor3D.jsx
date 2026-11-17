@@ -1,3 +1,4 @@
+import './VisorEstudio.css';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
@@ -6489,10 +6490,10 @@ export default function Visor3D({ cliente = false }) {
         </div>
       )}
       {/* ── Barra superior: plano, historial, vistas, ambiente y salidas (render, 360, galería, despiece) ── */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 46, background: 'rgba(22,20,18,0.95)', color: '#fff', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', zIndex: 7, boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }}>
-        <button style={bTop} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>
+      <div className="estudio-barra" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 46, background: 'rgba(22,20,18,0.95)', color: '#fff', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', zIndex: 7, boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }}>
+        <button style={bTop} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())} title="Volver al proyecto" aria-label="Volver al proyecto"><img src="/logos/visor-icono-blanco.png" alt="" style={{ display: 'block', width: 33, height: 33, objectFit: 'contain' }} /></button>
         <button style={bTop} onClick={() => abrirEnPlanos()} title="Abre este mismo plano en Planos, en otra pestaña (O)">Planos ↗</button>
-        <div role="group" aria-label="Espacio de trabajo" style={{ display: 'inline-flex', flexShrink: 0, padding: 2, border: '1px solid #56514c', borderRadius: 8, background: '#211f1d' }}>
+        <div className="estudio-modos" role="group" aria-label="Espacio de trabajo" style={{ display: 'inline-flex', flexShrink: 0, padding: 2, border: '1px solid #56514c', borderRadius: 8, background: '#211f1d' }}>
           {[['modelar', 'Modelar'], ['render', 'Render']].map(([k, nombre]) => (
             <button key={k} aria-pressed={espacio === k} style={{ ...bTop, border: 0, background: espacio === k ? '#e3d5bf' : 'transparent', color: espacio === k ? '#231f1c' : '#dedbd6', padding: '6px 14px', fontWeight: 650 }}
               onClick={() => {
@@ -6503,7 +6504,7 @@ export default function Visor3D({ cliente = false }) {
               }}>{nombre}</button>
           ))}
         </div>
-        <b style={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titulo}</b>
+        <b className="estudio-proyecto" style={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titulo}</b>
         {guardado && guardado !== 'inicial' && <span style={{ opacity: 0.55, fontSize: 11, whiteSpace: 'nowrap' }}>{guardado}</span>}
         <span style={sepTop} />
         <button style={bTop} onClick={() => deshacer()} title="Deshacer (Ctrl+Z)">↶</button>
@@ -6568,7 +6569,13 @@ export default function Visor3D({ cliente = false }) {
 
       {/* ── Carril de herramientas (izquierda), agrupadas por tarea ── */}
       {!cliente && <button type="button" onClick={alternaRail} title={railOculto ? 'Mostrar las herramientas' : 'Ocultar las herramientas'} style={{ position: 'absolute', top: 54, left: railOculto ? 8 : railW + 12, zIndex: 8, background: 'rgba(22,20,18,0.92)', color: '#fff', border: '1px solid #444', borderRadius: 8, padding: railOculto ? '6px 10px' : '6px 7px', fontSize: 12, cursor: 'pointer', fontWeight: 700, lineHeight: 1 }}>{railOculto ? '▶ Herramientas' : '◀'}</button>}
-      <div ref={railRef} style={{ display: railOculto ? 'none' : undefined, position: 'absolute', top: 54, left: 8, boxSizing: 'content-box', columnCount: railCols, columnGap: 0, width: railCols * 54, maxHeight: 'calc(100vh - 78px)', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', background: 'rgba(22,20,18,0.95)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+      <div className={modoRender ? 'estudio-rail' : undefined} ref={railRef} style={{ display: railOculto ? 'none' : undefined, position: 'absolute', top: 54, left: 8, boxSizing: 'content-box', columnCount: railCols, columnGap: 0, width: railCols * 54, maxHeight: 'calc(100vh - 78px)', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', background: 'rgba(22,20,18,0.95)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+        {modoRender ? <>
+          {railBtn(herr === 'sel' && !renderAbierto && !camAbierta, 'sel', 'Seleccionar', 'Seleccionar una superficie o luminaria', () => { setHerr('sel'); setRenderAbierto(false); setCamAbierta(false); })}
+          {railBtn(herr === 'gotero', 'pintar', 'Materiales', 'Tomar el acabado de una superficie', () => { setLuzSel(null); setCamAbierta(false); setHerr('gotero'); setPestanaRender('inspector'); setRenderAbierto(true); })}
+          {railBtn(renderAbierto && pestanaRender === 'ambiente', 'luz', 'Luces', 'Ajustar el ambiente o seleccionar un foco', () => { setLuzSel(null); setCamAbierta(false); setHerr('sel'); setPestanaRender('ambiente'); setRenderAbierto(true); })}
+          {railBtn(camAbierta, '📷', 'Cámara', 'Ajustar el encuadre', () => { setLuzSel(null); setHerr('sel'); setRenderAbierto(false); setCamAbierta(true); })}
+        </> : <>
         {grupoRail([
           railBtn(herr === 'sel', 'sel', 'Seleccionar', modoRender ? 'Modo render: el modelo está bloqueado; aquí solo se eligen luces' : 'Seleccionar y mover objetos (Espacio)', () => setHerr('sel')),
           !modoRender && railBtn(false, 'ocultar', 'Ocultar', 'Oculta lo seleccionado sin borrarlo (H)', ocultarSel),
@@ -6652,6 +6659,7 @@ export default function Visor3D({ cliente = false }) {
           railBtn(herr === 'guia', 'cinta', 'Cinta', 'Cinta métrica: clic en dos puntos para crear una línea guía; el dibujo se imanta a ellas', () => setHerr('guia')),
           railBtn(capasAbierto, 'capas', 'Capas', 'Mostrar u ocultar muros, suelos, techos, plantas y etiquetas', () => setCapasAbierto(v => !v)),
         ], true, 'Medir')}
+        </>}
         <input ref={imagenInput} type="file" accept="image/png,image/webp,image/jpeg" style={{ display: 'none' }} onChange={e => { importarImagen(e.target.files?.[0]); e.target.value = ''; }} />
         <input ref={logoInput} type="file" accept=".svg,.dxf" style={{ display: 'none' }} onChange={e => { importarLogo(e.target.files?.[0]); e.target.value = ''; }} />
       </div>
@@ -7169,7 +7177,7 @@ export default function Visor3D({ cliente = false }) {
         </div>
       )}
       {camAbierta && camInfo && (
-        <div style={{ position: 'absolute', top: 56, left: railW + 6, width: 300, background: 'rgba(24,24,24,0.96)', color: '#fff', borderRadius: 10, padding: '10px 14px', fontSize: 13, zIndex: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+        <div style={{ position: 'absolute', top: 56, ...(modoRender ? { right: 12 } : { left: railW + 6 }), width: 300, background: 'rgba(24,24,24,0.96)', color: '#fff', borderRadius: 10, padding: '10px 14px', fontSize: 13, zIndex: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
           <div style={{ fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center' }}><span style={{ flex: 1 }}>🎥 Cámara</span><span onClick={() => setCamAbierta(false)} style={{ cursor: 'pointer', opacity: 0.6 }}>✕</span></div>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#fff', fontSize: 12, flex: 'none', whiteSpace: 'nowrap' }} title="Óptica de la cámara: menos grados = más zoom; más grados = gran angular. Una persona ve nítido unos 30°">
           <Ic n="cinta" /> <input type="range" min="12" max="110" value={lente} onChange={e => ponerLente(parseFloat(e.target.value))} style={{ width: 70 }} /> <input type="number" min="12" max="110" step="1" value={lente} onChange={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) ponerLente(v); }} style={{ ...bTop, width: 48, padding: '2px 4px' }} title="Escribe los grados de la óptica" />°
@@ -7204,7 +7212,7 @@ export default function Visor3D({ cliente = false }) {
         const modo = modoAmb || (hdriOn ? 'hdri' : 'geo');
         const cambiaModo = k => { setModoAmb(k); setRealista(true); if (k === 'hdri' && hdris.length && !hdriOn) setEntorno('hdri:' + hdris[0].id); else if (k !== 'hdri' && hdriOn) setEntorno('estudio'); };
         return (
-          <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 'min(320px, calc(100vw - 74px))', overflowY: 'auto', background: '#1d1d1e', color: '#fff', borderRadius: 8, padding: '0 14px 14px', fontSize: 13, zIndex: 8 }}>
+          <div className="estudio-inspector" style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 'min(320px, calc(100vw - 74px))', overflowY: 'auto', background: '#1d1d1e', color: '#fff', borderRadius: 8, padding: '0 14px 14px', fontSize: 13, zIndex: 8 }}>
             <div style={{ position: 'sticky', top: 0, background: 'rgb(29,29,30)', padding: '12px 0 0', zIndex: 2 }}>
               <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
                 <div style={{ display: 'flex', gap: 14, flex: 1 }}>

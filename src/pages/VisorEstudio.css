@@ -1,0 +1,12 @@
+.estudio-barra { background: #201f1e !important; border-bottom: 1px solid #46413b; font-family: system-ui, sans-serif; }
+.estudio-proyecto { order: -1; font-weight: 550; }
+.estudio-barra > button:first-child { order: -2; background: transparent !important; border: 0 !important; padding: 2px 7px !important; }
+@media (min-width: 1400px) {
+  .estudio-modos { position: absolute; left: 50%; transform: translateX(-50%); }
+  .estudio-modos button { min-width: 94px; }
+}
+.estudio-rail { width: 82px !important; column-count: 1 !important; background: #222120 !important; }
+.estudio-rail > button { width: 100% !important; min-height: 54px; justify-content: center; }
+.estudio-rail > button span:last-child { font-size: 11px !important; }
+.estudio-inspector { border: 1px solid #49433d; box-shadow: 0 8px 28px #0004; font-family: system-ui, sans-serif; }
+.estudio-inspector input[type=range] { accent-color: #dfbd8f; }
