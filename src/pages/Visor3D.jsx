@@ -22,6 +22,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import EditorPlanta2D from '../components/EditorPlanta2D';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { FXAAPass } from 'three/examples/jsm/postprocessing/FXAAPass.js';
+import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
@@ -2067,6 +2069,24 @@ export function planta(m, z0) {
   return g;
 }
 
+class SombrasDeContacto extends SSAOPass {
+  setSize(width, height) {
+    super.setSize(Math.max(1, Math.ceil(width / 2)), Math.max(1, Math.ceil(height / 2)));
+  }
+
+  render(renderer, writeBuffer, readBuffer) {
+    const uniforms = this.ssaoMaterial.uniforms;
+    uniforms.cameraProjectionMatrix.value.copy(this.camera.projectionMatrix);
+    uniforms.cameraInverseProjectionMatrix.value.copy(this.camera.projectionMatrixInverse);
+    super.render(renderer, writeBuffer, readBuffer);
+  }
+
+  dispose() {
+    this.noiseTexture.dispose();
+    this.ssaoMaterial.dispose();
+    super.dispose();
+  }
+}
 export default function Visor3D({ cliente = false }) {
   const { id, firma } = useParams();
   if (cliente) api = crearApiCliente(id, firma);
@@ -2091,6 +2111,7 @@ export default function Visor3D({ cliente = false }) {
   // el modo Realista nunca arranca solo (es lo más pesado del visor): se enciende a mano cuando se quiere mirar o renderizar
   const [espacio, setEspacio] = useState('modelar');
   const modoRender = espacio === 'render' && !cliente;
+  const modelando = !cliente && !modoRender;
   const [realistaEdicion, setRealistaEdicion] = useState(false);
   const [realistaSalida, setRealistaSalida] = useState(true);
   const [realista, setRealista] = modoRender
@@ -2180,27 +2201,10 @@ export default function Visor3D({ cliente = false }) {
   useEffect(() => {
     if (estado !== 'listo' || cliente) return;
     try { if (localStorage.getItem('visor3dAuto') === '1') return; localStorage.setItem('visor3dAuto', '1'); } catch { return; }
-    if (!gpuApta()) { setCalidad('baja'); setRealista(false); setAviso('Tu ordenador no tiene tarjeta gráfica potente: he puesto la calidad baja y quitado el modo realista para que vaya fluido. Puedes subirlos en la barra de arriba.'); }
+    if (!gpuApta()) { setCalidad('baja'); setRealista(false); setAviso('El visor ha ajustado la calidad a tu tarjeta gráfica. Puedes cambiarla en Vista.'); }
   }, [estado]); // eslint-disable-line react-hooks/exhaustive-deps
   const [pestanaRender, setPestanaRender] = useState('ambiente');
   const [modoAmb, setModoAmb] = useState(null); // geo | custom | hdri (si no se ha elegido, se deduce del entorno)
-  // Modo edición ligero: calidad baja, sin efectos ni aristas y solo la planta que estás mirando; al apagarlo vuelve todo a como estaba
-  const [ligero, setLigero] = useState(false); const antesLigero = useRef(null);
-  const alternaLigero = () => {
-    const A = api3d.current;
-    if (!ligero) {
-      const m = A.modelo, pls = m?.plantas || (m ? [m] : []), c = A.ctrl?.target;
-      const ip = m && c ? plantaDeCamara(m, A.offsPl, [], c.x, c.z, c.y) : 0;
-      antesLigero.current = { realista, calidad, aristas, ocultas: ocultas.filter(x => x.startsWith('planta:')) };
-      setRealista(false); setCalidad('baja'); setAristas(false);
-      if (pls.length > 1) setOcultas(o => [...o.filter(x => !x.startsWith('planta:')), ...pls.map((_, j) => j).filter(j => j !== ip).map(j => 'planta:' + j)]);
-      setLigero(true); setAviso('Modo ligero: calidad baja, sin efectos ni aristas' + (pls.length > 1 ? ' y solo la planta que estás mirando' : '') + '. Pulsa «Ligero» otra vez para volver a como estaba.');
-    } else {
-      const p = antesLigero.current; antesLigero.current = null;
-      if (p) { setRealista(p.realista); setCalidad(p.calidad); setAristas(p.aristas); setOcultas(o => [...o.filter(x => !x.startsWith('planta:')), ...p.ocultas]); }
-      setLigero(false); setAviso('Modo ligero apagado: todo vuelve a como estaba.');
-    }
-  };
   const [aristas, setAristas] = useState(() => { try { return localStorage.getItem('visor3dAristas') === '1'; } catch { return false; } });
   const [tono, setTono] = useState(() => { try { return localStorage.getItem('visor3dTono') || 'aces'; } catch { return 'aces'; } });
   useEffect(() => {
@@ -2604,6 +2608,7 @@ export default function Visor3D({ cliente = false }) {
 
       if (a0.composer) {
         const sz = renderer.getSize(vR2); if (a0.compW !== sz.x || a0.compH !== sz.y || a0.compPr !== renderer.getPixelRatio()) { a0.compW = sz.x; a0.compH = sz.y; a0.compPr = renderer.getPixelRatio(); a0.composer.setPixelRatio(a0.compPr); a0.composer.setSize(sz.x, sz.y); }
+        if (a0.contacto) a0.contacto.enabled = !movi || !!a0.pedirFoto;
         a0.composer.render();
       } else renderer.render(scene, cam);
       if (a0.pedirFoto) { const cb = a0.pedirFoto; a0.pedirFoto = null; let u = null; try { u = renderer.domElement.toDataURL('image/jpeg', 0.9); } catch { /* sin imagen */ } cb(u); } // foto del fotograma recién dibujado, tal como se ve
@@ -2757,7 +2762,7 @@ export default function Visor3D({ cliente = false }) {
       }
       if (herrRef.current === 'pincel' || herrRef.current === 'gotero') {
         // la caja azul que se dibuja mientras llega el modelo de la máquina se oculta con material.visible=false (el rayo la sigue tocando): se salta para coger el material de la máquina de verdad
-        const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(x => x.object.isMesh && !x.object.userData.hit && visible(x.object) && (Array.isArray(x.object.material) ? x.object.material.some(q => q.visible !== false) : x.object.material?.visible !== false));
+        const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(x => x.object.isMesh && !x.object.userData.hit && !x.object.userData.overlay && visible(x.object) && (Array.isArray(x.object.material) ? x.object.material[x.face?.materialIndex ?? 0]?.visible === true : x.object.material?.visible !== false));
         if (h) { if (herrRef.current === 'gotero' || e.altKey) tomarMaterial(h); else aplicarPincel(h, e.shiftKey || modoPincelRef.current === 'todo'); }
         return;
       }
@@ -2991,7 +2996,7 @@ export default function Visor3D({ cliente = false }) {
       const mat = matSelRef.current; if (!mat) return;
       const valor = mat.conMapa ? 'tinte:' + (mat.tinte || '#ffffff') : (mat.hex || ('tex:' + mat.id));
       const u = hit.object.userData;
-      { let ge0 = hit.object; while (ge0 && !ge0.userData.equipo) ge0 = ge0.parent; if (ge0 && ge0.userData.capa === 'equipos') { setAviso('Las máquinas se colorean desde «Serie», en la barra de arriba.'); return; } }
+      { let ge0 = hit.object; while (ge0 && !ge0.userData.equipo) ge0 = ge0.parent; if (ge0 && ge0.userData.capa === 'equipos') { setAviso('Para colorear las máquinas, abre Vista → Acabados de las máquinas.'); return; } }
       {
         const clave = (modoPincelRef.current === 'cara' || modoPincelRef.current === 'pieza') && !todos ? claveRegion(hit) : null;
         if (clave && (modoPincelRef.current === 'cara' || clave.startsWith('e:'))) {
@@ -3631,9 +3636,13 @@ export default function Visor3D({ cliente = false }) {
         a.luzPool = { asigna, ult: a.cam.position.clone(), t: 0 };
       }
     }
+    if (modelando) {
+      g.traverse(o => { if (o.isLight) o.visible = false; });
+      a.luzPool = null;
+    }
     a.scene.add(g); a.luzG = g;
     a.despertar?.();
-  }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas, ambiente.luces, ambiente.kLuces, luzOver, rev, calidad]);
+  }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas, ambiente.luces, ambiente.kLuces, luzOver, rev, calidad, modelando]);
 
   // Sol según la hora y exposición de la cámara
   useEffect(() => {
@@ -3644,9 +3653,14 @@ export default function Visor3D({ cliente = false }) {
     a.sol.intensity = (0.12 + 1.6 * Math.pow(Math.max(0, k), 0.7)) * (ambiente.solOn === false ? 0 : (ambiente.solI ?? 1));
     if (ambiente.kSol) a.sol.color.copy(kelvinColor(ambiente.kSol)); else a.sol.color.setHSL(0.09, 0.5 * (1 - k) + 0.05, 0.75 + 0.2 * k);
     if (a.hemi) a.hemi.intensity = realista ? 0.14 + 0.35 * k : 0.35 + 0.8 * k;
-    a.renderer.toneMappingExposure = ambiente.exposicion;
+    if (modelando) {
+      a.sol.intensity = 1.15;
+      a.sol.color.set(0xffffff);
+      if (a.hemi) a.hemi.intensity = 1.15;
+    }
+    a.renderer.toneMappingExposure = modelando ? 1 : ambiente.exposicion;
     try { localStorage.setItem('visor3dAmb', JSON.stringify({ exposicion: ambiente.exposicion, luces: ambiente.luces, kLuces: ambiente.kLuces ?? null, kSol: ambiente.kSol ?? null, solI: ambiente.solI ?? 1, solOn: ambiente.solOn !== false })); } catch { /* sin almacenamiento */ }
-  }, [hora, ambiente.exposicion, ambiente.luces, ambiente.kSol, ambiente.solI, ambiente.solOn, realista, estado, rev]);
+  }, [hora, ambiente.exposicion, ambiente.luces, ambiente.kSol, ambiente.solI, ambiente.solOn, realista, modelando, estado, rev]);
 
   // Modo cliente: se empieza dentro del espacio, en la primera parada del tour (o en el centro), con refinado por trazado de rayos si la gráfica lo aguanta
   // y, si no, se ofrece el tour de panorámicas (que casi no pide nada al dispositivo)
@@ -3709,10 +3723,15 @@ export default function Visor3D({ cliente = false }) {
   useEffect(() => {
     const a = api3d.current; if (!a.renderer || estado === 'cargando') return;
     try { if (!cliente) localStorage.setItem('visor3dRealista', realista ? '1' : '0'); } catch { /* sin almacenamiento */ }
-    if (a.composer) { a.composer.dispose?.(); a.composer = null; }
+    a.contacto = null;
     if (a.envTex) { a.envTex.dispose(); a.envTex = null; }
     a.scene.environment = null;
     a.gradeU = null;
+    if (modelando) {
+      a.scene.environment = envEsp;
+      a.scene.environmentIntensity = 0.35;
+      return;
+    }
     if (!realista && !fxActivo) return;
     try {
       if (realista) {
@@ -3741,15 +3760,31 @@ export default function Visor3D({ cliente = false }) {
       const rt = new THREE.WebGLRenderTarget(sz.x, sz.y, { type: THREE.HalfFloatType, samples: 0 });
       const comp = new EffectComposer(a.renderer, rt);
       comp.addPass(new RenderPass(a.scene, a.cam));
+      if (modoRender && realista && calidad !== 'baja' && !GL_SOFTWARE) {
+        const contacto = new SombrasDeContacto(a.scene, a.cam, 1, 1, 12);
+        contacto.kernelRadius = 0.28;
+        const rango = a.cam.far - a.cam.near;
+        contacto.minDistance = 0.004 / rango;
+        contacto.maxDistance = 0.45 / rango;
+        comp.addPass(contacto);
+        a.contacto = contacto;
+      }
       comp.addPass(new OutputPass());
       // corrección de color final: contraste, saturación, calidez y viñeta
       const U = { contraste: { value: fx.contraste }, saturacion: { value: fx.saturacion }, calidez: { value: fx.calidez }, vineta: { value: fx.vineta }, exposure: { value: fx.exp }, highlights: { value: fx.realce }, shadows: { value: fx.sombra }, wb: { value: wbVec(fx.bb, fx.tinte) } };
       comp.addPass(new ShaderPass({ uniforms: { tDiffuse: { value: null }, ...U }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
         fragmentShader: 'uniform sampler2D tDiffuse; uniform float contraste; uniform float saturacion; uniform float calidez; uniform float vineta; uniform float exposure; uniform float highlights; uniform float shadows; uniform vec3 wb; varying vec2 vUv; void main(){ vec4 c = texture2D(tDiffuse, vUv); vec3 col = c.rgb * pow(2.0, exposure) * wb; float l0 = dot(col, vec3(0.2126, 0.7152, 0.0722)); col += shadows * 0.2 * (1.0 - smoothstep(0.0, 0.5, l0)); col += highlights * 0.2 * smoothstep(0.5, 1.0, l0); col = (col - 0.5) * contraste + 0.5; float l = dot(col, vec3(0.2126, 0.7152, 0.0722)); col = mix(vec3(l), col, saturacion); col.r += calidez * 0.06; col.b -= calidez * 0.06; col *= 1.0 - vineta * smoothstep(0.35, 0.9, distance(vUv, vec2(0.5))); gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a); }' }));
+      comp.addPass(new FXAAPass());
       a.gradeU = U;
       a.composer = comp; a.compW = null;
+      return () => {
+        comp.passes.forEach(pass => pass.dispose());
+        comp.dispose();
+        a.composer = null;
+        a.contacto = null;
+      };
     } catch (e) { console.warn('modo realista', e); setRealista(false); }
-  }, [realista, estado, fxActivo, entorno, hdris]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [realista, estado, fxActivo, entorno, hdris, modoRender, calidad]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Varias plantas: se pueden ocultar por separado
   useEffect(() => {
@@ -4588,14 +4623,23 @@ export default function Visor3D({ cliente = false }) {
     const oid = o.userData.oid;
     setObjs(prev => prev.map(x => (x.id === oid && x.tipo === 'bloque' ? { ...x, partes: { ...(x.partes || {}), [u.parte]: hex ? 'tinte:' + hex : undefined } } : x)));
   };
+  const peticionTextura = useRef(0);
+  const colaTexturas = useRef(Promise.resolve());
   const usarTexturaB3d = async (t) => {
+    const turno = ++peticionTextura.current;
     try {
-      const r = await api.post('/medicion/' + id + '/textura-biblioteca', { texId: t.id, tam: t.tam });
-      const nueva = r.data.textura;
+      let nueva = texturas.find(x => x.id === 'b_' + t.id);
+      if (!nueva) {
+        const peticion = colaTexturas.current.then(() => api.post('/medicion/' + id + '/textura-biblioteca', { texId: t.id, tam: t.tam }));
+        colaTexturas.current = peticion.catch(() => {});
+        nueva = (await peticion).data.textura;
+      }
       setTexturas(x => (x.some(y => y.id === nueva.id) ? x : [...x, nueva]));
-      setMatSel({ id: nueva.id }); setHerr('pincel'); setMatAbierto(true);
-      setGuardado('Textura lista: haz clic en un muro, suelo o techo');
-    } catch (e) { setGuardado(e.response?.data?.error || 'No se pudo usar la textura'); }
+      if (turno !== peticionTextura.current) return;
+      matSelRef.current = { id: nueva.id };
+      setMatSel(matSelRef.current); setHerr('pincel');
+      setGuardado('Pintura: ' + nueva.nombre + ' · Pulsa una superficie');
+    } catch (e) { if (turno === peticionTextura.current) setAviso(e.response?.data?.error || 'No se pudo usar la textura'); }
   };
   const [muebleMenu, setMuebleMenu] = useState(false);
   const [saunaMenu, setSaunaMenu] = useState(false);
@@ -4957,8 +5001,7 @@ export default function Visor3D({ cliente = false }) {
     { g: 'Panel', n: 'Biblioteca', k: '', f: () => setB3dAbierta(v => !v) },
     { g: 'Panel', n: 'Materiales', k: '', f: () => setMatAbierto(v => !v) },
     { g: 'Panel', n: 'Ambiente (sol y luces)', k: '', f: () => setAmbAbierto(v => !v) },
-    { g: 'Panel', n: 'Render', k: '', f: () => setRenderAbierto(v => !v) },
-    { g: 'Render', n: 'Modo realista (reflejos y sombras)', k: '', f: () => setRealista(v => !v) },
+    { g: 'Panel', n: 'Abrir Render', k: '', f: () => { setEspacio('render'); setRenderAbierto(true); setPestanaRender('ambiente'); } },
     { g: 'Render', n: 'Render HD (descargar)', k: '', f: async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.jpg'; el.click(); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); } },
     { g: 'Render', n: 'Render con IA', k: '', f: () => abrirFormIA() },
     { g: 'Render', n: 'Exportar a D5 (.glb)', k: '', f: () => exportarGLB() },
@@ -5207,14 +5250,14 @@ export default function Visor3D({ cliente = false }) {
     const a = api3d.current; if (!a.renderer) return;
     const q = { baja: [1, 0, 512], media: [1, 1, 1024], alta: [window.devicePixelRatio, 1, 2048] }[calidad];
     a.prBase = q[0]; a.renderer.setPixelRatio(q[0]);
-    a.renderer.shadowMap.enabled = !!q[1];
-    a.sol.castShadow = !!q[1];
+    a.renderer.shadowMap.enabled = !modelando && !!q[1];
+    a.sol.castShadow = !modelando && !!q[1];
     a.sol.shadow.mapSize.set(q[2], q[2]);
     a.sol.shadow.map?.dispose(); a.sol.shadow.map = null;
     a.raiz.traverse(o => { if (o.material) o.material.needsUpdate = true; });
     a.renderer.setSize(caja.current.clientWidth, caja.current.clientHeight);
     try { if (!cliente && !modoRender) localStorage.setItem('visor3dCalidad', calidad); } catch {}
-  }, [calidad, estado]);
+  }, [calidad, estado, modelando]);
 
   // Vista general: restablece focal y desplazamiento de lente (si no, tras un alzado o con otra focal se veía deformada) y encuadra TODO el plano
   const vista = tipo => {
@@ -5280,7 +5323,7 @@ export default function Visor3D({ cliente = false }) {
   // Tour del cliente: cada parada es una panorámica 360° guardada con su posición; el enlace público las une con flechas y minimapa
   const [generandoParada, setGenerandoParada] = useState(false);
   // las paradas del tour guardan lo que se ve ahora: con el modo Ligero o la calidad baja salen peor
-  const avisaCalidadTour = () => (ligero || !realista || calidad !== 'alta') ? window.confirm('Ahora tienes ' + [ligero ? 'el modo Ligero' : '', !realista ? 'el modo Realista apagado' : '', calidad !== 'alta' ? 'la calidad en «' + calidad + '»' : ''].filter(Boolean).join(', ') + '. Las paradas del tour se guardan con lo que ves ahora, así que saldrían con menos calidad.\n\nPara un tour bueno: apaga Ligero, activa Realista y pon Calidad alta.\n\n¿Crear la parada igualmente?') : true;
+  const avisaCalidadTour = () => modoRender || window.confirm('La panorámica usará la iluminación de Modelar. ¿Generarla con esta vista?');
   const paradaTour = () => {
     if (!avisaCalidadTour()) return;
     const nombre = (window.prompt('Nombre de esta parada del tour (por ejemplo «Entrada» o «Zona de pesas»):', 'Parada ' + (renders.filter(r => r.tour).length + 1)) || '').trim();
@@ -5677,7 +5720,7 @@ export default function Visor3D({ cliente = false }) {
       renderer.setPixelRatio(1); renderer.setSize(W, H, false); cam.aspect = W / H; cam.updateProjectionMatrix();
       renderer.shadowMap.enabled = true; sol.castShadow = true; sol.shadow.mapSize.set(4096, 4096); sol.shadow.map?.dispose(); sol.shadow.map = null; sol.shadow.radius = sombraSuave ? 4 : 1;
       renderer.shadowMap.needsUpdate = true;
-      if (a1.composer) { a1.composer.setPixelRatio(1); a1.composer.setSize(W, H); a1.composer.render(); } else renderer.render(scene, cam);
+      if (a1.composer) { if (a1.contacto) a1.contacto.enabled = true; a1.composer.setPixelRatio(1); a1.composer.setSize(W, H); a1.composer.render(); } else renderer.render(scene, cam);
       return renderer.domElement.toDataURL((opc.fmt || formatoRender) === 'png' ? 'image/png' : 'image/jpeg', 0.92);
     } finally {
       restaura(); renderer.setPixelRatio(pr0); renderer.setSize(w0, h0); cam.aspect = w0 / h0; cam.updateProjectionMatrix(); api3d.current.compW = null;
@@ -5852,14 +5895,8 @@ export default function Visor3D({ cliente = false }) {
       setIa({ estado: 'listo', imagen: r.data.imagen, original: imagen, meta: metaActual(), guardado: false });
     } catch (e) { setIa({ estado: 'error', mensaje: e.response?.data?.error || 'No se ha podido mejorar la imagen' }); }
   };
-  // Vista bonita (1 clic): Realista + calidad alta, sin aristas ni modo ligero. Es lo contrario del modo Ligero: para ver, mostrar y sacar renders.
-  const poneBonita = () => { setLigero(false); antesLigero.current = null; setRealista(true); setCalidad('alta'); setAristas(false);
-    // si todavía no has tocado el look, se aplica el de gimnasio: reflejos de estudio, resplandor en los LED y tono de cámara de cine; si ya lo ajustaste, se respeta
-    if (!(fx.bloom > 0)) { setFx(x => ({ ...x, contraste: 1.04, saturacion: 1.0, calidez: 0.04, vineta: 0.05, bloom: 0.16 })); setTono('agx'); if (hdris.some(h => 'hdri:' + h.id === 'hdri:brown_photostudio_02')) { setEntorno('hdri:brown_photostudio_02'); setModoAmb('hdri'); } }
-    setAviso('Vista bonita: Realista, calidad alta, reflejos reales en espejos y resplandor en los LED. Para trabajar más fluido, pulsa Ligero.'); };
   // Render rápido (1 clic): estilo revista, fiel al modelo, con la luz del proyecto; sin abrir el formulario
   const renderRapido = () => {
-    if ((ligero || !realista || calidad !== 'alta') && !window.confirm('Ahora tienes ' + [ligero ? 'el modo Ligero' : '', !realista ? 'el modo Realista apagado' : '', calidad !== 'alta' ? 'la calidad en «' + calidad + '»' : ''].filter(Boolean).join(', ') + ': el render saldría con menos calidad.\n\nMejor pulsa «✨ Bonita» antes de generarlo.\n\n¿Generarlo igualmente?')) return;
     renderIA({ ...iaTxt, estancia: iaTxt.estancia || salaBajoCamara(), estilo: iaTxt.estilo || '', extra: iaTxt.extra || '', libertad: 'fiel', aspecto: 'revista', proveedor: iaTxt.proveedor || 'openai' });
   };
   const renderIA = async (ov, opc = {}) => {
@@ -5909,7 +5946,7 @@ export default function Visor3D({ cliente = false }) {
 
   const btn = { background: '#2c2824', color: '#fff', border: '1px solid #4a443f', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 };
   // ── interfaz común: barra superior, carril de herramientas y menús
-  const bTop = { background: '#34302c', color: '#fff', border: '1px solid #4f4842', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' };
+  const bTop = { background: '#302f2e', color: '#f3f0ed', border: '1px solid #464441', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' };
   const bOn = { background: '#6b6159', borderColor: '#6b6159' };
   const sepTop = { width: 1, height: 22, background: '#444', margin: '0 2px', flex: 'none' };
   // Vista con aristas (como en SketchUp): un trazo oscuro en los cantos de muros, máquinas, modelos y cajas.
@@ -6457,9 +6494,8 @@ export default function Visor3D({ cliente = false }) {
         <button style={bTop} onClick={() => abrirEnPlanos()} title="Abre este mismo plano en Planos, en otra pestaña (O)">Planos ↗</button>
         <div role="group" aria-label="Espacio de trabajo" style={{ display: 'inline-flex', flexShrink: 0, padding: 2, border: '1px solid #56514c', borderRadius: 8, background: '#211f1d' }}>
           {[['modelar', 'Modelar'], ['render', 'Render']].map(([k, nombre]) => (
-            <button key={k} aria-pressed={espacio === k} style={{ ...bTop, border: 0, background: espacio === k ? '#55514c' : 'transparent', fontWeight: 600 }}
+            <button key={k} aria-pressed={espacio === k} style={{ ...bTop, border: 0, background: espacio === k ? '#e3d5bf' : 'transparent', color: espacio === k ? '#231f1c' : '#dedbd6', padding: '6px 14px', fontWeight: 650 }}
               onClick={() => {
-                if (k === 'render' && ligero) alternaLigero();
                 setLuzSel(null);
                 setEspacio(k);
                 setRenderAbierto(k === 'render');
@@ -6473,8 +6509,10 @@ export default function Visor3D({ cliente = false }) {
         <button style={bTop} onClick={() => deshacer()} title="Deshacer (Ctrl+Z)">↶</button>
         <button style={bTop} onClick={() => rehacer()} title="Rehacer (Ctrl+Y)">↷</button>
         <span style={sepTop} />
-        <span style={sepTop} />
         {menuTop2('Vista', 'vista', [
+          ['Mostrar aristas', () => setAristas(v => !v), aristas],
+          ['Acabados de las máquinas', () => setSerieAbierto(v => !v), serieAbierto],
+          ...['baja', 'media', 'alta'].map(n => ['Calidad ' + n, () => setCalidad(n), calidad === n]),
           ['Perspectiva', () => vista('persp'), false, false, 'Vista en perspectiva de todo el plano', '0'],
           ['Planta', () => vista('planta'), false, false, 'Vista desde arriba', '9'],
           ['Axonométrica', () => (axo ? salirAxo() : entrarAxo()), !!axo, estado !== 'listo' || !!alz || !!planta2d, 'Vista isométrica, sin perspectiva', '8'],
@@ -6487,20 +6525,8 @@ export default function Visor3D({ cliente = false }) {
           ['Cámara…', () => setCamAbierta(v => !v), camAbierta, false, 'Altura, nivelar, focal y verticales rectas', '4'],
           ['Escenas' + (escenas.length ? ' (' + escenas.length + ')' : ''), () => setEscAbierta(v => !v), escAbierta, false, 'Vistas guardadas', '3'],
         ])}
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#fff', fontSize: 12, flex: 'none', whiteSpace: 'nowrap' }} title="Óptica de la cámara: menos grados = más zoom; más grados = gran angular. Una persona ve nítido unos 30°">
-          <Ic n="cinta" /> <input type="range" min="12" max="110" value={lente} onChange={e => ponerLente(parseFloat(e.target.value))} style={{ width: 70 }} /> <input type="number" min="12" max="110" step="1" value={lente} onChange={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) ponerLente(v); }} style={{ ...bTop, width: 48, padding: '2px 4px' }} title="Escribe los grados de la óptica" />°
-          <span onClick={() => { try { localStorage.setItem('visor3dLenteDef', String(lente)); } catch { /* sin almacenamiento */ } setAviso('Óptica predeterminada: ' + lente + '° (se usará al abrir y al encuadrar)'); }} style={{ cursor: 'pointer', padding: '0 3px' }} title="Dejar esta óptica como la predeterminada">★</span>
-          <select value="" onChange={e => { if (e.target.value) ponerLente(parseFloat(e.target.value)); }} style={{ ...bTop, width: 92 }}><option value="">Óptica…</option><option value="90">Gran angular 90°</option><option value="65">Interior amplio 65°</option><option value="50">Interior natural 50°</option><option value="30">Como persona 30°</option><option value="25">Tele 25°</option></select>
-        </span>
-        <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">Ambiente</button>
-        <button style={{ ...bTop, ...(serieAbierto || acab.serie?.on ? bOn : {}) }} onClick={() => setSerieAbierto(v => !v)} title="Todas las máquinas con el mismo color y tapizado, y mucho más fluido">Serie</button>
-        <span style={{ flex: 1, minWidth: 8 }} />
-        {modoRender && <button style={{ ...bTop, ...(realista && calidad === 'alta' && !ligero ? { background: '#8c6a2f' } : {}) }} onClick={poneBonita} title="Vista bonita en un clic: modo Realista y calidad alta. Para mostrar el modelo y sacar renders">✨ Bonita</button>}
-        {!modoRender && <button style={{ ...bTop, ...(ligero ? { background: '#3f7d3a' } : {}) }} onClick={alternaLigero} title="Para editar sin que se ralentice: calidad baja, sin efectos ni aristas y solo la planta que estás mirando. Púlsalo otra vez para volver a como estaba">⚡ Ligero</button>}
-        <button style={{ ...bTop, ...(aristas ? { background: '#6b6159' } : {}) }} onClick={() => setAristas(v => !v)} title="Dibuja las aristas (los cantos) de muros, máquinas y objetos, como en SketchUp">Aristas</button>
-        <button style={{ ...bTop, ...(realista ? { background: '#6b6159' } : {}) }} onClick={() => setRealista(v => !v)} title="Reflejos, sombras de contacto y bordes suaves. Si va lento, apágalo">Realista</button>
-        <select style={bTop} value={calidad} onChange={e => setCalidad(e.target.value)} title="Si va lento, baja la calidad"><option value="baja">Calidad baja</option><option value="media">Calidad media</option><option value="alta">Calidad alta</option></select>
-        {menuTop2('Salida', 'salida', [
+        <span style={{ flex: 1 }} />
+        {menuTop2('Exportar', 'salida', [
           ['Captura de la vista', captura, false, false, 'Guarda la vista actual como imagen'],
           [renderizando ? 'Renderizando…' : 'Render HD', async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.jpg'; el.click(); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }, false, renderizando || estado !== 'listo', 'Render HD limpio con sombras suaves'],
           ['⚡ Render rápido con IA (1 clic)', renderRapido, false, estado !== 'listo' || ia?.estado === 'trabajando', 'Estilo revista, fiel al modelo y con la iluminación del proyecto: lo que ves ahora, convertido en foto, sin formularios'],
@@ -7145,6 +7171,11 @@ export default function Visor3D({ cliente = false }) {
       {camAbierta && camInfo && (
         <div style={{ position: 'absolute', top: 56, left: railW + 6, width: 300, background: 'rgba(24,24,24,0.96)', color: '#fff', borderRadius: 10, padding: '10px 14px', fontSize: 13, zIndex: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
           <div style={{ fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center' }}><span style={{ flex: 1 }}>🎥 Cámara</span><span onClick={() => setCamAbierta(false)} style={{ cursor: 'pointer', opacity: 0.6 }}>✕</span></div>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#fff', fontSize: 12, flex: 'none', whiteSpace: 'nowrap' }} title="Óptica de la cámara: menos grados = más zoom; más grados = gran angular. Una persona ve nítido unos 30°">
+          <Ic n="cinta" /> <input type="range" min="12" max="110" value={lente} onChange={e => ponerLente(parseFloat(e.target.value))} style={{ width: 70 }} /> <input type="number" min="12" max="110" step="1" value={lente} onChange={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) ponerLente(v); }} style={{ ...bTop, width: 48, padding: '2px 4px' }} title="Escribe los grados de la óptica" />°
+          <span onClick={() => { try { localStorage.setItem('visor3dLenteDef', String(lente)); } catch { /* sin almacenamiento */ } setAviso('Óptica predeterminada: ' + lente + '° (se usará al abrir y al encuadrar)'); }} style={{ cursor: 'pointer', padding: '0 3px' }} title="Dejar esta óptica como la predeterminada">★</span>
+          <select value="" onChange={e => { if (e.target.value) ponerLente(parseFloat(e.target.value)); }} style={{ ...bTop, width: 92 }}><option value="">Óptica…</option><option value="90">Gran angular 90°</option><option value="65">Interior amplio 65°</option><option value="50">Interior natural 50°</option><option value="30">Como persona 30°</option><option value="25">Tele 25°</option></select>
+        </span>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.75 }}>Altura (cm)</span><input type="number" step="5" value={camInfo.alt} onChange={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) camAltura(Math.max(5, v)); }} style={{ ...btn, width: 80 }} /></label>
           <div style={{ display: 'flex', gap: 4, marginBottom: 6, flexWrap: 'wrap' }}>
             {[[160, 'De pie'], [120, 'Sentado'], [90, 'Mesa'], [400, 'Alta'], [900, 'Dron']].map(([v, n]) => <button key={v} style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => camAltura(v)}>{n} {v}</button>)}
@@ -7173,18 +7204,15 @@ export default function Visor3D({ cliente = false }) {
         const modo = modoAmb || (hdriOn ? 'hdri' : 'geo');
         const cambiaModo = k => { setModoAmb(k); setRealista(true); if (k === 'hdri' && hdris.length && !hdriOn) setEntorno('hdri:' + hdris[0].id); else if (k !== 'hdri' && hdriOn) setEntorno('estudio'); };
         return (
-          <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 320, overflowY: 'auto', background: 'rgba(22,20,18,0.97)', color: '#fff', borderRadius: 8, padding: '0 14px 14px', fontSize: 13, zIndex: 8 }}>
-            <div style={{ position: 'sticky', top: 0, background: 'rgb(22,20,18)', padding: '10px 0 0', zIndex: 2 }}>
+          <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 'min(320px, calc(100vw - 74px))', overflowY: 'auto', background: '#1d1d1e', color: '#fff', borderRadius: 8, padding: '0 14px 14px', fontSize: 13, zIndex: 8 }}>
+            <div style={{ position: 'sticky', top: 0, background: 'rgb(29,29,30)', padding: '12px 0 0', zIndex: 2 }}>
               <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
                 <div style={{ display: 'flex', gap: 14, flex: 1 }}>
-                  {[['ambiente', 'Ambiente'], ['efecto', 'Efecto'], ['inspector', 'Inspector'], ['salida', 'Salida']].map(([k, n]) => <span key={k} onClick={() => setPestanaRender(k)} style={{ cursor: 'pointer', fontWeight: pestanaRender === k ? 700 : 400, color: pestanaRender === k ? '#fff' : 'rgba(255,255,255,0.5)', borderBottom: pestanaRender === k ? '2px solid #baafa5' : '2px solid transparent', paddingBottom: 3 }}>{n}</span>)}
+                  {[['ambiente', 'Luz'], ['efecto', 'Imagen'], ['inspector', 'Material'], ['salida', 'Salida']].map(([k, n]) => <span key={k} onClick={() => setPestanaRender(k)} style={{ cursor: 'pointer', fontWeight: pestanaRender === k ? 700 : 400, color: pestanaRender === k ? '#fff' : 'rgba(255,255,255,0.5)', borderBottom: pestanaRender === k ? '2px solid #baafa5' : '2px solid transparent', paddingBottom: 3 }}>{n}</span>)}
                 </div>
                 <button style={{ ...btn, padding: '2px 8px' }} onClick={() => setRenderAbierto(false)}>✕</button>
               </div>
-              <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-                <button style={{ ...btn, flex: 1, padding: '4px 8px', ...(!realista ? { background: '#6b6159' } : {}) }} onClick={() => setRealista(false)} title="Vista rápida">Rápido</button>
-                <button style={{ ...btn, flex: 1, padding: '4px 8px', ...(realista ? { background: '#8c8076' } : {}) }} onClick={() => setRealista(true)} title="Reflejos, sombras de contacto y bordes suaves en tiempo real">✨ Realista</button>
-              </div>
+
             </div>
 
             {pestanaRender === 'ambiente' && <>
@@ -8369,7 +8397,7 @@ export default function Visor3D({ cliente = false }) {
                   {b3dTab === 'mistex' && !lista.length && <p style={{ opacity: 0.6, fontSize: 12 }}>Todavía no has subido ninguna. Elige una o varias imágenes con el botón de arriba.</p>}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
                     {lista.map(t => (
-                      <div key={t.id} onClick={() => usarTexturaB3d(t)} title={t.nombre + ' · ' + t.categoria + (t.tam ? ' · ' + t.tam + ' cm' : '')} style={{ cursor: 'pointer', border: '1px solid #555', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
+                      <div key={t.id} onClick={() => usarTexturaB3d(t)} title={t.nombre + ' · ' + t.categoria + (t.tam ? ' · ' + t.tam + ' cm' : '')} style={{ cursor: 'pointer', outline: matSel?.id === 'b_' + t.id ? '2px solid #e3d5bf' : undefined, border: '1px solid #555', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
                         <img src={t.url} alt={t.nombre} loading="lazy" style={{ width: '100%', height: 56, objectFit: 'cover', display: 'block' }} />
                         <div style={{ fontSize: 10, padding: '1px 3px', background: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.nombre}</div>
                         {t.mia && <span onClick={e => { e.stopPropagation(); setSubiendoTex('Haciendo continua «' + t.nombre + '»…'); api.post('/biblioteca3d/mis-texturas/' + t.id + '/continua', {}, { timeout: 120000 }).then(r => { setB3d(b => ({ ...b, mistex: [r.data.textura, ...(b.mistex || [])] })); setSubiendoTex('Copia continua creada ✓ («' + r.data.textura.nombre + '»)'); }).catch(er => setSubiendoTex(er.response?.data?.error || 'No se pudo hacer continua')); }} title="Crear una copia continua (sin juntas) de esta textura" style={{ position: 'absolute', bottom: 14, right: 1, background: '#000b', borderRadius: 8, padding: '0 5px', fontSize: 10 }}>∞</span>}
