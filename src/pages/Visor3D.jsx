@@ -3888,7 +3888,7 @@ export default function Visor3D({ cliente = false }) {
     a.sol.position.set(a.centro.x + d * Math.cos(az) * Math.cos(elev), a.centro.y + d * Math.sin(elev) + 1, a.centro.z + d * Math.sin(az) * Math.cos(elev));
     a.sol.intensity = (t > 0 && t < 1 ? 2000 * Math.pow(k, 0.7) /* sol suave: con 100000 lux la escena salía quemada y con bordes dentados */ : 0) * (ambiente.solOn === false ? 0 : (ambiente.solI ?? 1));
     if (ambiente.kSol) a.sol.color.copy(kelvinColor(ambiente.kSol)); else a.sol.color.setHSL(0.09, 0.5 * (1 - k) + 0.05, 0.75 + 0.2 * k);
-    if (a.hemi) a.hemi.intensity = 20 + 100 * Math.min(1, k / 0.4); // luz ambiente suave: las caras en sombra se leen, y de noche casi nada
+    if (a.hemi) a.hemi.intensity = 60 + 220 * Math.min(1, k / 0.4); // luz ambiente suave: las caras en sombra se leen, y de noche casi nada
     if (modelando) {
       a.sol.intensity = 1.15;
       a.sol.color.set(0xffffff);
