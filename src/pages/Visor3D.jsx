@@ -2120,9 +2120,10 @@ function techo(s, i, alto) {
   const g = new THREE.ShapeGeometry(new THREE.Shape(innerCm && innerCm.length >= 3 ? innerCm.map(p => new THREE.Vector2(p[0] * CM, p[1] * CM)) : pts));
   g.rotateX(Math.PI / 2);
   const h = ((s.techo && s.techo.h) || alto || 260) * CM;
-  const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: color(s.techo?.c, '#f6f4f1'), roughness: 0.95, side: THREE.FrontSide }));
+  const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: color(s.techo?.c, '#f6f4f1'), roughness: 0.95, side: THREE.FrontSide, shadowSide: THREE.DoubleSide }));
   mesh.position.y = h;
   mesh.receiveShadow = true;
+  mesh.castShadow = true; // el techo tapa el sol: sin esto la luz entraba por el techo y el interior salía quemado
   mesh.userData = { capa: 'techos', techoKey: s.idT || ('s' + i), ptsSala: pts.map(p => [p.x / CM, p.y / CM]), hSala: h / CM };
   if (can && innerCm && innerCm.length >= 3) { mesh.userData.ptsTecho = innerCm; mesh.add(canalTecho(ptsCm, innerCm, can.p, can.luz !== false ? '#ffd9a0' : null)); }
   return mesh;
@@ -3642,13 +3643,21 @@ export default function Visor3D({ cliente = false }) {
     const a = api3d.current; if (!a.raiz) return;
     const aplica = o => {
       const k = o.userData.equipo?.id || o.userData.muroId, oculto = k && (ocultas.includes('id:' + k) || (o.userData.equipo && modosEq[k]?.v3 === 'oculto'));
+      if (o.userData.capa === 'techos' && o.isMesh && o.material && !Array.isArray(o.material)) {
+        // En Render, un techo oculto (vista en corte) no se ve pero sigue tapando el sol; no recibe clics
+        const oc = ocultas.includes('techos'), sombra = oc && !modelando;
+        o.visible = !oc || sombra; o.material.colorWrite = !sombra; o.material.depthWrite = !sombra;
+        o.raycast = sombra ? () => {} : THREE.Mesh.prototype.raycast;
+        o.children.forEach(c => { c.visible = !oc; });
+        return;
+      }
       if (o.userData.capa) o.visible = !ocultas.includes(o.userData.capa) && !oculto; else if (k && o.userData.equipo) o.visible = !oculto;
     };
     a.raiz.traverse(aplica);
     a.esc.children.forEach(g => { if (zonasOnRef.current) return; const ob = objsRef.current.find(x => x.id === g.userData.oid); g.visible = !ocultas.includes('obj:' + (ob?.etiqueta || '')) && !ocultas.includes('id:' + g.userData.oid) && !(ob && ob.tipo === 'zona' && ob.plano === 'techo' && ocultas.includes('techos')); });
     // Los techos que se ocultan solo mientras estás en Planta 2D o Axonométrica no se recuerdan: si cierras la pestaña en ese modo, el siguiente proyecto no se abre sin techo
     try { localStorage.setItem('visor3dOcultas:' + id, JSON.stringify(planta2d?.ocultasAntes ?? axo?.ocultasAntes ?? ocultas)); } catch {}
-  }, [ocultas, rev, objs, estado, modosEq]);
+  }, [ocultas, rev, objs, estado, modosEq, modelando]);
 
   // Luminarias del plano: punto de luz visible y luz real (foco = cono con su ángulo de apertura)
   useEffect(() => {
