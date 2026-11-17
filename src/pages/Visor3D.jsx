@@ -2339,7 +2339,7 @@ export default function Visor3D({ cliente = false }) {
     a.despertar?.();
   }, [entRot, fondoCielo, fondoBrillo, fondoNitidez, cieloTick, modoRender, realista, entorno, estado, hdris]);
   useEffect(() => { try { localStorage.setItem('visor3dEntorno', entorno); } catch { /* sin almacenamiento */ } }, [entorno]);
-  useEffect(() => { const sc = api3d.current.scene; if (sc?.environment) sc.environmentIntensity = modelando ? 0.35 : 0; }, [entInt, realista, entorno, estado, modelando]);
+  useEffect(() => { const sc = api3d.current.scene; if (sc?.environment) sc.environmentIntensity = modelando ? 0.35 : 20; /* reflejo suave en suelos y muebles, como D5 */ }, [entInt, realista, entorno, estado, modelando]);
   const [resRender, setResRender] = useState(() => { try { return parseInt(localStorage.getItem('visor3dRes') || '3200', 10) || 3200; } catch { return 3200; } });
   const [formatoRender, setFormatoRender] = useState('jpg');
   const [sombraSuave, setSombraSuave] = useState(true);
@@ -3889,6 +3889,7 @@ export default function Visor3D({ cliente = false }) {
     a.sol.intensity = (t > 0 && t < 1 ? 2000 * Math.pow(k, 0.7) /* sol suave: con 100000 lux la escena salía quemada y con bordes dentados */ : 0) * (ambiente.solOn === false ? 0 : (ambiente.solI ?? 1));
     if (ambiente.kSol) a.sol.color.copy(kelvinColor(ambiente.kSol)); else a.sol.color.setHSL(0.09, 0.5 * (1 - k) + 0.05, 0.75 + 0.2 * k);
     if (a.hemi) a.hemi.intensity = 60 + 220 * Math.min(1, k / 0.4); // luz ambiente suave: las caras en sombra se leen, y de noche casi nada
+    if (a.hemi) { a.hemi.color.set(modelando ? 0xffffff : 0xfff0dc); a.hemi.groundColor.set(modelando ? 0xcfc8bf : 0xd8b48e); } // luz ambiente cálida: rebote de madera y pintura
     if (modelando) {
       a.sol.intensity = 1.15;
       a.sol.color.set(0xffffff);
