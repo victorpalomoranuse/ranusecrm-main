@@ -577,10 +577,6 @@ function aplicaSerie(mm, marca, serie) {
     return true;
   } catch (e) { console.warn('serie de máquinas', e); return false; }
 }
-export function registraLod(a, mm, prox) {
-  const r = new THREE.Box3().setFromObject(mm).getSize(new THREE.Vector3()).length() / 2;
-  (a.lodList = a.lodList || []).push({ mm, r: r > 0 ? r : 1, prox, peq: false });
-}
 // Un modelo de SketchUp o de un fabricante suele traer cientos de piezas sueltas: cada una es una «llamada de dibujo» y es lo que más frena.
 // Al descargarlo se unen todas las piezas que comparten material en una sola malla (una vez, y se reutiliza en todas las copias).
 // Las partes pintables pasan a ser los materiales del modelo.
@@ -2522,7 +2518,7 @@ export default function Visor3D({ cliente = false }) {
       renderer.setSize(w, h);
       cam.aspect = w / h; cam.updateProjectionMatrix();
     };
-    const vR2 = new THREE.Vector2(); const teclas = new Set(); let ultimoT = performance.now(), ultSombra = 0, ultMov = 0, ultLod = 0, enMov = false, ema = 16, escala = 1, ultGob = performance.now(), sinSombras = false;
+    const vR2 = new THREE.Vector2(); const teclas = new Set(); let ultimoT = performance.now(), ultSombra = 0, ultMov = 0, enMov = false, ema = 16, escala = 1, ultGob = performance.now(), sinSombras = false;
     let gpuNombre = ''; try { const gl = renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); const bruto = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : ''); GL_SOFTWARE = /basic render|swiftshader|llvmpipe|software/i.test(bruto); gpuNombre = bruto.replace(/ANGLE (|)$/g, '').replace(/Direct3D.*|vs_.*|(0x[0-9a-f]+)/gi, '').slice(0, 42); } catch { /* sin datos */ }
     const hud = document.createElement('div'); hud.style.cssText = 'position:absolute;left:8px;bottom:8px;font:11px monospace;color:#fff;background:rgba(0,0,0,0.45);padding:2px 6px;border-radius:4px;pointer-events:auto;cursor:pointer;z-index:5'; hud.title = 'Pulsa para ver qué es lo que más pesa en la escena'; el.appendChild(hud); if (cliente) hud.style.display = 'none';
     const det = document.createElement('div'); det.style.cssText = 'position:absolute;left:8px;bottom:34px;font:11px monospace;color:#fff;background:rgba(0,0,0,0.78);padding:6px 9px;border-radius:6px;z-index:6;white-space:pre;display:none;max-width:90%;cursor:pointer'; el.appendChild(det); det.onclick = () => { det.style.display = 'none'; };
@@ -2559,14 +2555,7 @@ export default function Visor3D({ cliente = false }) {
       // mientras la cámara se mueve se dibuja a menor resolución y al parar vuelve a la normal: el movimiento va fluido aunque haya muchos modelos
       const movi = teclas.size > 0 || !!api3d.current.joy || ahora - ultMov < 180;
       enMov = movi;
-      // simplificación al mover: los modelos que se ven pequeños (lejos) se ocultan o se cambian por su caja hasta que la cámara se para
-      const a0 = api3d.current, L = a0.lodList;
-      if (L && L.length) {
-        if (movi && ema > 33 && ahora - ultLod > 150) {
-          ultLod = ahora; a0.lodList = L.filter(it => it.mm.parent);
-          a0.lodList.forEach(it => { it.mm.getWorldPosition(vM); const peq = it.r * it.mm.parent.getWorldScale(vR).x / Math.max(0.1, cam.position.distanceTo(vM)) < (ema > 60 ? 0.2 : ema > 45 ? 0.14 : 0.09); if (peq !== it.peq) { it.peq = peq; it.mm.visible = !peq; it.prox?.(peq); } });
-        } else if (!movi && L.some(it => it.peq)) L.forEach(it => { if (it.peq) { it.peq = false; it.mm.visible = true; it.prox?.(false); } });
-      }
+      const a0 = api3d.current;
       { const lpz = api3d.current.luzPool; if (lpz && ahora - lpz.t > 250) { lpz.t = ahora; if (lpz.ult.distanceToSquared(cam.position) > 0.25) { lpz.ult.copy(cam.position); lpz.asigna(cam.position); } } }
       if (!movi && ahora - ultSombra > 500) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
       if (espejoSucio && ahora - (a0.ultEsp || 0) > 250) { espejoSucio = false; a0.ultEsp = ahora; aplicaEspejos(scene); }
@@ -2649,7 +2638,7 @@ export default function Visor3D({ cliente = false }) {
     const evsD = ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown', 'keyup', 'contextmenu'];
     evsD.forEach(n => window.addEventListener(n, despertar, { passive: true })); window.addEventListener('visor3d-tex', despertar); window.addEventListener('resize', despertar); ctrl.addEventListener('change', despertar);
 
-    let ultima = null, primera = true;
+    let ultima = null, primera = true, firmaPlano;
     const cargar = () => api.get('/medicion/' + id).then(r => {
       if (!vivo) return;
       const pl = r.data?.plano;
@@ -2657,6 +2646,9 @@ export default function Visor3D({ cliente = false }) {
       ultima = pl?.updated;
       if (cliente && primera && esMovil() && (pl?.escena3d?.renders || []).some(r => r.tipo === '360' && r.tour)) { navigate('/tour/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma), { replace: true }); return; }
       setTitulo(pl?.nombre || 'Plano');
+      const firmaActual = JSON.stringify([pl?.modelo3d, pl?.nodes, pl?.pts]);
+      if (!primera && firmaActual === firmaPlano) return;
+      firmaPlano = firmaActual;
       if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, serie: ac.serie && typeof ac.serie === 'object' ? ac.serie : undefined, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null, antirepSuelos: ac.antirepSuelos === true, modoSuelo: ['moteado', 'aguas', 'liso'].includes(ac.modoSuelo) ? ac.modoSuelo : (ac.antirepSuelos === true ? 'moteado' : '') }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); setTapetas(pl?.escena3d?.tapetas || {}); setHuecosCfg(pl?.escena3d?.huecosCfg || {}); setModosEq(pl?.escena3d?.modelosEq || {}); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
       // el 3D enseña el estado de DISTRIBUCIÓN: lo marcado para demoler (muros, huecos, pilares, máquinas) ya no está
       const sinDem = (p) => ({ ...p, muros: (p.muros || []).filter(w => w.estado !== 'dem').map(w => ({ ...w, ab: (w.ab || []).filter(o => o.estado !== 'dem') })), salas: (p.salas || []).map(s => ({ ...s, pts: quitarPicos(s.pts) })), pilares: (p.pilares || []).filter(x => x.estado !== 'dem'), equipos: (p.equipos || []).filter(x => x.estado !== 'dem'), recrecidos: (p.recrecidos || []).filter(x => x.estado !== 'dem') });
@@ -2716,7 +2708,7 @@ export default function Visor3D({ cliente = false }) {
       primera = false;
     }).catch(() => { if (vivo && primera) setEstado('error'); });
     cargar();
-    api3d.current.recargar = () => { ultima = null; return cargar(); };
+    api3d.current.recargar = () => { ultima = null; firmaPlano = undefined; return cargar(); };
     // El plano se edita en otra pestaña: se mira si ha cambiado cada pocos segundos
     // (antes se descargaba el plano entero cada 6 s; ahora solo su fecha, y el plano entero únicamente si ha cambiado)
     const reloj = cliente ? null : setInterval(() => { if (document.hidden) return; api.get('/medicion/' + id + '/version').then(r => { if (vivo && r.data?.updated !== ultima) cargar(); }).catch(() => {}); }, 8000);
@@ -3900,7 +3892,6 @@ export default function Visor3D({ cliente = false }) {
         if (api3d.current.sinSombrasMaq) mm.traverse(x => { if (x.isMesh) x.castShadow = false; });
         g.add(mm);
         if (g.userData.cuerpo) { g.userData.cuerpo.material.visible = false; g.userData.cuerpo.castShadow = false; }
-        registraLod(a, mm, v => { if (g.userData.cuerpo) g.userData.cuerpo.material.visible = v; });
       }).catch(() => { g.userData.modeloCargado = false; });
     });
     setPesadosN(pesados.size); setPendientesN(pendientes.size);
@@ -4333,7 +4324,7 @@ export default function Visor3D({ cliente = false }) {
           if (o.ocultosPartes?.length) mm.traverse(x => { if (x.isMesh && o.ocultosPartes.includes(x.userData.comp || x.name)) x.visible = false; });
           mm.rotation.y = -rotO * Math.PI / 180;
           mm.position.y = (o.z0 || 0) * CM;
-          g.add(mm); fantasma(0); m.visible = false; registraLod(api3d.current, mm, null);
+          g.add(mm); fantasma(0); m.visible = false;
           aplicarRegiones(mm, 'o:' + o.id + ':', acab.regiones, texturas);
         }).catch(e => { console.warn('modelo 3D no cargado', mod.url, e); setAviso('No se pudo cargar un modelo 3D («' + (o.etiqueta || o.nombre || 'objeto') + '»): ' + String(e?.message || e).slice(0, 120)); fantasma(1); });
       }
