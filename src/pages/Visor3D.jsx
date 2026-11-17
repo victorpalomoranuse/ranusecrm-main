@@ -1,4 +1,5 @@
 import './VisorEstudio.css';
+import { dibujarModelar } from '../components/vistaModelar3d';
 import { impactoVisible } from '../components/seleccion3d';
 import { completarSalas } from '../components/recintos3d';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -256,7 +257,7 @@ const SUELOS_TEC = [
   ...[['blackblue-03', 'Negro + azul'], ['blacklightblue-03', 'Negro + celeste'], ['carbon-black-04', 'Carbón negro + blanco'], ['carbon-blackred-03', 'Carbón negro + rojo'], ['eco-viola-03', 'Eco negro + violeta'], ['darkgrey-03', 'Gris oscuro'], ['eco-grey-03', 'Eco gris'], ['granite-red-03', 'Granito gris + rojo'], ['granite-03', 'Granito gris'], ['brownstone-04', 'Terracota'], ['terra-03', 'Arena'], ['chocolate-3', 'Chocolate']]
     .map(([slug, nombre]) => ({ id: 'pavi-' + slug, nombre: 'Paviflex · ' + nombre, tam: 100, fijo: true, suelo: { antirep: true, junta: false, tono: 0.03 }, url: SB_PUBLICO + 'biblioteca3d/paviflex/' + slug + '.jpg', grupo: 'Paviflex (moteados)' })),
 ];
-let envEsp = null, espejoSucio = false, GL_SOFTWARE = false, hayEspejos = false;
+let envEstudio = null, envEsp = null, espejoSucio = false, GL_SOFTWARE = false, hayEspejos = false;
 // Mapas PBR sueltos (normales, rugosidad, AO): se descargan una vez y cada material usa una copia con el mismo tiling, giro y desplazamiento que su textura base
 const cacheMapas = new Map(); // url → { tex, listo }
 // Los mapas comprimidos KTX2 (Basis) ocupan mucho menos en la memoria de la gráfica. Si no se pueden leer, se usa el JPG equivalente
@@ -288,7 +289,7 @@ function aplicaEspejos(scene, renderActivo) {
       const pb = m.map?.userData?.pbr, mp = m.map?.userData?.mapsUrl, esp = o.userData.espejoDeco || m.map?.userData?.espejo;
       if (esp) {
         if (!m.userData.espOn) { m.userData.espOn = true; m.userData.esp0 = { metalness: m.metalness, roughness: m.roughness, envMapIntensity: m.envMapIntensity }; }
-        hayEspejos = true; m.opacity = 1; m.transparent = false; m.depthWrite = true; if (m.isMeshPhysicalMaterial) m.transmission = 0; m.metalness = 1; m.roughness = 0.04; m.envMap = envEsp; m.envMapIntensity = 1.4; m.bumpMap = null; m.needsUpdate = true;
+        hayEspejos = true; m.opacity = 1; m.transparent = false; m.depthWrite = true; if (m.isMeshPhysicalMaterial) m.transmission = 0; m.metalness = 1; m.roughness = 0.04; m.envMap = renderActivo ? envEsp : envEstudio; m.envMapIntensity = renderActivo ? 1.4 : 0.35; m.bumpMap = null; m.needsUpdate = true;
       } else if (pb || mp) {
         if (!m.userData.espOn) { m.userData.espOn = true; m.userData.esp0 = { metalness: m.metalness, roughness: m.roughness, envMapIntensity: m.envMapIntensity }; }
         const z = m.userData.esp0 || {}, P = pb || {};
@@ -2325,12 +2326,12 @@ export default function Visor3D({ cliente = false }) {
   useEffect(() => {
     try { localStorage.setItem('visor3dTono', tono); } catch { /* sin almacenamiento */ }
     const r = api3d.current.renderer; if (!r) return;
-    r.toneMapping = { aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping, neutral: THREE.NeutralToneMapping, lineal: THREE.LinearToneMapping }[tono] ?? THREE.ACESFilmicToneMapping;
+    r.toneMapping = modelando ? THREE.ACESFilmicToneMapping : { aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping, neutral: THREE.NeutralToneMapping, lineal: THREE.LinearToneMapping }[tono] ?? THREE.ACESFilmicToneMapping;
     api3d.current.scene?.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.needsUpdate = true; }); });
-  }, [tono, estado]);
+  }, [tono, estado, modelando]);
   useEffect(() => { // rotación del entorno y cielo de fondo
     const a = api3d.current; if (!a.scene) return;
-    const g = entRot * Math.PI / 180; a.scene.environmentRotation.set(0, g, 0); a.scene.backgroundRotation.set(0, g, 0);
+    const g = modelando ? 0 : entRot * Math.PI / 180; a.scene.environmentRotation.set(0, g, 0); a.scene.backgroundRotation.set(0, g, 0);
     if (!a.fondoOrig) a.fondoOrig = a.scene.background;
     if (fondoCielo && modoRender && realista && a.hdrTex && a.hdrEntorno === entorno) { a.scene.background = a.hdrTex; a.scene.backgroundBlurriness = fondoNitidez; a.scene.backgroundIntensity = fondoBrillo; }
     else if (a.fondoOrig && !a.alzPrev) { a.scene.background = a.fondoOrig; a.scene.backgroundBlurriness = 0; }
@@ -2604,7 +2605,7 @@ export default function Visor3D({ cliente = false }) {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.shadowMap.autoUpdate = false; // las sombras del sol se recalculan unas 4 veces por segundo, no en cada fotograma: con muchos modelos pesados era lo que más frenaba
     const scene = new THREE.Scene();
-    try { const pm = new THREE.PMREMGenerator(renderer); envEsp = pm.fromScene(new RoomEnvironment(), 0.03).texture; pm.dispose(); } catch { envEsp = null; }
+    try { const pm = new THREE.PMREMGenerator(renderer); envEstudio = pm.fromScene(new RoomEnvironment(), 0.03).texture; envEsp = envEstudio; pm.dispose(); } catch { envEsp = null; }
     {
       const cv = document.createElement('canvas'); cv.width = 2; cv.height = 256;
       const cx = cv.getContext('2d'), gr = cx.createLinearGradient(0, 0, 0, 256);
@@ -2741,7 +2742,9 @@ export default function Visor3D({ cliente = false }) {
       }
       a0.reposo = !!refinar; renderer.info.reset();
 
-      if (a0.composer) {
+      if (!modoRenderRef.current && !cliente) {
+        dibujarModelar(renderer, scene, cam, sol, hemi, envEstudio);
+      } else if (a0.composer) {
         const sz = renderer.getSize(vR2); if (a0.compW !== sz.x || a0.compH !== sz.y || a0.compPr !== renderer.getPixelRatio()) { a0.compW = sz.x; a0.compH = sz.y; a0.compPr = renderer.getPixelRatio(); a0.composer.setPixelRatio(a0.compPr); a0.composer.setSize(sz.x, sz.y); }
         if (a0.contacto) a0.contacto.enabled = !movi || !!a0.pedirFoto;
         a0.composer.render();
@@ -3880,6 +3883,7 @@ export default function Visor3D({ cliente = false }) {
     if (modelando) {
       a.sol.intensity = 1.15;
       a.sol.color.set(0xffffff);
+      a.sol.position.set(a.centro.x + d, a.centro.y + d * 1.5, a.centro.z + d * 0.5);
       if (a.hemi) a.hemi.intensity = 1.15;
     }
     a.renderer.toneMappingExposure = modelando ? 1 : ambiente.exposicion / (1.2 * Math.pow(2, ambiente.ev ?? 7));
@@ -3954,8 +3958,9 @@ export default function Visor3D({ cliente = false }) {
     a.scene.environment = null;
     a.gradeU = null;
     if (modelando) {
-      a.scene.environment = envEsp;
+      a.scene.environment = envEstudio;
       a.scene.environmentIntensity = 0.35;
+      espejoSucio = true; a.despertar?.();
       return;
     }
     if (!realista && !fxActivo) return;
