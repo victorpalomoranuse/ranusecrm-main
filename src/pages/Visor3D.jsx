@@ -3886,7 +3886,7 @@ export default function Visor3D({ cliente = false }) {
     const t = Math.max(0, Math.min(1, (hora - 6) / 15)), elev = Math.max(0.05, Math.sin(Math.PI * t)) * (65 * Math.PI / 180), az = Math.PI * (1 - t) + entRot * Math.PI / 180, k = Math.sin(Math.PI * t);
     const d = (a.R || 8) * 3;
     a.sol.position.set(a.centro.x + d * Math.cos(az) * Math.cos(elev), a.centro.y + d * Math.sin(elev) + 1, a.centro.z + d * Math.sin(az) * Math.cos(elev));
-    a.sol.intensity = (t > 0 && t < 1 ? 100000 * Math.pow(k, 0.7) : 0) * (ambiente.solOn === false ? 0 : (ambiente.solI ?? 1));
+    a.sol.intensity = (t > 0 && t < 1 ? 2000 * Math.pow(k, 0.7) /* sol suave: con 100000 lux la escena salía quemada y con bordes dentados */ : 0) * (ambiente.solOn === false ? 0 : (ambiente.solI ?? 1));
     if (ambiente.kSol) a.sol.color.copy(kelvinColor(ambiente.kSol)); else a.sol.color.setHSL(0.09, 0.5 * (1 - k) + 0.05, 0.75 + 0.2 * k);
     if (a.hemi) a.hemi.intensity = 0;
     if (modelando) {
