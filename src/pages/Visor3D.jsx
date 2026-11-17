@@ -26,6 +26,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { FXAAPass } from 'three/examples/jsm/postprocessing/FXAAPass.js';
 import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
@@ -258,13 +259,14 @@ function texMapa(url, alt) {
 }
 const COPIA_MAT = ['name', 'color', 'map', 'roughness', 'metalness', 'side', 'transparent', 'opacity', 'emissive', 'emissiveIntensity', 'flatShading', 'vertexColors', 'polygonOffset', 'polygonOffsetFactor', 'polygonOffsetUnits', 'depthWrite', 'alphaTest', 'bumpMap', 'bumpScale'];
 // Recorre la escena y aplica a cada material las propiedades PBR de su textura: rugosidad, metal, relieve, mapas, reflejos del entorno, clearcoat y emisión; los espejos se hacen reflectantes
-function aplicaEspejos(scene) {
+function aplicaEspejos(scene, renderActivo) {
   scene.traverse(o => {
     if (!o.isMesh || !o.material) return;
     const arr = Array.isArray(o.material) ? o.material : null;
     (arr || [o.material]).forEach((m0, i) => {
       let m = m0;
       if (m.metalness === undefined) return;
+      if (m.userData.ledColor) m.emissiveIntensity = renderActivo ? 3 : 0;
       const pb = m.map?.userData?.pbr, mp = m.map?.userData?.mapsUrl, esp = o.userData.espejoDeco || m.map?.userData?.espejo;
       if (esp) {
         if (!m.userData.espOn) { m.userData.espOn = true; m.userData.esp0 = { metalness: m.metalness, roughness: m.roughness, envMapIntensity: m.envMapIntensity }; }
@@ -304,7 +306,7 @@ function aplicaEspejos(scene) {
             m.customProgramCacheKey = () => 'ajcolor2';
           }
         }
-        if (P.emis > 0 && P.emisHex) { m.emissive.set(P.emisHex); m.emissiveIntensity = P.emis; m.userData.emisPbr = true; }
+        if (P.emis > 0) { m.emissive.set(P.emisHex || P.tinte || 0xffffff); m.emissiveIntensity = renderActivo ? P.emis * 3 : 0; m.userData.emisPbr = true; }
         else if (m.userData.emisPbr) { m.emissive.setHex(0x000000); m.emissiveIntensity = 1; m.userData.emisPbr = false; }
         // mapas PBR: se vuelven a crear solo si cambia el tiling, el giro o los archivos
         const B = m.map, alt = B.userData.mapsAlt || {}, clave = JSON.stringify(mp || {}) + '|' + B.repeat.x + ',' + B.repeat.y + '|' + B.rotation + '|' + B.offset.x + ',' + B.offset.y;
@@ -413,8 +415,8 @@ function pintar(mesh, valor, texturas, uvEnCm, repBox, modoSuelo) {
   }
   espejoSucio = true;
   if (mesh.material.emissive && !Array.isArray(mesh.material)) {
-    if (esLed(valor)) { mesh.material.emissive.set(valor.slice(0, 7)); mesh.material.emissiveIntensity = 1.8; u.ledAplicado = true; }
-    else if (u.ledAplicado) { mesh.material.emissive.setHex(0x000000); mesh.material.emissiveIntensity = 1; u.ledAplicado = false; }
+    if (esLed(valor)) { mesh.material.emissive.set(valor.slice(0, 7)); mesh.material.emissiveIntensity = 1.8; mesh.material.userData.ledColor = true; u.ledAplicado = true; }
+    else if (u.ledAplicado) { mesh.material.emissive.setHex(0x000000); mesh.material.emissiveIntensity = 1; delete mesh.material.userData.ledColor; u.ledAplicado = false; }
   }
   mesh.material.needsUpdate = true;
 }
@@ -1115,7 +1117,7 @@ function ajustarModelo(raw, w, d, h, modo) {
 const sel2 = (id, sel) => id === sel;
 // Materiales emisivos (LED): un color acabado en «!» brilla por sí mismo
 const esLed = v => /^#[0-9a-fA-F]{6}!$/.test(v || '');
-const ledEm = (m, v) => { if (esLed(v)) { m.emissive.set(v.slice(0, 7)); m.emissiveIntensity = 1.8; } };
+const ledEm = (m, v) => { if (esLed(v)) { m.emissive.set(v.slice(0, 7)); m.userData.ledColor = true; m.emissiveIntensity = 1.8; espejoSucio = true; } };
 // Color de un cuerpo negro a la temperatura K (aproximación habitual), para luces y LED. KGLOBAL.luces = temperatura única para todas las luces artificiales
 const KGLOBAL = { luces: null };
 function kelvinColor(K) {
@@ -2257,7 +2259,7 @@ export default function Visor3D({ cliente = false }) {
   const fxActivo = fx.contraste !== 1 || fx.saturacion !== 1 || fx.calidez !== 0 || fx.vineta > 0 || fx.exp !== 0 || fx.realce !== 0 || fx.sombra !== 0 || fx.bb !== 6500 || fx.tinte !== 0;
   useEffect(() => { try { localStorage.setItem('visor3dFx', JSON.stringify(fx)); localStorage.setItem('visor3dRes', String(resRender)); } catch { /* sin almacenamiento */ } }, [fx, resRender]);
   useEffect(() => {
-    const a = api3d.current; if (a.gradeU) { const u = a.gradeU; u.contraste.value = fx.contraste; u.saturacion.value = fx.saturacion; u.calidez.value = fx.calidez; u.vineta.value = fx.vineta; u.exposure.value = fx.exp; u.highlights.value = fx.realce; u.shadows.value = fx.sombra; u.wb.value = wbVec(fx.bb, fx.tinte); }
+    const a = api3d.current; if (a.bloom) a.bloom.strength = 0.22 + (fx.bloom || 0); if (a.gradeU) { const u = a.gradeU; u.contraste.value = fx.contraste; u.saturacion.value = fx.saturacion; u.calidez.value = fx.calidez; u.vineta.value = fx.vineta; u.exposure.value = fx.exp; u.highlights.value = fx.realce; u.shadows.value = fx.sombra; u.wb.value = wbVec(fx.bb, fx.tinte); }
   }, [fx, realista, estado]);
   // Óptica: ángulo de visión vertical de la cámara (como el objetivo de una cámara). Menos grados = más zoom y menos deformación; más grados = gran angular
   const [lente, setLente] = useState(() => lenteGuardada());
@@ -2591,7 +2593,7 @@ export default function Visor3D({ cliente = false }) {
       const a0 = api3d.current;
       { const lpz = api3d.current.luzPool; if (lpz && ahora - lpz.t > 250) { lpz.t = ahora; if (lpz.ult.distanceToSquared(cam.position) > 0.25) { lpz.ult.copy(cam.position); lpz.asigna(cam.position); } } }
       if (!movi && ahora - ultSombra > 500) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
-      if (espejoSucio && ahora - (a0.ultEsp || 0) > 250) { espejoSucio = false; a0.ultEsp = ahora; aplicaEspejos(scene); }
+      if (espejoSucio && ahora - (a0.ultEsp || 0) > 250) { espejoSucio = false; a0.ultEsp = ahora; aplicaEspejos(scene, modoRenderRef.current || cliente); }
       if (ctrl.update()) { a0.despierta = ahora + 400; }
       const quieta = !(movi || ahora < (a0.despierta || 0));
       const refinar = quieta && modoRenderRef.current && a0.composer && !a0.reposo && !GL_SOFTWARE;
@@ -2617,7 +2619,7 @@ export default function Visor3D({ cliente = false }) {
               const anterior = a0.reflejoRT;
               a0.reflejoRT = nuevo;
               envEsp = nuevo.texture;
-              aplicaEspejos(scene);
+              aplicaEspejos(scene, modoRenderRef.current || cliente);
               anterior?.dispose();
               a0.despierta = ahora + 400;
             } catch {
@@ -3816,6 +3818,11 @@ export default function Visor3D({ cliente = false }) {
         comp.addPass(contacto);
         a.contacto = contacto;
       }
+      if (modoRender && !GL_SOFTWARE && calidad !== 'baja') {
+        // Extrae las altas luces antes de comprimir el rango de color para la pantalla.
+        a.bloom = new UnrealBloomPass(sz, 0.22 + (fx.bloom || 0), 0.35, 1.1);
+        comp.addPass(a.bloom);
+      }
       comp.addPass(new OutputPass());
       // corrección de color final: contraste, saturación, calidez y viñeta
       const U = { contraste: { value: fx.contraste }, saturacion: { value: fx.saturacion }, calidez: { value: fx.calidez }, vineta: { value: fx.vineta }, exposure: { value: fx.exp }, highlights: { value: fx.realce }, shadows: { value: fx.sombra }, wb: { value: wbVec(fx.bb, fx.tinte) } };
@@ -3827,7 +3834,7 @@ export default function Visor3D({ cliente = false }) {
       return () => {
         comp.passes.forEach(pass => pass.dispose());
         comp.dispose();
-        a.composer = null;
+        a.bloom = null; a.composer = null;
         a.contacto = null;
       };
     } catch (e) { console.warn('modo realista', e); setRealista(false); }
@@ -6271,7 +6278,7 @@ export default function Visor3D({ cliente = false }) {
       cacheTex.forEach(x => { if (x?.userData?.texId === tid) x.userData.pbr = pbr; });
       const sc = api3d.current.scene; if (!sc) return;
       sc.traverse(o => { if (!o.isMesh) return; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (m?.map?.userData?.texId === tid) m.map.userData.pbr = pbr; }); });
-      aplicaEspejos(sc); api3d.current.despertar?.();
+      aplicaEspejos(sc, modoRender || cliente); api3d.current.despertar?.();
     } catch { /* si algo falla, el repintado normal lo aplica igualmente */ }
   };
   // tamaño, giro y desplazamiento de la textura: se cambian en las texturas que ya están puestas (y en sus mapas de normales, rugosidad y AO), sin repintar la escena entera
