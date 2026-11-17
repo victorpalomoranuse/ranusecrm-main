@@ -280,7 +280,7 @@ function aplicaEspejos(scene, renderActivo) {
       const pb = m.map?.userData?.pbr, mp = m.map?.userData?.mapsUrl, esp = o.userData.espejoDeco || m.map?.userData?.espejo;
       if (esp) {
         if (!m.userData.espOn) { m.userData.espOn = true; m.userData.esp0 = { metalness: m.metalness, roughness: m.roughness, envMapIntensity: m.envMapIntensity }; }
-        hayEspejos = true; m.metalness = 1; m.roughness = 0.04; m.envMap = envEsp; m.envMapIntensity = 1.4; m.bumpMap = null; m.needsUpdate = true;
+        hayEspejos = true; m.opacity = 1; m.transparent = false; m.depthWrite = true; if (m.isMeshPhysicalMaterial) m.transmission = 0; m.metalness = 1; m.roughness = 0.04; m.envMap = envEsp; m.envMapIntensity = 1.4; m.bumpMap = null; m.needsUpdate = true;
       } else if (pb || mp) {
         if (!m.userData.espOn) { m.userData.espOn = true; m.userData.esp0 = { metalness: m.metalness, roughness: m.roughness, envMapIntensity: m.envMapIntensity }; }
         const z = m.userData.esp0 || {}, P = pb || {};
@@ -506,7 +506,7 @@ function claveRegion(hit) {
   const u = x.userData;
   if (u.muroId) return 'm:' + u.muroId + ':i0';
   let ge = x; while (ge && !ge.userData.equipo) ge = ge.parent;
-  if (ge) return null; // las máquinas se colorean desde «Serie»
+  if (ge) { const parte = nombreParte(ge, x); return parte == null ? null : 'e:' + ge.userData.equipo.id + ':' + parte; }
   if (u.salaKey || u.techoKey || u.pilarId || u.hueco || ge) return null;
   let g = x; while (g && !g.userData.oid) g = g.parent;
   if (!g || g.userData.tipoObj === 'zona') return null;
@@ -1520,7 +1520,7 @@ const DOOR_TIPS = ['Abatible', 'Doble hoja', 'Corredera', 'Corredera 2 hojas', '
 const WIN_TIPS = ['Practicable', 'Doble hoja', 'Oscilobatiente', 'Corredera', 'Fija'];
 const VIDRIOS = ['Vidrio templado', 'Vidrio satinado', 'Vidrio ahumado', 'Vidrio azulado', 'Vidrio espejo'];
 const DOOR_MATS = ['Madera maciza', ...VIDRIOS, 'Chapa lacada', 'Panel sándwich', 'Lama de aluminio'];
-export function construirHoja(o, mu, cfg, valHoja, texturas) {
+export function construirHoja(o, mu, cfg, valHoja, texturas, valCristal) {
   const g = new THREE.Group(), esPuerta = (o.tipo || o.t) === 'door', tip = String(o.tip || (esPuerta ? 'Abatible' : 'Practicable')).toLowerCase(), mat = String(o.mat || '');
   const t = (mu.t || 12) * CM, fr = 0.05, x0 = o.p * CM, x1 = (o.p + o.w) * CM, y0 = (o.sill || 0) * CM, y1 = y0 + o.h * CM;
   const ix0 = x0 + fr, ix1 = x1 - fr, iy0 = esPuerta ? y0 : y0 + fr, iy1 = y1 - fr, iw = ix1 - ix0, ih = iy1 - iy0, cx = (ix0 + ix1) / 2, cy = (iy0 + iy1) / 2;
@@ -1535,6 +1535,7 @@ export function construirHoja(o, mu, cfg, valHoja, texturas) {
     : /azul/.test(tv) ? { color: 0x6fb2dc, roughness: 0.04, opacity: 0.4, metalness: 0.1 }
     : { color: 0xaed4ea, roughness: 0.04, opacity: 0.32, metalness: 0.1 };
   const vidM = new THREE.MeshPhysicalMaterial({ ...vp, transparent: true, side: THREE.DoubleSide, depthWrite: false, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.6, specularIntensity: 1 });
+  if (valCristal) { vidM.transparent = false; vidM.opacity = 1; vidM.depthWrite = true; aplicarValorMat(vidM, valCristal, texturas, o); }
   const manM = new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.3, metalness: 0.8 });
   // herraje de la manilla en el color elegido: inox, negro, latón, blanco o cobre (metal pulido o satinado: se ve bien también sin entorno)
   const HERRAJES = { inox: [0xe0e2e4, 0.3, 0.45], negro: [0x1a1a1c, 0.45, 0.35], laton: [0xd6b25a, 0.32, 0.5], blanco: [0xf3f3f1, 0.45, 0.1], cobre: [0xcd8658, 0.34, 0.5] };
@@ -3123,7 +3124,7 @@ export default function Visor3D({ cliente = false }) {
       const mat = matSelRef.current; if (!mat) return;
       const valor = mat.conMapa ? 'tinte:' + (mat.tinte || '#ffffff') : (mat.hex || ('tex:' + mat.id));
       const u = hit.object.userData;
-      { let ge0 = hit.object; while (ge0 && !ge0.userData.equipo) ge0 = ge0.parent; if (ge0 && ge0.userData.capa === 'equipos') { setAviso('Para colorear las máquinas, abre Vista → Acabados de las máquinas.'); return; } }
+
       {
         const clave = (modoPincelRef.current === 'cara' || modoPincelRef.current === 'pieza') && !todos ? claveRegion(hit) : null;
         if (clave && (modoPincelRef.current === 'cara' || clave.startsWith('e:'))) {
@@ -3136,7 +3137,7 @@ export default function Visor3D({ cliente = false }) {
       else if (u.salaKey) setAcab(a => (todos ? { ...a, salas: {}, todosSuelos: valor } : { ...a, salas: { ...a.salas, [u.salaKey]: valor } }));
       else if (u.techoKey) setAcab(a => (todos ? { ...a, techos: {}, todosTechos: valor } : { ...a, techos: { ...a.techos, [u.techoKey]: valor } }));
       else if (u.pilarId) setAcab(a => (todos ? { ...a, pilares: {}, todosPilares: valor } : { ...a, pilares: { ...(a.pilares || {}), [u.pilarId]: valor } }));
-      else if (u.hueco && (u.zona === 'marco' || u.zona === 'hoja' || u.zona === 'tapeta')) { const k = u.hueco.id || (u.hueco.muroId + ':' + u.hueco.p); setAcab(a => ({ ...a, huecos: { ...(a.huecos || {}), [k]: { ...((a.huecos || {})[k] || {}), [u.zona]: valor } } })); }
+      else if (u.hueco && (u.zona === 'marco' || u.zona === 'hoja' || u.zona === 'tapeta' || u.zona === 'cristal')) { const k = u.hueco.id || (u.hueco.muroId + ':' + u.hueco.p); setAcab(a => ({ ...a, huecos: { ...(a.huecos || {}), [k]: { ...((a.huecos || {})[k] || {}), [u.zona]: valor } } })); }
       else if (u.equipo || (() => { let q = hit.object; while (q && !q.userData.equipo) q = q.parent; return !!q; })()) { let q = hit.object; while (q && !q.userData.equipo) q = q.parent; const eid = q.userData.equipo.id; setAcab(a => ({ ...a, equipos: { ...(a.equipos || {}), [eid]: valor } })); }
       else if ((() => { let q = hit.object; while (q && q.userData.capa !== 'rodapie') q = q.parent; return !!q; })()) setRodapie(r => ({ ...r, color: valor }));
       else {
@@ -3162,7 +3163,7 @@ export default function Visor3D({ cliente = false }) {
       else if (u.salaKey) valor = ac.salas?.[u.salaKey] || ac.todosSuelos;
       else if (u.techoKey) valor = ac.techos?.[u.techoKey] || ac.todosTechos;
       else if (u.pilarId) valor = ac.pilares?.[u.pilarId] || ac.todosPilares;
-      else if (u.hueco) { const hh = u.hueco; valor = ac.huecos?.[hh.id || (hh.muroId + ':' + hh.p)]?.[u.zona === 'hoja' ? 'hoja' : u.zona === 'tapeta' ? 'tapeta' : 'marco']; }
+      else if (u.hueco) { const hh = u.hueco; valor = ac.huecos?.[hh.id || (hh.muroId + ':' + hh.p)]?.[u.zona === 'cristal' ? 'cristal' : u.zona === 'hoja' ? 'hoja' : u.zona === 'tapeta' ? 'tapeta' : 'marco']; }
       else {
         let eq = hit.object; while (eq && !eq.userData.equipo) eq = eq.parent;
         if (eq) valor = hit.object === eq.userData.cuerpo ? ac.equipos?.[eq.userData.equipo.id] : null; // en las piezas del modelo se coge el material de esa pieza
@@ -4136,8 +4137,10 @@ export default function Visor3D({ cliente = false }) {
     const reg = acab.regiones || {};
     a.raiz.traverse(x => {
       if (x.isMesh && x.userData.muroId && !x.userData.overlay) a.overlaysRaiz.push(...aplicarRegiones(x, 'm:' + x.userData.muroId + ':', reg, texturas));
+      if (x.userData.equipo) a.overlaysRaiz.push(...aplicarRegiones(x, 'e:' + x.userData.equipo.id + ':', reg, texturas));
     });
-  }, [acab.regiones, rev, estado, texturas]);
+    a.despertar?.();
+  }, [acab.regiones, rev, estado, texturas, mtick]);
 
   // Hojas de puertas y cristales de ventanas según su tipo, con la apertura elegida
   useEffect(() => {
@@ -4148,7 +4151,7 @@ export default function Visor3D({ cliente = false }) {
     (modelo.plantas || [modelo]).forEach((pl, ipH) => (pl.muros || []).forEach(mu => (mu.ab || []).forEach(o => {
       const key = o.id || (mu.id + ':' + o.p), holder = new THREE.Group(), [oxH, oyH] = (a.offsPl || [])[ipH] || [0, 0];
       holder.position.set((mu.a[0] + oxH) * CM, (pl.z || 0) * CM, (mu.a[1] + oyH) * CM); holder.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]);
-      holder.add(construirHoja(o, mu, huecosCfg[key] || {}, acab.huecos?.[key]?.hoja, texturas)); holder.userData.ip = ipH; holder.visible = !ocultas.includes('planta:' + ipH); g.add(holder);
+      holder.add(construirHoja(o, mu, huecosCfg[key] || {}, acab.huecos?.[key]?.hoja, texturas, acab.huecos?.[key]?.cristal)); holder.userData.ip = ipH; holder.visible = !ocultas.includes('planta:' + ipH); g.add(holder);
     })));
     a.raiz.add(g); a.hojaG = g;
   }, [huecosCfg, rev, estado, acab.huecos, texturas]);
@@ -9547,7 +9550,7 @@ export default function Visor3D({ cliente = false }) {
               }} style={{ ...btn, width: 90 }} />
             </label>
           ))}
-          
+
           <button style={{ ...btn, background: '#6b6159', marginTop: 6 }} onClick={aplicarEquipo}>Aplicar al plano</button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6, fontSize: 12 }}>
             <span style={{ flex: 1, opacity: 0.75 }}>Subir / bajar</span>
