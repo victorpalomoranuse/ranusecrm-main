@@ -148,6 +148,16 @@ const ESPEJOS = [
   { id: 'espejo', nombre: 'Espejo', hex: '#e9f0f4' }, { id: 'espejo-bronce', nombre: 'Espejo bronce', hex: '#b08d6a' },
   { id: 'espejo-ahumado', nombre: 'Espejo ahumado', hex: '#4a5258' }, { id: 'cromo', nombre: 'Cromo', hex: '#ffffff' },
 ].map(e => ({ id: e.id, nombre: e.nombre, tam: 100, espejo: e.hex, fijo: true, url: (() => { try { const cv = document.createElement('canvas'); cv.width = 96; cv.height = 56; const cx = cv.getContext('2d'), g = cx.createLinearGradient(0, 0, 96, 56); g.addColorStop(0, '#fff'); g.addColorStop(0.45, e.hex); g.addColorStop(0.55, '#fff'); g.addColorStop(1, e.hex); cx.fillStyle = g; cx.fillRect(0, 0, 96, 56); return cv.toDataURL(); } catch { return ''; } })() }));
+const CRISTALES = [
+  { id: 'cristal-transparente', nombre: 'Cristal transparente', tono: '#e8f1f3', opac: 0.16, rough: 0.04 },
+  { id: 'cristal-ahumado', nombre: 'Cristal ahumado', tono: '#515b61', opac: 0.45, rough: 0.08 },
+  { id: 'cristal-satinado', nombre: 'Cristal satinado', tono: '#dbe3e5', opac: 0.7, rough: 0.65 },
+].map(t => {
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 4;
+  const context = canvas.getContext('2d'); context.fillStyle = '#ffffff'; context.fillRect(0, 0, 4, 4);
+  return { id: t.id, nombre: t.nombre, fijo: true, tam: 100, url: canvas.toDataURL(),
+    pbr: { tinte: t.tono, opac: t.opac, rough: t.rough, metal: 0, clearcoat: 1 } };
+});
 // ── Suelos técnicos de gimnasio ──────────────────────────────────────────────
 // Losetas lisas de 1×1 m (negra, gris, camel) con junta fina y un tono algo distinto en cada una, y suelos Paviflex hechos con tu foto
 // pero SIN repetirse: cada metro cuadrado coge un trozo distinto de la foto (girado y volteado), así no se ve el mismo dibujo una y otra vez.
@@ -2304,7 +2314,7 @@ export default function Visor3D({ cliente = false }) {
   const fxActivo = fx.contraste !== 1 || fx.saturacion !== 1 || fx.calidez !== 0 || fx.vineta > 0 || fx.exp !== 0 || fx.realce !== 0 || fx.sombra !== 0 || fx.bb !== 6500 || fx.tinte !== 0;
   useEffect(() => { try { localStorage.setItem('visor3dFx', JSON.stringify(fx)); localStorage.setItem('visor3dRes', String(resRender)); } catch { /* sin almacenamiento */ } }, [fx, resRender]);
   useEffect(() => {
-    const a = api3d.current; if (a.bloom) a.bloom.strength = 0.22 + (fx.bloom || 0); if (a.gradeU) { const u = a.gradeU; u.contraste.value = fx.contraste; u.saturacion.value = fx.saturacion; u.calidez.value = fx.calidez; u.vineta.value = fx.vineta; u.exposure.value = fx.exp; u.highlights.value = fx.realce; u.shadows.value = fx.sombra; u.wb.value = wbVec(fx.bb, fx.tinte); }
+    const a = api3d.current; if (a.bloom) a.bloom.strength = 0.06 + Math.min(1, Math.max(0, fx.bloom || 0)) * 0.15; if (a.gradeU) { const u = a.gradeU; u.contraste.value = fx.contraste; u.saturacion.value = fx.saturacion; u.calidez.value = fx.calidez; u.vineta.value = fx.vineta; u.exposure.value = fx.exp; u.highlights.value = fx.realce; u.shadows.value = fx.sombra; u.wb.value = wbVec(fx.bb, fx.tinte); }
   }, [fx, realista, estado]);
   // Óptica: ángulo de visión vertical de la cámara (como el objetivo de una cámara). Menos grados = más zoom y menos deformación; más grados = gran angular
   const [lente, setLente] = useState(() => lenteGuardada());
@@ -2332,7 +2342,7 @@ export default function Visor3D({ cliente = false }) {
   const cargadaEscena = useRef(false);
   const [acab, setAcab] = useState({ muros: {}, salas: {}, techos: {}, equipos: {}, pilares: {}, huecos: {}, regiones: {}, todosMuros: null, todosSuelos: null, todosTechos: null, todosPilares: null });
   const [texturasBase, setTexturas] = useState([]);
-  const texturas = useMemo(() => [...ESPEJOS, ...SUELOS_TEC, ...texturasBase], [texturasBase]);
+  const texturas = useMemo(() => [...ESPEJOS, ...CRISTALES, ...SUELOS_TEC, ...texturasBase], [texturasBase]);
   const texturasRef = useRef([]); texturasRef.current = texturasBase;
   const [mtTab, setMtTab] = useState('color'), [mtLock, setMtLock] = useState(true), [mtAvz, setMtAvz] = useState(false);
   const [b3dAbierta, setB3dAbierta] = useState(false);
@@ -3208,7 +3218,7 @@ export default function Visor3D({ cliente = false }) {
         previa = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x2f6fa8, transparent: true, opacity: 0.45 }));
         scene.add(previa); e.stopPropagation(); return;
       }
-      if (modoRenderRef.current) return; // modo render: el modelo no se arrastra
+      if (modoRenderRef.current && !objsRef.current.some(o => o.id === selObjRef.current && o.tipo === 'led')) return;
       {
         const vg = api3d.current.vertG, ob0 = objsRef.current.find(x => x.id === selObjRef.current);
         if (vg && ob0 && Array.isArray(ob0.pts)) {
@@ -3250,7 +3260,7 @@ export default function Visor3D({ cliente = false }) {
       }
       const o = objetoBajo(e);
       if (!o) return;
-      const ob = objsRef.current.find(x => x.id === o.userData.oid); if (!ob) return;
+      const ob = objsRef.current.find(x => x.id === o.userData.oid); if (!ob || (modoRenderRef.current && ob.tipo !== 'led')) return;
       const miembros = x => (x.grupo ? objsRef.current.filter(y => y.grupo === x.grupo).map(y => y.id) : [x.id]);
       const actuales = [selObjRef.current, ...selExtraRef.current].filter(Boolean);
       setSelAcab(null);
@@ -3838,6 +3848,7 @@ export default function Visor3D({ cliente = false }) {
       if (a.hemi) a.hemi.intensity = 1.15;
     }
     a.renderer.toneMappingExposure = modelando ? 1 : ambiente.exposicion / (1.2 * Math.pow(2, ambiente.ev ?? 7));
+    if (a.bloom) a.bloom.threshold = 2 / Math.max(0.0001, a.renderer.toneMappingExposure);
     try { localStorage.setItem('visor3dAmb', JSON.stringify({ exposicion: ambiente.exposicion, ev: ambiente.ev ?? 7, luces: ambiente.luces, kLuces: ambiente.kLuces ?? null, kSol: ambiente.kSol ?? null, solI: ambiente.solI ?? 1, solOn: ambiente.solOn !== false })); } catch { /* sin almacenamiento */ }
   }, [hora, entRot, ambiente.ev, ambiente.exposicion, ambiente.luces, ambiente.kSol, ambiente.solI, ambiente.solOn, realista, modelando, estado, rev]);
 
@@ -3951,7 +3962,7 @@ export default function Visor3D({ cliente = false }) {
       }
       if (modoRender && !GL_SOFTWARE && calidad !== 'baja') {
         // Extrae las altas luces antes de comprimir el rango de color para la pantalla.
-        a.bloom = new UnrealBloomPass(sz, 0.22 + (fx.bloom || 0), 0.35, 1.1);
+        a.bloom = new UnrealBloomPass(sz, 0.06 + Math.min(1, Math.max(0, fx.bloom || 0)) * 0.15, 0.1, 2 / Math.max(0.0001, a.renderer.toneMappingExposure));
         comp.addPass(a.bloom);
       }
       comp.addPass(new OutputPass());
@@ -4301,6 +4312,10 @@ export default function Visor3D({ cliente = false }) {
         ledEm(mt, val);
         const geo = new THREE.ShapeGeometry(new THREE.Shape(o.pts.map(p => new THREE.Vector2(p[0] * CM, p[1] * CM))));
         const mesh = new THREE.Mesh(geo, mt); mesh.receiveShadow = true;
+        if (tx && o.plano !== 'pared' && o.plano !== 'techo') {
+          mt.roughness = 0.85;
+          pintar(mesh, val, texturas, false, undefined, acab.modoSuelo || (acab.antirepSuelos ? 'moteado' : ''));
+        }
         if (o.plano === 'pared') {
           const mu = todosMuros.find(m => m.id === o.muroId); if (!mu) return;
           const pm = plantaDelMuro(mu.id), holder = new THREE.Group(); holder.position.set((mu.a[0] + pm.ox) * CM, pm.z, (mu.a[1] + pm.oy) * CM); holder.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]);
@@ -4334,7 +4349,7 @@ export default function Visor3D({ cliente = false }) {
       }
       if (o.tipo === 'led' && Array.isArray(o.pts) && o.pts.length >= 2) {
         const gl = construirLed(o, presup, ambiente.luces, selIdsRef.current.has(o.id), mostrarLuz);
-        gl.position.set(o.cx * CM, 0, o.cy * CM); gl.userData.oid = o.id; gl.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
+        gl.position.set(o.cx * CM, 0, o.cy * CM); gl.rotation.y = -(o.rot || 0) * Math.PI / 180; gl.userData.oid = o.id; gl.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
         a.esc.add(gl);
         return;
       }
@@ -4567,7 +4582,7 @@ export default function Visor3D({ cliente = false }) {
       a.esc.add(g);
     });
     a.esc.children.forEach(gr => aplicarRegiones(gr, 'o:' + gr.userData.oid + ':', acab.regiones, texturas));
-  }, [objs, selObj, selExtraKey, estado, biblioteca, ocultas, texturas, rev, ambiente.luces, ambiente.kLuces, acab.regiones, modoRender, cliente, lucesPl, lucesAj, luzOver]);
+  }, [objs, selObj, selExtraKey, estado, biblioteca, ocultas, texturas, rev, ambiente.luces, ambiente.kLuces, acab.regiones, acab.modoSuelo, acab.antirepSuelos, modoRender, cliente, lucesPl, lucesAj, luzOver]);
   // Lo que pones en una planta (ideas de IA, ventanas, césped, decoración…) se oculta con ella: la planta de un objeto se deduce de su altura y de dónde cae
   useEffect(() => {
     const A = api3d.current; if (!A.esc || !A.modelo) return;
@@ -5030,10 +5045,26 @@ export default function Visor3D({ cliente = false }) {
     setObjs(prev => [...prev, n]); setSelObj(n.id);
   };
   // Tira LED sin ir punto a punto: se pega al contorno de un objeto seleccionado o al perímetro de la sala donde estás mirando
-  const crearTiraLed = (abs, z0, nombre) => {
+  const crearTiraLed = (abs, z0, nombre, cerrado = true) => {
     const xs = abs.map(p => p[0]), ys = abs.map(p => p[1]), cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'led', nombre, etiqueta: 'Iluminación', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 2, z0, pts: abs.map(p => [p[0] - cx, p[1] - cy]), led: { ancho: 1.2, k: 3000, lm: 800, dir: 'abajo', cerrado: true } };
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'led', nombre, etiqueta: 'Iluminación', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 2, z0, pts: abs.map(p => [p[0] - cx, p[1] - cy]), led: { ancho: 1.2, k: 3000, lm: 800, dir: 'abajo', cerrado } };
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setGuardado('Tira LED puesta: en su ficha ajustas altura, temperatura y hacia dónde alumbra');
+  };
+  const insertarTiraLed = () => {
+    const a = api3d.current;
+    if (!a.cam || !a.scene) return;
+    const rayo = new THREE.Raycaster();
+    rayo.setFromCamera(new THREE.Vector2(0, 0), a.cam);
+    const hit = rayo.intersectObjects([...(a.raiz?.children || []), ...(a.esc?.children || [])], true).find(h => {
+      let o = h.object;
+      if (!o.isMesh || o.userData.hit || o.userData.overlay) return false;
+      while (o) { if (!o.visible) return false; o = o.parent; }
+      return true;
+    });
+    const punto = hit ? hit.point.clone().addScaledVector(rayo.ray.direction, -0.02) : rayo.ray.at(2, new THREE.Vector3());
+    const x = punto.x / CM, z = punto.z / CM;
+    crearTiraLed([[x - 50, z], [x + 50, z]], Math.max(0, punto.y / CM), 'Tira LED', false);
+    setHerr('sel'); setLuzSel(null); setRenderAbierto(false); setSelAcab(null);
   };
   const tiraLedContornoSel = () => {
     const o = objs.find(x => x.id === selObj); if (!o) { setAviso('Selecciona primero un objeto (volumen, zona, mueble…) y la tira se pega a su contorno'); return; }
@@ -6283,6 +6314,14 @@ export default function Visor3D({ cliente = false }) {
     return (
       <div style={{ marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}><b style={{ flex: 1 }}>{grupo === 'mat' ? '🎨 Materiales' : '🧰 Componentes'}</b><span onClick={cierraBloque} title="Cerrar" style={{ cursor: 'pointer', opacity: 0.6, padding: '0 4px' }}>✕</span></div>
+        {grupo === 'mat' && <details style={{ marginBottom: 8 }} open>
+          <summary style={{ cursor: 'pointer', padding: '6px 0' }}>Espejos y cristales</summary>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
+            {[...ESPEJOS.filter(t => t.id !== 'cromo'), ...CRISTALES].map(t => <button key={t.id}
+              style={{ ...btn, fontSize: 12, padding: '8px 4px', background: matSel?.id === t.id ? '#6b6159' : btn.background }}
+              onClick={() => { setMatSel(t); setHerr('pincel'); setGuardado(t.nombre + ': haz clic en la superficie para aplicarlo.'); }}>{t.nombre}</button>)}
+          </div>
+        </details>}
         <div style={{ display: 'flex', gap: 4 }}>{defs.map(([k, n]) => <button key={k} style={{ ...btn, flex: 1, padding: '4px 2px', fontSize: 12, ...(act === k ? { background: '#6b6159' } : {}) }} onClick={() => irTab(k)}>{n}</button>)}</div>
       </div>
     );
@@ -6769,7 +6808,7 @@ export default function Visor3D({ cliente = false }) {
       <div className={modoRender ? 'estudio-rail' : undefined} ref={railRef} style={{ display: railOculto ? 'none' : undefined, position: 'absolute', top: 54, left: 8, boxSizing: 'content-box', columnCount: 'auto', columnGap: 0, width: modoRender ? 82 : 138, maxHeight: 'calc(100% - 70px)', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'thin', scrollbarColor: '#9a8c7a #272421', overscrollBehavior: 'contain', background: 'rgba(22,20,18,0.95)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
         {modoRender ? <>
           {railBtn(herr === 'sel' && !renderAbierto && !camAbierta, 'sel', 'Seleccionar', 'Seleccionar una superficie o luminaria', () => { setHerr('sel'); setRenderAbierto(false); setCamAbierta(false); })}
-          {railBtn(herr === 'gotero', 'pintar', 'Materiales', 'Tomar el acabado de una superficie', () => { setLuzSel(null); setCamAbierta(false); setHerr('gotero'); setPestanaRender('inspector'); setRenderAbierto(true); })}
+          {railBtn(herr === 'gotero', 'pintar', 'Materiales', 'Elegir y aplicar un material', () => { setLuzSel(null); setCamAbierta(false); setRenderAbierto(false); irTab('pintura'); })}
           {railBtn(renderAbierto && pestanaRender === 'ambiente', 'luz', 'Luces', 'Ajustar el ambiente o seleccionar un foco', () => { setLuzSel(null); setCamAbierta(false); setHerr('sel'); setPestanaRender('ambiente'); setRenderAbierto(true); })}
           {railBtn(camAbierta, '📷', 'Cámara', 'Ajustar el encuadre', () => { setLuzSel(null); setHerr('sel'); setRenderAbierto(false); setCamAbierta(true); })}
         </> : <>
@@ -7429,8 +7468,8 @@ export default function Visor3D({ cliente = false }) {
                     setGuardado('Haz clic en la superficie donde quieres colocar la luz. Esc para terminar.');
                   }}>{nombre}</button>)}
                   <button style={btn} onClick={() => {
-                    setHerr('led'); setLuzSel(null); setSelObj(null); setRenderAbierto(false);
-                    setGuardado('Tira LED: marca el recorrido. Enter para terminar. Esc para cancelar.');
+                    insertarTiraLed();
+                    setGuardado('Tira LED creada. Arrástrala o ajusta su longitud, posición y altura.');
                   }}>Tira LED</button>
                 </div>
               </>)}
@@ -7534,7 +7573,7 @@ export default function Visor3D({ cliente = false }) {
                     let nueva = r.data.textura;
                     if (normal) { const fd = new FormData(); fd.append('tipo', 'normal'); fd.append('file', normal); nueva = (await api.post('/medicion/' + id + '/textura/' + nueva.id + '/mapa', fd)).data.textura; }
                     setTexturas(x => (x.some(y => y.id === nueva.id) ? x : [...x, nueva]));
-                    const g = api3d.current.ultimoGoteo; matSelRef.current = { id: nueva.id }; g?.aplicar?.(g.hit, true);
+                    const g = api3d.current.ultimoGoteo; matSelRef.current = { id: nueva.id }; g?.aplicar?.(g.hit, false);
                     // piezas de una máquina del modelo (el blanco de un remo, el negro de un tapizado…): se pintan por piezas; antes el cambio iba al cuerpo de la máquina y no se veía.
                     // Por defecto se cambian todas las piezas de las máquinas que tengan ese mismo color; con «solo esta superficie», únicamente la que cogiste.
                     try {
@@ -7894,6 +7933,10 @@ export default function Visor3D({ cliente = false }) {
               <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 4 }}>Baja el número si la pintura se «escapa» a otras caras; súbelo si deja trozos sin pintar.</div>
               {Object.keys(acab.regiones || {}).length > 0 && <button style={{ ...btn, marginBottom: 8 }} onClick={() => { if (window.confirm('¿Quitar la pintura de todas las caras?')) setAcab(a => ({ ...a, regiones: {} })); }}>Quitar pintura de caras ({Object.values(acab.regiones).reduce((s, l) => s + l.length, 0)})</button>}
             </>}
+            <button style={{ ...btn, width: '100%', marginBottom: 8 }} onClick={() => {
+              setFormaDib('rect'); setHerr('zonaP'); setMatAbierto(false); setB3dAbierta(false); setRenderAbierto(false);
+              setGuardado('Marca dos esquinas de la zona de pared que quieres pintar.');
+            }}>Delimitar zona en pared</button>
             <div style={{ opacity: 0.7, marginBottom: 4 }}>Colores</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
               {base.map(c => <span key={c} onClick={() => elegir({ hex: c })} title={c} style={{ width: 24, height: 24, background: c, borderRadius: 4, cursor: 'pointer', border: esSel({ hex: c }) ? '2px solid #baafa5' : '1px solid #555' }} />)}
@@ -8858,6 +8901,18 @@ export default function Visor3D({ cliente = false }) {
             return (
               <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>Tira LED · {ml.toFixed(2)} m</div>
+                {objSel.pts?.length === 2 && <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>Longitud (cm)
+                  <input type="number" min="1" step="10" value={Math.round(ml * 100)} style={{ ...btn, width: 90 }} onChange={e => {
+                    const longitud = Number(e.target.value), actual = largoCamino(objSel.pts);
+                    if (!(longitud >= 1) || actual <= 0) return;
+                    const centro = [(objSel.pts[0][0] + objSel.pts[1][0]) / 2, (objSel.pts[0][1] + objSel.pts[1][1]) / 2];
+                    const pts = objSel.pts.map(p => p.map((v, i) => centro[i] + (v - centro[i]) * longitud / actual));
+                    cambiar(objSel.id, { pts, w: Math.abs(pts[1][0] - pts[0][0]), d: Math.abs(pts[1][1] - pts[0][1]) });
+                  }} />
+                </label>}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+                  {[['cx', 'X (cm)'], ['cy', 'Y (cm)'], ['z0', 'Altura (cm)'], ['rot', 'Giro (°)']].map(([campo, nombre]) => <label key={campo}>{nombre}<input type="number" value={Math.round((objSel[campo] || 0) * 10) / 10} style={{ ...btn, width: '100%', boxSizing: 'border-box' }} onChange={e => { const valor = Number(e.target.value); if (Number.isFinite(valor)) cambiar(objSel.id, { [campo]: valor }); }} /></label>)}
+                </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Temperatura</span><select value={Lk.k} onChange={e => set({ k: parseInt(e.target.value, 10) })} style={btn}><option value={2700}>2700 K cálida</option><option value={3000}>3000 K</option><option value={4000}>4000 K neutra</option><option value={5000}>5000 K</option><option value={6500}>6500 K fría</option></select></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Lúmenes / m</span><input type="number" step="50" value={Lk.lm} onChange={e => set({ lm: Math.max(0, parseFloat(e.target.value) || 0) })} style={{ ...btn, width: 80 }} /></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Ancho cm</span><input type="number" step="0.2" value={Lk.ancho} onChange={e => set({ ancho: parseFloat(e.target.value) || 1 })} style={{ ...btn, width: 80 }} /></label>
