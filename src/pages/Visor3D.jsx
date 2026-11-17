@@ -2572,15 +2572,33 @@ export default function Visor3D({ cliente = false }) {
       if (espejoSucio && ahora - (a0.ultEsp || 0) > 250) { espejoSucio = false; a0.ultEsp = ahora; aplicaEspejos(scene); }
       if (ctrl.update()) { a0.despierta = ahora + 400; }
       if (!(movi || ahora < (a0.despierta || 0))) {
-        // espejos reales: cuando la cámara se para en modo Realista, los espejos y metales reflejan la sala de verdad (máquinas, paredes, luces) y no un estudio genérico
-        if (a0.composer && hayEspejos && ahora - (a0.ultEnvEsp || 0) > 1200 && (!a0.envEspPos || a0.envEspPos.distanceTo(cam.position) > 0.25)) {
-          a0.ultEnvEsp = ahora; a0.envEspPos = cam.position.clone();
-          try {
-            const rtC = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType, generateMipmaps: false }), cc = new THREE.CubeCamera(0.1, 200, rtC), oc = [a0.gizmoG, a0.cotasG, a0.nodoG, a0.guiaG], vis = oc.map(o => o && o.visible);
-            oc.forEach(o => { if (o) o.visible = false; }); cc.position.copy(cam.position); scene.add(cc); cc.update(renderer, scene); scene.remove(cc); oc.forEach((o, i) => { if (o) o.visible = vis[i]; });
-            const pm = new THREE.PMREMGenerator(renderer), tx = pm.fromCubemap(rtC.texture).texture; pm.dispose(); rtC.dispose();
-            const vieja = envEsp; envEsp = tx; espejoSucio = true; a0.despierta = ahora + 450; if (vieja && vieja !== tx) vieja.dispose();
-          } catch (e) { a0.ultEnvEsp = ahora + 60000; /* si falla, no se reintenta durante un minuto */ }
+        if (a0.actualizarReflejos) {
+          a0.actualizarReflejos = false;
+          if (a0.composer && hayEspejos) {
+            const destino = new THREE.WebGLCubeRenderTarget(128, { type: THREE.HalfFloatType });
+            const cubo = new THREE.CubeCamera(0.1, 200, destino);
+            const ayudas = [a0.gizmoG, a0.cotasG, a0.nodoG, a0.guiaG].filter(Boolean);
+            const visibles = ayudas.map(o => o.visible);
+            const pm = new THREE.PMREMGenerator(renderer);
+            try {
+              ayudas.forEach(o => { o.visible = false; });
+              cubo.position.copy(cam.position);
+              cubo.update(renderer, scene);
+              const nuevo = pm.fromCubemap(destino.texture);
+              const anterior = a0.reflejoRT;
+              a0.reflejoRT = nuevo;
+              envEsp = nuevo.texture;
+              aplicaEspejos(scene);
+              anterior?.dispose();
+              a0.despierta = ahora + 400;
+            } catch {
+              setAviso('No se pudo actualizar el reflejo de la sala.');
+            } finally {
+              ayudas.forEach((o, i) => { o.visible = visibles[i]; });
+              pm.dispose();
+              destino.dispose();
+            }
+          }
         }
         if (!(ahora < (a0.despierta || 0))) {
           a0.reposo = true;
@@ -2594,8 +2612,8 @@ export default function Visor3D({ cliente = false }) {
         }
       } // nada ha cambiado: no se dibuja y la tarjeta gráfica descansa
       a0.reposo = false; renderer.info.reset();
-      const vistaRapida = movi && ema > 33 && !a0.pedirFoto;
-      if (a0.composer && !vistaRapida) {
+
+      if (a0.composer) {
         const sz = renderer.getSize(vR2); if (a0.compW !== sz.x || a0.compH !== sz.y || a0.compPr !== renderer.getPixelRatio()) { a0.compW = sz.x; a0.compH = sz.y; a0.compPr = renderer.getPixelRatio(); a0.composer.setPixelRatio(a0.compPr); a0.composer.setSize(sz.x, sz.y); }
         a0.composer.render();
       } else renderer.render(scene, cam);
@@ -3363,7 +3381,7 @@ export default function Visor3D({ cliente = false }) {
     if (!cliente) window.addEventListener('pointermove', onMoveD);
     if (!cliente) window.addEventListener('pointerup', onUpD);
 
-    return () => { evsD.forEach(n => window.removeEventListener(n, despertar)); window.removeEventListener('visor3d-tex', despertar); window.removeEventListener('resize', despertar); window.removeEventListener('keydown', onTecla); el.removeEventListener('pointerdown', onDownD, true); window.removeEventListener('pointermove', onMoveD); window.removeEventListener('pointerup', onUpD); vivo = false; clearTimeout(pausa); window.removeEventListener('blur', alPerderFoco); ctrl.removeEventListener('change', despertar); ctrl.dispose(); clearInterval(reloj); dom.removeEventListener('pointerdown', onDown); dom.removeEventListener('pointerup', onUp); dom.removeEventListener('dblclick', onDbl); cancelAnimationFrame(raf); window.removeEventListener('resize', ajustar); window.removeEventListener('keydown', tDown); window.removeEventListener('keyup', tUp); renderer.dispose(); el.removeChild(renderer.domElement); };
+    return () => { evsD.forEach(n => window.removeEventListener(n, despertar)); window.removeEventListener('visor3d-tex', despertar); window.removeEventListener('resize', despertar); window.removeEventListener('keydown', onTecla); el.removeEventListener('pointerdown', onDownD, true); window.removeEventListener('pointermove', onMoveD); window.removeEventListener('pointerup', onUpD); vivo = false; clearTimeout(pausa); window.removeEventListener('blur', alPerderFoco); ctrl.removeEventListener('change', despertar); ctrl.dispose(); api3d.current.reflejoRT?.dispose(); clearInterval(reloj); dom.removeEventListener('pointerdown', onDown); dom.removeEventListener('pointerup', onUp); dom.removeEventListener('dblclick', onDbl); cancelAnimationFrame(raf); window.removeEventListener('resize', ajustar); window.removeEventListener('keydown', tDown); window.removeEventListener('keyup', tUp); renderer.dispose(); el.removeChild(renderer.domElement); };
   }, [id]);
 
   // Colores de muros y suelos (cambian sin rehacer el plano)
@@ -3728,7 +3746,7 @@ export default function Visor3D({ cliente = false }) {
         pm.dispose(); a.scene.environment = a.envTex; a.scene.environmentIntensity = entInt;
       }
       const sz = a.renderer.getSize(new THREE.Vector2());
-      const rt = new THREE.WebGLRenderTarget(sz.x, sz.y, { type: THREE.HalfFloatType, samples: 4 });
+      const rt = new THREE.WebGLRenderTarget(sz.x, sz.y, { type: THREE.HalfFloatType, samples: 0 });
       const comp = new EffectComposer(a.renderer, rt);
       comp.addPass(new RenderPass(a.scene, a.cam));
       comp.addPass(new OutputPass());
@@ -3816,6 +3834,7 @@ export default function Visor3D({ cliente = false }) {
   // Las máquinas del plano se ven con su modelo 3D del catálogo si lo tienen (así se pueden pintar por partes)
   useEffect(() => {
     const a = api3d.current; if (!a.raiz || !biblioteca) return;
+    if (a.limiteVisto !== limiteTri) { a.limiteVisto = limiteTri; a.raiz.traverse(g4 => { if (g4.userData.limitada) { g4.userData.limitada = false; g4.userData.modeloCargado = false; } }); setLimitadasN(0); }
     const bibPorId = new Map(biblioteca.map(m => [m.id, m])), pesados = new Set(), pendientes = new Set(), conModelo = new Set();
     a.raiz.traverse(g => { const e0 = g.userData.equipo; if (e0 && e0.cid && bibPorId.get(e0.cid)?.modelo3d) conModelo.add(e0.cid); });
     let kbTotal = 0; conModelo.forEach(c => { const b = Number(bibPorId.get(c)?.modelo3d?.bytes) || 0; if (b <= 12e6) kbTotal += b; });
@@ -3836,6 +3855,11 @@ export default function Visor3D({ cliente = false }) {
         g.userData.modeloCargado = false;
       }
       g.userData.v3Firma = firma;
+      if (g.userData.limitada && seleccion?.id === e.id) {
+        g.userData.limitada = false;
+        g.userData.modeloCargado = false;
+        setLimitadasN(n => Math.max(0, n - 1));
+      }
       if (g.userData.modeloCargado) return;
       if (me0.v3 === 'caja') return;
       const mod = (me0.v3 === 'otro' && me0.mod3?.url) ? me0.mod3 : bibPorId.get(e.cid)?.modelo3d; if (!mod) return;
@@ -3880,8 +3904,8 @@ export default function Visor3D({ cliente = false }) {
       }).catch(() => { g.userData.modeloCargado = false; });
     });
     setPesadosN(pesados.size); setPendientesN(pendientes.size);
-    if (a.limiteVisto !== limiteTri) { a.limiteVisto = limiteTri; a.raiz.traverse(g4 => { if (g4.userData.limitada) { g4.userData.limitada = false; g4.userData.modeloCargado = false; } }); setLimitadasN(0); }
-  }, [rev, biblioteca, estado, modosEq, cargarPesados, cargarModelos, limiteTri, cargaN]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  }, [rev, biblioteca, estado, modosEq, cargarPesados, cargarModelos, limiteTri, cargaN, seleccion?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Caras pintadas en muros y en las máquinas del plano
   useEffect(() => {
@@ -7173,6 +7197,7 @@ export default function Visor3D({ cliente = false }) {
             </div>
 
             {pestanaRender === 'ambiente' && <>
+              {realista && hayEspejos && <button style={btn} onClick={() => { api3d.current.actualizarReflejos = true; api3d.current.despertar?.(); }}>Actualizar reflejos de la sala</button>}
               {sec('Luminosidad global', <>
                 {seg([['geo', 'Geo Sky'], ['custom', 'Personalizado'], ['hdri', 'HDRI']], modo, cambiaModo)}
                 {modo === 'geo' && <>
