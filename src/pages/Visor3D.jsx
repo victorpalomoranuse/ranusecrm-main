@@ -4023,7 +4023,7 @@ export default function Visor3D({ cliente = false }) {
       const k1 = Math.min(1, el / 0.2), k2 = Math.max(0, Math.min(1, (el - 0.2) / 0.25)), col = i => new THREE.Color(noche[i]).lerp(new THREE.Color(ocaso[i]), k1).lerp(new THREE.Color(dia[i]), k2);
       if (ud.fondoCv && ud.fondoTex) { const cx = ud.fondoCv.getContext('2d'), gr = cx.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, '#' + col(0).getHexString()); gr.addColorStop(0.55, '#' + col(1).getHexString()); gr.addColorStop(1, '#' + col(2).getHexString()); cx.fillStyle = gr; cx.fillRect(0, 0, 2, 256); ud.fondoTex.needsUpdate = true; }
       if (ud.fondoTex && sc.background === ud.fondoTex) sc.backgroundIntensity = modelando ? 1 : 0.9 / Math.max(0.00001, a.renderer.toneMappingExposure);
-      if (a.base?.material?.color) a.base.material.color.set(modelando ? 0xd9d4cd : 0x6f7d5c);
+      if (a.base?.material?.color) { const bm = a.base.material; if (bm.toneMapped !== modelando) { bm.toneMapped = modelando; bm.needsUpdate = true; } bm.color.set(modelando ? 0xd9d4cd : 0x6f7d5c); if (!modelando) bm.color.multiplyScalar(0.6 / Math.max(0.00001, a.renderer.toneMappingExposure)); } // en Render el suelo exterior pasa por el tono como todo (con efectos salía negro porque la exposición es muy baja)
     }
     try { localStorage.setItem('visor3dAmb', JSON.stringify({ exposicion: ambiente.exposicion, ev: ambiente.ev ?? 7, luces: 1, kLuces: ambiente.kLuces ?? null, kSol: ambiente.kSol ?? null, solI: ambiente.solI ?? 1, solOn: ambiente.solOn !== false, rebote: ambiente.rebote ?? 0.35 })); } catch { /* sin almacenamiento */ }
   }, [hora, entRot, ambiente.ev, ambiente.exposicion, 1, ambiente.kSol, ambiente.solI, ambiente.solOn, realista, modelando, estado, rev]);
