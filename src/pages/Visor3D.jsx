@@ -3857,7 +3857,7 @@ export default function Visor3D({ cliente = false }) {
       }
     }
     // Preview-only diffuse bounce estimate: proportional to installed luminous flux, never a fixed fill.
-    const salasRebote = (a.modelo.plantas || [a.modelo]).flatMap(p => p.salas || []);
+    const salasRebote = (a.modelo?.plantas || (a.modelo ? [a.modelo] : [])).flatMap(p => p?.salas || []);
     const areaRebote = salasRebote.reduce((sum, sa) => sum + Math.abs((sa.pts || []).reduce((v, p, i, ps) => { const q = ps[(i+1)%ps.length]; return v + p[0]*q[1]-q[0]*p[1]; }, 0)) * CM * CM / 2, 0);
     if (flujoInterior > 0 && areaRebote > 0 && !modelando) {
       colorRebote.multiplyScalar(1 / flujoInterior);
