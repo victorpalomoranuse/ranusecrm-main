@@ -712,6 +712,7 @@ router.put('/:id/escena3d', async (req, res) => {
         const precios = {}; if (s.precios && typeof s.precios === 'object') Object.keys(s.precios).slice(0, 30).forEach(k => { if (/^[a-z]{2,20}$/.test(k)) precios[k] = Math.max(0, Math.min(1e6, num(s.precios[k], 0))); });
         return {
           tipo: ['tradicional', 'hibrida', 'infrarrojos'].includes(s.tipo) ? s.tipo : 'tradicional',
+          cabina: s.cabina === 'angular' ? 'angular' : 'rectangular', chaflan: Math.max(60, Math.min(250, num(s.chaflan, 85))),
           madera: ['abeto', 'aspen', 'cedro', 'hemlock', 'termo'].includes(s.madera) ? s.madera : 'abeto',
           niveles: Math.max(1, Math.min(3, Math.round(num(s.niveles, 2)))), forma: s.forma === 'L' ? 'L' : 'recto',
           estufa: { tipo: e.tipo === 'lena' ? 'lena' : 'electrica', lado: e.lado === 'izq' ? 'izq' : 'der', kw: Math.max(0, Math.min(30, num(e.kw, 0))) },

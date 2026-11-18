@@ -51,9 +51,10 @@ function medidas(o, S) {
 
 export function calculosSauna(o) {
   const S = normalizaSauna(o), m = medidas(o, S);
-  const vol = (m.iw * m.id * m.ih) / 1e6; // m³ interiores
+  const areaInterior = m.iw * m.id - (S.cabina === 'angular' ? plantaAngular(o).corte ** 2 / 2 : 0);
+  const vol = (areaInterior * m.ih) / 1e6; // m³ interiores
   const vidrioLateral = ['izq', 'der'].includes(S.frente.lateralCristal);
-  const vidrioM2 = ((vidrioLateral ? m.id * m.ih : 0) + (S.frente.tipo === 'cristal' ? (m.iw * Math.min(m.ih, 200)) : (S.frente.puerta * 190)) + (S.frente.ventana ? 60 * 80 : 0)) / 1e4;
+  const vidrioM2 = S.cabina === 'angular' ? ((m.iw + m.id - 2 * plantaAngular(o).corte + Math.SQRT2 * plantaAngular(o).corte) * m.ih / 1e4) : ((vidrioLateral ? m.id * m.ih : 0) + (S.frente.tipo === 'cristal' ? (m.iw * Math.min(m.ih, 200)) : (S.frente.puerta * 190)) + (S.frente.ventana ? 60 * 80 : 0)) / 1e4;
   const volEf = vol + 1.2 * vidrioM2; // 1 m² de cristal se compensa con ~1,2 m³ extra
   const conEstufa = S.tipo !== 'infrarrojos', conIR = S.tipo !== 'tradicional';
   const kwEstufa = conEstufa ? (S.estufa.kw > 0 ? S.estufa.kw : (TAMANOS_ESTUFA.find(k => k >= volEf * (S.tipo === 'hibrida' ? 0.75 : 1)) || 15)) : 0;
@@ -66,8 +67,8 @@ export function calculosSauna(o) {
   const fase = potenciaTotalW <= 3600 ? 'Monofásica 230 V (16 A)' : 'Trifásica 400 V';
   const amp = fase.startsWith('Mono') ? Math.ceil(potenciaTotalW / 230) : Math.ceil(potenciaTotalW / (400 * 1.732));
   // Materiales (m² de superficie de madera, etc.)
-  const perim = 2 * (m.iw + m.id) - (vidrioLateral ? m.id : 0) - (S.frente.tipo === 'cristal' ? m.iw : 0);
-  const m2Paredes = (perim * m.ih) / 1e4, m2Techo = S.techo ? (m.iw * m.id) / 1e4 : 0, m2Suelo = (m.iw * m.id) / 1e4;
+  const perim = S.cabina === 'angular' ? m.iw + m.id : 2 * (m.iw + m.id) - (vidrioLateral ? m.id : 0) - (S.frente.tipo === 'cristal' ? m.iw : 0);
+  const m2Paredes = (perim * m.ih) / 1e4, m2Techo = S.techo ? areaInterior / 1e4 : 0, m2Suelo = areaInterior / 1e4;
   const m2Bancos = (S.niveles * largoBancos * m.prof) / 1e4 * (S.niveles >= 2 ? 0.75 : 1);
   const lista = [
     ['paredes', 'Revestimiento de paredes (' + MADERAS[S.madera].n + ')', Math.round(m2Paredes * 10) / 10, 'm²'],
@@ -106,6 +107,7 @@ export function textoMateriales(o) {
 
 // ───────────────────────────── Geometría 3D ─────────────────────────────
 export function construirSauna(o) {
+  if (o.sauna?.cabina === 'angular') return construirAngular(o);
   const S = normalizaSauna(o), m = medidas(o, S), { T, W, D, H, iw, id, ih, prof, alturas } = m;
   const g = new THREE.Group();
   const cab = S.estilo === 'cabina';
@@ -258,5 +260,68 @@ export function construirSauna(o) {
   caja(14, 1.2, 1.4, (S.estufa.lado === 'der' ? -1 : 1) * (iw / 2 - 28), H - T - 14, zB + T + 0.7, frameM); // salida alta (diagonal opuesta)
   // luz ambiental muy tenue: sin focos reales para no recargar el visor
   g.userData.sauna = true;
+  return g;
+}
+
+export function plantaAngular(o) {
+  const W = o.w, D = o.d;
+  const corte = Math.min(W * 0.6, D * 0.6, Math.max(60, Number(o.sauna?.chaflan) || 85));
+  return { corte, pts: [[-W/2,-D/2],[W/2,-D/2],[W/2,D/2-corte],[W/2-corte,D/2],[-W/2,D/2]] };
+}
+function construirAngular(o) {
+  const S = normalizaSauna(o), { corte, pts } = plantaAngular(o), W=o.w,D=o.d,H=o.alto,T=4;
+  const g = new THREE.Group(); g.userData.angular = true;
+  const wood = new THREE.MeshStandardMaterial({color:o.color || MADERAS[S.madera]?.c || '#d9bb8c',roughness:.85});
+  const glass = new THREE.MeshPhysicalMaterial({color:'#d8e4e6',roughness:.05,transparent:true,opacity:.22,side:THREE.DoubleSide,depthWrite:false});
+  const dark = new THREE.MeshStandardMaterial({color:'#252120',roughness:.65});
+  const glow = new THREE.MeshStandardMaterial({color:'#ffb985',emissive:'#ff7540',emissiveIntensity:1.2});
+  function box(w,h,d,x,y,z,mat=wood,parent=g) {
+    const b=new THREE.Mesh(new THREE.BoxGeometry(Math.max(.1,w)*CM,Math.max(.1,h)*CM,Math.max(.1,d)*CM),mat);
+    b.position.set(x*CM,(y+h/2)*CM,z*CM);b.castShadow=mat!==glass;b.receiveShadow=true;parent.add(b);return b;
+  }
+  function segment(a,b,y,h,depth,mat=wood) {
+    const len=Math.hypot(b[0]-a[0],b[1]-a[1]);
+    const mesh=box(len,h,depth,(a[0]+b[0])/2,y,(a[1]+b[1])/2,mat);
+    mesh.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);return mesh;
+  }
+  function slab(y,h) {
+    const shape=new THREE.Shape(pts.map(([x,z])=>new THREE.Vector2(x*CM,-z*CM)));
+    const geo=new THREE.ExtrudeGeometry(shape,{depth:h*CM,bevelEnabled:false});geo.rotateX(-Math.PI/2);
+    const mesh=new THREE.Mesh(geo,wood);mesh.position.y=y*CM;mesh.castShadow=mesh.receiveShadow=true;g.add(mesh);
+  }
+  slab(0,5);if(S.techo)slab(H-T,T);
+  // Two solid walls meet in the back corner; the three exposed sides are glazed.
+  segment(pts[0],pts[1],0,H,T);segment(pts[4],pts[0],0,H,T);
+  for(let x=-W/2+10;x<W/2-5;x+=10)box(.5,H-9,.5,x,5,-D/2+2.3,dark);
+  for(let z=-D/2+10;z<D/2-5;z+=10)box(.5,H-9,.5,-W/2+2.3,5,z,dark);
+  const a=pts[2],b=pts[3],len=Math.hypot(b[0]-a[0],b[1]-a[1]),door=Math.min(S.frente.puerta,len-8);
+  for(const i of [1,3])segment(pts[i],pts[i+1],5,H-9,.8,glass);
+  const ux=(b[0]-a[0])/len,uz=(b[1]-a[1])/len,point=t=>[a[0]+ux*t,a[1]+uz*t],left=(len-door)/2;
+  segment(a,point(left),5,H-9,.8,glass);segment(point(left+door),b,5,H-9,.8,glass);
+  const leaf=segment(point(left+.3),point(left+door-.3),6,H-16,.8,glass);leaf.name='Puerta diagonal';
+  const handle=point(S.frente.lado==='der'?left+8:left+door-8);
+  box(2,55,3,handle[0]+uz*2,70,handle[1]-ux*2,S.frente.asa==='madera'?wood:dark);
+  for(const y of [35,H-35]) {const q=point(S.frente.lado==='der'?left+door:left);segment([q[0]-ux*3,q[1]-uz*3],[q[0]+ux*3,q[1]+uz*3],y,5,2,dark);}
+  for(let i=1;i<4;i++)for(const y of [0,H-7])segment(pts[i],pts[i+1],y,7,5,S.frente.marco?wood:dark);
+  for(const q of pts.slice(1))box(3,H,3,q[0],0,q[1],S.frente.marco?wood:dark);
+  const prof=Math.min(45,(Math.min(W,D)-corte)/2),margin=6;
+  const levels=S.niveles===1?[45]:S.niveles===2?[45,85]:[40,75,110];
+  for(const y of levels){
+    for(let d=0;d<prof;d+=7){
+      box(W-12,2.5,5.5,0,y,-D/2+margin+d+3);
+      if(S.forma==='L')box(5.5,2.5,D-prof-12,-W/2+margin+d+3,y,prof/2);
+    }
+    for(const x of [-W/2+10,W/2-10])box(4,y,prof-6,x,5,-D/2+margin+prof/2);
+    if(S.luz){box(W-14,1,1,0,y-4,-D/2+prof+margin,glow);if(S.forma==='L')box(1,1,D-prof-14,-W/2+prof+margin,y-4,prof/2,glow);}
+    if(S.respaldos)for(const h of [18,28,38]){box(W-14,5,2,0,y+h,-D/2+4);if(S.forma==='L')box(2,5,D-prof-14,-W/2+4,y+h,prof/2);}
+  }
+  if(S.tipo!=='tradicional'){
+    for(let i=0;i<S.ir.fondo;i++){const x=-W/2+W*(i+1)/(S.ir.fondo+1);box(22,70,2,x,65,-D/2+4,dark);for(let h=0;h<60;h+=10)box(24,2,2,x,70+h,-D/2+6);}
+    for(let i=0;i<S.ir.lateral;i++){const z=-D/2+D*(i+1)/(S.ir.lateral+1);box(2,70,22,-W/2+4,65,z,dark);for(let h=0;h<60;h+=10)box(2,2,24,-W/2+6,70+h,z);}
+    if(S.ir.bajoBanco)box(W-20,18,2,0,15,-D/2+prof+margin,glow);
+  } else {
+    const x=W/2-30,z=D/2-corte-32;box(35,52,32,x,5,z,dark);
+    for(let i=0;i<9;i++){const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(.04),dark);rock.position.set((x+(i%3-1)*10)*CM,.59,(z+(Math.floor(i/3)-1)*9)*CM);g.add(rock);}
+  }
   return g;
 }
