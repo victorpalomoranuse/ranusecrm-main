@@ -42,7 +42,7 @@ def srgb2lin(c): return [(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) *
 
 # Escala: en el CRM la intensidad física va con una exposición muy baja; aquí convertimos a vatios de Blender y calibramos con la exposición
 SPOT_K = 3.0  # los focos del visor marcan círculos de luz más contundentes que la luz estrictamente física
-LED_K = 8.0  # las tiras LED del visor lavan la pared con un haz cálido y marcado; con la luz estrictamente física quedaba débil
+LED_K = 4.0  # con las tiras bien orientadas (verticales) basta con un refuerzo moderado
 W_PER_CD = 4 * math.pi * math.pi / 683.0  # candelas -> vatios de Blender (aprox.)
 for L in info['luces']:
     col = srgb2lin(hexc(L['col']))
@@ -58,12 +58,17 @@ for L in info['luces']:
         # luminancia (nits) * superficie * pi = lumenes; vatios = lumenes / 683
         d.energy = L['i'] * L['w'] * L['h'] * math.pi / 683.0 * LED_K
         if L['h'] < 0.12:
-            d.spread = math.radians(70)  # la tira concentra su luz en un haz (lava la pared en vez de aclarar toda la sala)
+            d.spread = math.radians(100)  # la tira concentra su luz en un haz (lava la pared en vez de aclarar toda la sala)
         ob = bpy.data.objects.new('a', d); sc.collection.objects.link(ob); ob.location = G(L['pos'])
         ob.visible_camera = False
         # La línea luminosa visible de cada LED ya viaja en la escena (su cinta); aquí solo se añade la luz que emite, sin dibujarla de nuevo
         dr = Vector((L['dir'][0], -L['dir'][2], L['dir'][1]))
-        ob.rotation_euler = dr.to_track_quat('-Z', 'Y').to_euler()
+        if L.get('ex'):  # orientación completa: el ancho de la luz sigue su eje real (las tiras LED verticales son verticales)
+            zb = (-dr).normalized(); xb = Vector((L['ex'][0], -L['ex'][2], L['ex'][1])); xb = (xb - zb * xb.dot(zb)).normalized(); yb = zb.cross(xb)
+            from mathutils import Matrix
+            ob.rotation_euler = Matrix(((xb.x, yb.x, zb.x), (xb.y, yb.y, zb.y), (xb.z, yb.z, zb.z))).to_euler()
+        else:
+            ob.rotation_euler = dr.to_track_quat('-Z', 'Y').to_euler()
     elif L['t'] == 'sol':
         continue
     d.color = col
@@ -112,7 +117,7 @@ def juntas_suelo():
             lum = lambda c: 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
             sk = str(m.get('sueloKey', '')); con_junta = len(sk) > 6 and sk.startswith('suelo') and sk[6] == '1'  # el visor marca «junta» en la clave del suelo
             if con_junta:
-                borde = np.minimum(centro * 1.8 + 0.03, 1.0)  # color de la junta: el tono del suelo algo más claro (como se ve en el visor)
+                borde = np.array([0.006, 0.006, 0.006], dtype=np.float32)  # junta negra, hundida
             elif abs(lum(borde) - lum(centro)) < 0.04 * max(0.2, lum(centro)) + 0.01:
                 continue
             hechos.add(m.name)
@@ -132,6 +137,12 @@ def juntas_suelo():
             nt.links.new(gt.outputs[0], mx.inputs[0]); nt.links.new(link.from_socket, mx.inputs[6])
             mx.inputs[7].default_value = (float(borde[0]), float(borde[1]), float(borde[2]), 1.0)
             nt.links.new(mx.outputs[2], bsdf.inputs['Base Color'])
+            # relieve: la junta es un surco (más baja que la loseta) y el caucho tiene su rugosidad
+            alt = nt.nodes.new('ShaderNodeMath'); alt.operation = 'SUBTRACT'; alt.inputs[0].default_value = 1.0; nt.links.new(gt.outputs[0], alt.inputs[1])
+            bm = nt.nodes.new('ShaderNodeBump'); bm.inputs['Strength'].default_value = 1.0; bm.inputs['Distance'].default_value = 0.004
+            nt.links.new(alt.outputs[0], bm.inputs['Height']); nt.links.new(bm.outputs[0], bsdf.inputs['Normal'])
+            ro = nt.nodes.new('ShaderNodeMix'); ro.data_type = 'FLOAT'; ro.inputs[2].default_value = 0.75; ro.inputs[3].default_value = 1.0
+            nt.links.new(gt.outputs[0], ro.inputs[0]); nt.links.new(ro.outputs[0], bsdf.inputs['Roughness'])
             print('JUNTAS', m.name, round(lum(borde), 3), round(lum(centro), 3))
 juntas_suelo()
 
@@ -165,7 +176,7 @@ sc.cycles.use_denoising = True
 sc.cycles.max_bounces = 10
 asp = C.get('aspect') or 16 / 9
 sc.render.resolution_x, sc.render.resolution_y = ANCHO, int(ANCHO / asp)
-sc.view_settings.view_transform = 'AgX'
+sc.view_settings.view_transform = 'Khronos PBR Neutral'
 sc.view_settings.exposure = EXPO
 
 # GPU: OptiX si está, si no CUDA; se muestra en el registro cuál se usa (si sale CPU, el render será muy lento)

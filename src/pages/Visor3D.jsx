@@ -2415,7 +2415,7 @@ export default function Visor3D({ cliente = false }) {
       if (!o.isLight || !o.parent) return; let vis = true; for (let p = o; p; p = p.parent) if (p.visible === false) vis = false; if (!vis || !o.intensity) return;
       o.updateWorldMatrix(true, false);
       const dir = new THREE.Vector3(0, 0, -1).transformDirection(o.matrixWorld), col = '#' + o.color.getHexString();
-      if (o.isRectAreaLight) luces.push({ t: 'area', pos: V(o), dir: [dir.x, dir.y, dir.z], w: o.width, h: o.height, col, i: o.intensity });
+      if (o.isRectAreaLight) { const ex = new THREE.Vector3(1, 0, 0).transformDirection(o.matrixWorld); luces.push({ t: 'area', pos: V(o), dir: [dir.x, dir.y, dir.z], ex: [ex.x, ex.y, ex.z], w: o.width, h: o.height, col, i: o.intensity }); } // ex: eje del ancho de la luz (para orientar bien las tiras verticales)
       else if (o.isSpotLight) { const tg = new THREE.Vector3(); o.target.updateWorldMatrix(true, false); o.target.getWorldPosition(tg); luces.push({ t: 'spot', pos: V(o), tg: [tg.x, tg.y, tg.z], ang: o.angle, pen: o.penumbra, col, i: o.intensity }); }
       else if (o.isPointLight) luces.push({ t: 'point', pos: V(o), col, i: o.intensity });
       else if (o.isDirectionalLight) { const tg = new THREE.Vector3(); o.target.updateWorldMatrix(true, false); o.target.getWorldPosition(tg); luces.push({ t: 'sol', pos: V(o), tg: [tg.x, tg.y, tg.z], col, i: o.intensity }); }
