@@ -158,8 +158,52 @@ for mat in bpy.data.materials:
                 nd.inputs['Base Color'].default_value = (0.55, 0.55, 0.55, 1.0)
                 nd.inputs['Roughness'].default_value = 0.03
 
+# Realismo de materiales: relieve sutil desde la textura, variación de rugosidad y moteado fino en superficies oscuras/mates.
+# No toca espejos, cristal, transparencias ni los materiales de suelo con juntas (ya tienen su propia normal).
+def realismo_materiales():
+    for m in bpy.data.materials:
+        try:
+            if not m.use_nodes: continue
+            nt = m.node_tree
+            bsdf = next((n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+            if not bsdf: continue
+            if bsdf.inputs['Normal'].is_linked: continue
+            if bsdf.inputs['Alpha'].default_value < 0.99 or bsdf.inputs['Alpha'].is_linked: continue
+            tr = bsdf.inputs['Transmission Weight'].default_value if 'Transmission Weight' in bsdf.inputs else 0
+            rg = bsdf.inputs['Roughness'].default_value
+            if tr > 0.01 or bsdf.inputs['Metallic'].default_value >= 0.8 or rg < 0.1: continue
+            if any(n.type == 'EMISSION' for n in nt.nodes) or bsdf.inputs['Emission Strength'].default_value > 0.01: continue
+            bc = bsdf.inputs['Base Color']
+            tex = bc.links[0].from_node if bc.is_linked and bc.links[0].from_node.type == 'TEX_IMAGE' else None
+            if tex: tex.interpolation = 'Cubic'
+            col = bc.default_value
+            lum = 0.2126 * col[0] + 0.7152 * col[1] + 0.0722 * col[2]
+            oscuro = (not tex) and lum < 0.12 or (tex and rg > 0.5)
+            normal_out = None
+            if tex:  # relieve a partir de la luminosidad de la imagen
+                bw = nt.nodes.new('ShaderNodeRGBToBW'); nt.links.new(bc.links[0].from_socket, bw.inputs[0])
+                bm = nt.nodes.new('ShaderNodeBump'); bm.inputs['Strength'].default_value = 0.25; bm.inputs['Distance'].default_value = 0.002
+                nt.links.new(bw.outputs[0], bm.inputs['Height']); normal_out = bm.outputs[0]
+            if rg > 0.25 or oscuro:  # moteado fino y variación de rugosidad
+                tc = nt.nodes.new('ShaderNodeTexCoord')
+                nz = nt.nodes.new('ShaderNodeTexNoise'); nz.inputs['Scale'].default_value = 600.0; nz.inputs['Detail'].default_value = 6.0
+                nt.links.new(tc.outputs['Object'], nz.inputs['Vector'])
+                sp = nt.nodes.new('ShaderNodeBump'); sp.inputs['Strength'].default_value = 0.12 if oscuro else 0.05; sp.inputs['Distance'].default_value = 0.001
+                nt.links.new(nz.outputs['Fac'], sp.inputs['Height'])
+                if normal_out: nt.links.new(normal_out, sp.inputs['Normal'])
+                normal_out = sp.outputs[0]
+                if not bsdf.inputs['Roughness'].is_linked:
+                    nz2 = nt.nodes.new('ShaderNodeTexNoise'); nz2.inputs['Scale'].default_value = 8.0; nz2.inputs['Detail'].default_value = 4.0
+                    nt.links.new(tc.outputs['Object'], nz2.inputs['Vector'])
+                    mr = nt.nodes.new('ShaderNodeMapRange'); mr.inputs['To Min'].default_value = max(0.05, rg - 0.1); mr.inputs['To Max'].default_value = min(1.0, rg + 0.1)
+                    nt.links.new(nz2.outputs['Fac'], mr.inputs['Value']); nt.links.new(mr.outputs['Result'], bsdf.inputs['Roughness'])
+            if normal_out: nt.links.new(normal_out, bsdf.inputs['Normal'])
+        except Exception as e:
+            print('REALISMO_ERR', m.name, e)
+realismo_materiales()
+
 # cámara de la vista del visor
-cam = bpy.data.objects.new('cam', bpy.data.cameras.new('cam')); sc.collection.objects.link(cam); sc.camera = cam
+cam =bpy.data.objects.new('cam', bpy.data.cameras.new('cam')); sc.collection.objects.link(cam); sc.camera = cam
 C = info['camara']; cam.location = G(C['pos'])
 cam.rotation_euler = (G(C['tg']) - cam.location).to_track_quat('-Z', 'Y').to_euler()
 cam.data.sensor_fit = 'VERTICAL'; cam.data.angle_y = math.radians(C['fov'])
