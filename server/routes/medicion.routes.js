@@ -683,6 +683,8 @@ router.put('/:id/escena3d', async (req, res) => {
       etiqueta: String(o.etiqueta || '').slice(0, 40),
       grupo: o.grupo ? String(o.grupo).slice(0, 30) : undefined,
       cx: num(o.cx), cy: num(o.cy), rot: num(o.rot), rotM: num(o.rotM), espejo: o.espejo ? true : undefined,
+      inclinacionX: o.tipo === 'led' ? Math.max(-180, Math.min(180, num(o.inclinacionX))) : undefined,
+      inclinacionZ: o.tipo === 'led' ? Math.max(-180, Math.min(180, num(o.inclinacionZ))) : undefined,
       w: Math.max(1, num(o.w, 100)), d: Math.max(1, num(o.d, 100)), alto: Math.max(1, num(o.alto, 100)),
       z0: num(o.z0), color: acab(o.color),
       lum: o.tipo === 'luz' ? Math.max(0, Math.min(100, num(o.lum, 40))) : undefined,
