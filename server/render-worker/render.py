@@ -42,7 +42,7 @@ def srgb2lin(c): return [(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) *
 
 # Escala: en el CRM la intensidad física va con una exposición muy baja; aquí convertimos a vatios de Blender y calibramos con la exposición
 SPOT_K = 3.0  # los focos del visor marcan círculos de luz más contundentes que la luz estrictamente física
-LED_K = 5.0  # las tiras LED del visor lavan la pared con un haz cálido y marcado; con la luz estrictamente física quedaba débil (con valores mayores se aclara toda la sala)
+LED_K = 8.0  # las tiras LED del visor lavan la pared con un haz cálido y marcado; con la luz estrictamente física quedaba débil
 W_PER_CD = 4 * math.pi * math.pi / 683.0  # candelas -> vatios de Blender (aprox.)
 for L in info['luces']:
     col = srgb2lin(hexc(L['col']))
@@ -57,6 +57,8 @@ for L in info['luces']:
         d = bpy.data.lights.new('a', 'AREA'); d.shape = 'RECTANGLE'; d.size = max(L['w'], 0.02); d.size_y = max(L['h'], 0.02)
         # luminancia (nits) * superficie * pi = lumenes; vatios = lumenes / 683
         d.energy = L['i'] * L['w'] * L['h'] * math.pi / 683.0 * LED_K
+        if L['h'] < 0.12:
+            d.spread = math.radians(70)  # la tira concentra su luz en un haz (lava la pared en vez de aclarar toda la sala)
         ob = bpy.data.objects.new('a', d); sc.collection.objects.link(ob); ob.location = G(L['pos'])
         ob.visible_camera = False
         # La línea luminosa visible de cada LED ya viaja en la escena (su cinta); aquí solo se añade la luz que emite, sin dibujarla de nuevo
