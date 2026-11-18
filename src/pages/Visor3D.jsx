@@ -1,4 +1,4 @@
-import { recortarRanura, colocarEmpotrado } from '../components/ledEmpotrado3d';
+import { recortarRanura, colocarEmpotrado, normalizarGiroLed } from '../components/ledEmpotrado3d';
 import './VisorEstudio.css';
 import { dibujarModelar } from '../components/vistaModelar3d';
 import { impactoVisible } from '../components/seleccion3d';
@@ -4765,7 +4765,7 @@ export default function Visor3D({ cliente = false }) {
     if (previaRef.current) { setGuardado('Probando una propuesta (sin guardar)'); return; }
     setGuardado('Guardando…');
     const t = setTimeout(() => {
-      api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab, paleta, rodapie, guias, luces: lucesAj, hora, escenas, tapetas, huecosCfg, modelosEq: modosEq }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
+      api.put('/medicion/' + id + '/escena3d', { objetos: objs.map(o => o.tipo === 'led' ? { ...o, inclinacionX: normalizarGiroLed(o.inclinacionX), inclinacionZ: normalizarGiroLed(o.inclinacionZ) } : o), acabados: acab, paleta, rodapie, guias, luces: lucesAj, hora, escenas, tapetas, huecosCfg, modelosEq: modosEq }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
     }, 1200);
     return () => clearTimeout(t);
   }, [objs, acab, paleta, rodapie, guias, lucesAj, hora, escenas, tapetas, huecosCfg, modosEq, previa]); // eslint-disable-line react-hooks/exhaustive-deps

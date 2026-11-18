@@ -55,3 +55,9 @@ export function colocarEmpotrado(hit) {
   const matrix=new THREE.Matrix4().makeBasis(tangent,normal,cross),e=new THREE.Euler().setFromRotationMatrix(matrix,'YXZ');
   return {cx:hit.point.x*100,cy:hit.point.z*100,z0:hit.point.y*100,rot:-e.y*180/Math.PI,inclinacionX:e.x*180/Math.PI,inclinacionZ:e.z*180/Math.PI};
 }
+
+// Canonical degrees preserve the orientation through older server serializers too.
+export function normalizarGiroLed(value) {
+  const n=Number(value);
+  return Number.isFinite(n) ? ((n % 360) + 540) % 360 - 180 : 0;
+}
