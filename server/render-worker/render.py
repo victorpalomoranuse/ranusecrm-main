@@ -72,6 +72,15 @@ for L in info['luces']:
         continue
     d.color = col
 
+# Capas pintadas (overlay): en el visor se dibujan «encima» de la superficie; en Blender quedan en el mismo plano y se pelean con ella (salía la caja azul en vez del espejo).
+# Se separan 2 mm hacia fuera, en la dirección de su normal.
+for ob in list(sc.objects):
+    if ob.type == 'MESH' and ob.get('overlay') is not None:
+        me = ob.data; me.calc_normals() if hasattr(me, 'calc_normals') else None
+        for v in me.vertices:
+            v.co += v.normal * 0.002
+        me.update()
+
 # Espejos: metal casi perfecto pero de color neutro (si no, salen azules al reflejar el cielo)
 for mat in bpy.data.materials:
     if not mat.use_nodes: continue
