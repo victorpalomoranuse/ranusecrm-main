@@ -2437,6 +2437,7 @@ export default function Visor3D({ cliente = false }) {
   };
   // Render realista en la nube (Blender Cycles en una GPU): sube la escena, espera y enseña la imagen
   const [nube, setNube] = useState(null);
+  const cargasRef = useRef({ pend: 0, pes: 0 });
   const [encuadre, setEncuadre] = useState(() => { try { return localStorage.getItem('visor3dEncuadre') || '16:9'; } catch { return '16:9'; } });
   const [lienzo, setLienzo] = useState({ w: 0, h: 0 });
   useEffect(() => { try { localStorage.setItem('visor3dEncuadre', encuadre); } catch { /* sin almacenamiento */ } }, [encuadre]);
@@ -2466,6 +2467,12 @@ export default function Visor3D({ cliente = false }) {
     setNube({ estado: 'trabajando', texto: 'Preparando la escena…' });
     try {
       const est = await renderNubeDisponible(); if (!est.disponible) { setNube(null); setAviso(est.motivo || 'El render en la nube aún no está activado.'); return; }
+      // Antes de exportar se cargan todos los modelos de las máquinas (si no, salen como cajas azules en el render)
+      if (cargasRef.current.pend > 0 || cargasRef.current.pes > 0) {
+        setNube({ estado: 'trabajando', texto: 'Cargando los modelos de las máquinas…' }); setCargarModelos(true); setCargarPesados(true);
+        for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 1500)); if (cargasRef.current.pend === 0 && cargasRef.current.pes === 0) break; }
+        await new Promise(r => setTimeout(r, 4000));
+      }
       const { buf, info } = await prepararEscena();
       info.exposicion = ambiente.exposicion; info.ev = ambiente.ev ?? 7;
       { const m = marcoRender(); if (m && info.camara) { info.camara.aspect = m.r; info.camara.fov = 2 * Math.atan(Math.tan((info.camara.fov * Math.PI) / 360) * (m.bh / m.H)) * 180 / Math.PI; } } // el render sale con el encuadre elegido
@@ -2627,6 +2634,7 @@ export default function Visor3D({ cliente = false }) {
   const [cargaN, setCargaN] = useState(0); // cuántos modelos distintos (los más cercanos a la cámara) se han pedido cargar: de 3 en 3
   const [cargarModelos, setCargarModelos] = useState(false); // con muchas máquinas distintas, los modelos no se cargan solos al abrir (la página se quedaba colgada): botón «Cargar modelos»
   const [pendientesN, setPendientesN] = useState(0);
+  cargasRef.current = { pend: pendientesN, pes: pesadosN };
   const [modosEq, setModosEq] = useState({});               // cómo se ajusta el modelo 3D de cada máquina del plano
   const [mtick, setMtick] = useState(0);
   const [huecosCfg, setHuecosCfg] = useState({});          // apertura, bisagra y sentido de cada puerta y ventana (solo 3D)
