@@ -1258,12 +1258,15 @@ function luzLedObjeto(g, o, presup, amb) {
 function construirLed(o, presup, amb, seleccionado, iluminado) {
   const g = new THREE.Group(), pts = o.pts || [], L = o.led || { ancho: 1.2, k: 3000, lm: 800, dir: 'abajo' }; if (pts.length < 2) return g;
   const n = pts.length, m = L.cerrado ? n : n - 1, y = (o.z0 ?? 250) * CM, ancho = Math.max(0.3, L.ancho) * CM, hex = /^#[0-9a-fA-F]{6}$/.test(o.color || '') ? o.color : kelvinHex(L.k), col = new THREE.Color(hex); // si la tira tiene un color elegido, manda sobre la temperatura
-  const mat = iluminado ? new THREE.MeshBasicMaterial({ color: col }) : new THREE.MeshStandardMaterial({ color: seleccionado ? 0x9cc8ff : 0xbebbb7 });
+  const encendida = iluminado && (L.lm ?? 800) > 0;
+  // El difusor es una fuente visible; la exposición fotográfica no debe convertirlo en negro.
+  // Su luminaria mantiene los lúmenes configurados, sin amplificarlos para aclarar el perfil.
+  const mat = encendida ? new THREE.MeshBasicMaterial({ color: col, toneMapped: false }) : new THREE.MeshStandardMaterial({ color: seleccionado ? 0x9cc8ff : 0xbebbb7, roughness: 0.85 });
   for (let i = 0; i < m; i++) {
     const a = pts[i], b = pts[(i + 1) % n], largo = Math.hypot(b[0] - a[0], b[1] - a[1]) * CM; if (largo < 0.01) continue;
     const ux = (b[0] - a[0]) / (largo / CM), uy = (b[1] - a[1]) / (largo / CM), mid = new THREE.Vector3(((a[0] + b[0]) / 2) * CM, y, ((a[1] + b[1]) / 2) * CM);
     const tira = new THREE.Mesh(new THREE.BoxGeometry(largo, 0.008, ancho), mat); tira.position.copy(mid); tira.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]); g.add(tira);
-    if (!iluminado) continue;
+    if (!encendida) continue;
     const u = new THREE.Vector3(ux, 0, uy), dir = { abajo: new THREE.Vector3(0, -1, 0), arriba: new THREE.Vector3(0, 1, 0), izq: new THREE.Vector3(-uy, 0, ux), der: new THREE.Vector3(uy, 0, -ux) }[L.dir || 'abajo'];
     luzArea(g, mid.clone().add(dir.clone().multiplyScalar(0.006)), dir, largo, Math.max(0.03, ancho * 3), col, luminanciaArea((L.lm ?? 800) * largo, largo, Math.max(0.03, ancho * 3)) * amb, presup, u);
   }
