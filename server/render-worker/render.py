@@ -37,6 +37,7 @@ def hexc(h): h = h.lstrip('#'); return [int(h[i:i+2], 16) / 255 for i in (0, 2, 
 def srgb2lin(c): return [(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4) for x in c]
 
 # Escala: en el CRM la intensidad física va con una exposición muy baja; aquí convertimos a vatios de Blender y calibramos con la exposición
+LED_K = 3.0  # las tiras LED del visor emiten mucho más de lo que se aprecia con la luz estrictamente física: se refuerzan
 W_PER_CD = 4 * math.pi * math.pi / 683.0  # candelas -> vatios de Blender (aprox.)
 for L in info['luces']:
     col = srgb2lin(hexc(L['col']))
@@ -48,15 +49,26 @@ for L in info['luces']:
         d = bpy.data.lights.new('p', 'POINT'); d.energy = L['i'] * W_PER_CD; d.shadow_soft_size = 0.05
         ob = bpy.data.objects.new('p', d); sc.collection.objects.link(ob); ob.location = G(L['pos'])
     elif L['t'] == 'area':
-        d = bpy.data.lights.new('a', 'AREA'); d.shape = 'RECTANGLE'; d.size = L['w']; d.size_y = L['h']
+        d = bpy.data.lights.new('a', 'AREA'); d.shape = 'RECTANGLE'; d.size = max(L['w'], 0.02); d.size_y = max(L['h'], 0.02)
         # luminancia (nits) * superficie * pi = lumenes; vatios = lumenes / 683
-        d.energy = L['i'] * L['w'] * L['h'] * math.pi / 683.0
+        d.energy = L['i'] * L['w'] * L['h'] * math.pi / 683.0 * LED_K
         ob = bpy.data.objects.new('a', d); sc.collection.objects.link(ob); ob.location = G(L['pos'])
+        ob.visible_camera = True  # las tiras LED se ven como líneas luminosas, como en el visor
         dr = Vector((L['dir'][0], -L['dir'][2], L['dir'][1]))
         ob.rotation_euler = dr.to_track_quat('-Z', 'Y').to_euler()
     elif L['t'] == 'sol':
         continue
     d.color = col
+
+# Espejos: metal casi perfecto pero de color neutro (si no, salen azules al reflejar el cielo)
+for mat in bpy.data.materials:
+    if not mat.use_nodes: continue
+    for nd in mat.node_tree.nodes:
+        if nd.type == 'BSDF_PRINCIPLED':
+            met = nd.inputs['Metallic'].default_value; ro = nd.inputs['Roughness'].default_value
+            if met >= 0.8 and ro <= 0.15:
+                nd.inputs['Base Color'].default_value = (0.55, 0.55, 0.55, 1.0)
+                nd.inputs['Roughness'].default_value = 0.03
 
 # cámara de la vista del visor
 cam = bpy.data.objects.new('cam', bpy.data.cameras.new('cam')); sc.collection.objects.link(cam); sc.camera = cam
