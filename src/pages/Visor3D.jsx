@@ -48,7 +48,6 @@ const esMovil = () => { try { return window.matchMedia('(pointer: coarse)').matc
 const RADIO_PERSONA = 0.28, MARGEN_SALA = 40;
 function dentroDelEspacio(modelo, x, z, offs, soloPlanta) {
   const plantas = modelo.plantas || [modelo];
-      plantas.forEach(p => { p.salas = completarSalas(p); });
   let hay = false;
   for (let ip = 0; ip < plantas.length; ip++) {
     if (soloPlanta != null && ip !== soloPlanta) continue; // solo la planta donde está el visitante (las otras están a otra altura)
@@ -420,7 +419,7 @@ function pinturaMate(m) {
   for (const key of ['map', 'emissiveMap', 'normalMap', 'bumpMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'envMap']) m[key] = null;
   m.metalness = 0; m.roughness = 0.9; m.opacity = 1; m.transparent = false; m.depthWrite = true;
   if (m.emissive) { m.emissive.setHex(0); m.emissiveIntensity = 0; }
-  if (m.isMeshPhysicalMaterial) { m.clearcoat = 0; m.transmission = 0; }
+  if (m.isMeshPhysicalMaterial) { m.clearcoat = 0; m.transmission = 0; m.specularIntensity = 0; }
   for (const key of ['espOn', 'esp0', 'opac0', 'emisPbr', 'ledColor', 'mapasClave', 'adjOn', 'sueloKey']) delete m.userData[key];
   m.onBeforeCompile = () => {}; m.customProgramCacheKey = () => ''; m.needsUpdate = true;
 }
@@ -2120,7 +2119,7 @@ function techo(s, i, alto) {
   const g = new THREE.ShapeGeometry(new THREE.Shape(innerCm && innerCm.length >= 3 ? innerCm.map(p => new THREE.Vector2(p[0] * CM, p[1] * CM)) : pts));
   g.rotateX(Math.PI / 2);
   const h = ((s.techo && s.techo.h) || alto || 260) * CM;
-  const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: color(s.techo?.c, '#f6f4f1'), roughness: 0.95, side: THREE.FrontSide, shadowSide: THREE.DoubleSide }));
+  const mesh = new THREE.Mesh(g, new THREE.MeshPhysicalMaterial({ color: color(s.techo?.c, '#f6f4f1'), roughness: 1, metalness: 0, specularIntensity: 0, side: THREE.FrontSide, shadowSide: THREE.DoubleSide }));
   mesh.position.y = h;
   mesh.receiveShadow = true;
   mesh.castShadow = true; // el techo tapa el sol: sin esto la luz entraba por el techo y el interior salía quemado
@@ -2802,6 +2801,7 @@ export default function Visor3D({ cliente = false }) {
       sel = null; setSeleccion(null);
       while (raiz.children.length) { const o = raiz.children[0]; raiz.remove(o); o.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); }
       const plantas = modelo.plantas || [modelo];
+      plantas.forEach(p => { p.salas = completarSalas(p); });
       // las salas sin identificador se numeraban s0, s1… dentro de cada planta: el suelo/techo de «s0» de una planta se repetía en las demás. Las de las plantas 2.ª en adelante reciben un identificador propio
       plantas.forEach((p, ipI) => { if (ipI > 0) (p.salas || []).forEach((sa, i) => { if (!sa.idS) sa.idS = 'p' + ipI + 's' + i; if (!sa.idT) sa.idT = 'p' + ipI + 's' + i; }); });
       const offsPl = alinearPlantas(plantas); api3d.current.offsPl = offsPl;
@@ -3888,7 +3888,7 @@ export default function Visor3D({ cliente = false }) {
     a.sol.position.set(a.centro.x + d * Math.cos(az) * Math.cos(elev), a.centro.y + d * Math.sin(elev) + 1, a.centro.z + d * Math.sin(az) * Math.cos(elev));
     a.sol.intensity = (t > 0 && t < 1 ? 2000 * Math.pow(k, 0.7) /* sol suave: con 100000 lux la escena salía quemada y con bordes dentados */ : 0) * (ambiente.solOn === false ? 0 : (ambiente.solI ?? 1));
     if (ambiente.kSol) a.sol.color.copy(kelvinColor(ambiente.kSol)); else a.sol.color.setHSL(0.09, 0.5 * (1 - k) + 0.05, 0.75 + 0.2 * k);
-    if (a.hemi) a.hemi.intensity = 90 + 360 * Math.min(1, k / 0.4); // luz ambiente suave: las caras en sombra se leen, y de noche casi nada
+    if (a.hemi) a.hemi.intensity = 0; // Render: la luz procede del exterior y de las luminarias, sin relleno constante.
     if (a.hemi) { a.hemi.color.set(0xffffff); a.hemi.groundColor.set(modelando ? 0xcfc8bf : 0xffffff); } // Apoyo neutro: no teñir todos los materiales de marrón.
     if (modelando) {
       a.sol.intensity = 1.15;
@@ -7157,6 +7157,7 @@ export default function Visor3D({ cliente = false }) {
         const largoM = esLin ? l.vs.slice(1).reduce((t, q, i) => t + Math.hypot(q[0] - l.vs[i][0], q[1] - l.vs[i][1]), 0) / 100 : 0;
         return (
           <div style={{ position: 'absolute', right: 12, top: 56, width: 'min(300px, calc(100vw - 64px))', maxHeight: 'calc(100% - 88px)', overflowY: 'auto', background: '#222224', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+            <button type="button" style={{ ...bTop, marginBottom: 8 }} onClick={() => { setLuzSel(null); setPestanaRender('ambiente'); setRenderAbierto(true); }}>← Todas las luces</button>
             <button type="button" aria-label="Cerrar inspector de luz" onClick={() => setLuzSel(null)} style={{ ...bTop, float: 'right' }}>×</button>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>{nombres[l.kid] || 'Luminaria'} <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>(del plano)</span></div>
             <div style={{ opacity: 0.75, marginBottom: 6 }}>{cat ? cat.n + ' · ' + (cat.lm || '?') + ' lm · ' + (cat.w || '?') + ' W · ' + (cat.k || '?') + ' K' : 'Sin luminaria del catálogo asignada (se usa una estándar de 800 lm)'}</div>
@@ -7545,6 +7546,17 @@ export default function Visor3D({ cliente = false }) {
 
             {pestanaRender === 'ambiente' && <>
               {realista && hayEspejos && <button style={btn} onClick={() => { api3d.current.actualizarReflejos = true; api3d.current.despertar?.(); }}>Actualizar reflejos de la sala</button>}
+              {sec('Luces del proyecto', <>
+                <div style={{ maxHeight: 230, overflowY: 'auto', display: 'grid', gap: 5 }}>
+                  {lucesPl.map((l, i) => <button key={'pl-' + l.id} style={{ ...btn, textAlign: 'left' }} onClick={() => { setHerr('sel'); setSelObj(null); setSelAcab(null); setSeleccion(null); setLuzSel(l.id); }}>
+                    {l.nombre || lumCat.find(c => c.id === l.lid)?.n || ({ foco: 'Foco empotrado', plaf: 'Plafón', led: 'Tira LED', aplq: 'Aplique', colg: 'Colgante', spot: 'Spot', carril: 'Carril' }[l.kid] || 'Luminaria')} · {i + 1}
+                    <small style={{ display: 'block', opacity: 0.65 }}>{lucesAj[l.id]?.lm ?? l.lm ?? lumCat.find(c => c.id === l.lid)?.lm ?? 800} {l.vs ? 'lm/m' : 'lm'} · {lucesAj[l.id]?.k ?? lumCat.find(c => c.id === l.lid)?.k ?? 3000} K</small>
+                  </button>)}
+                  {objs.filter(o => ['led', 'carril', 'luz'].includes(o.tipo) || o.ft?.luz || esLed(o.color)).map(o => <button key={'ob-' + o.id} style={{ ...btn, textAlign: 'left' }} onClick={() => { setHerr('sel'); setLuzSel(null); setSelAcab(null); setSelObj(o.id); setRenderAbierto(false); }}>{o.nombre || ({ led: 'Tira LED', carril: 'Carril', falsotecho: 'LED del techo' }[o.tipo] || 'Objeto luminoso')}</button>)}
+                  {!lucesPl.length && !objs.some(o => ['led', 'carril', 'luz'].includes(o.tipo) || o.ft?.luz || esLed(o.color)) && <span style={{ opacity: 0.6 }}>Todavía no hay luces añadidas.</span>}
+                </div>
+                <p style={{ fontSize: 11, opacity: 0.65 }}>Selecciona una luz para ajustar su potencia, temperatura y orientación. La iluminación indirecta es aproximada.</p>
+              </>)}
               {sec('Añadir luz', <>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                   {[['foco', 'Foco empotrado'], ['spot', 'Spot orientable'], ['plaf', 'Plafón'], ['aplq', 'Aplique']].map(([tipo, nombre]) => <button key={tipo} style={btn} onClick={() => {
