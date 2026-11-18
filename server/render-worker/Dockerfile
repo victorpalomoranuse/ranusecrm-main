@@ -1,4 +1,4 @@
-# Imagen del worker de render (RunPod Serverless). Se construye y se sube a un registro (Docker Hub o GHCR) y se indica en el endpoint de RunPod.
+# Imagen del worker de render (RunPod Serverless). Contexto de construcción = raíz del repositorio (así la construye RunPod desde GitHub).
 FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip wget xz-utils ca-certificates \
@@ -8,5 +8,5 @@ ARG BLENDER_URL=https://download.blender.org/release/Blender4.2/blender-4.2.3-li
 RUN wget -q "$BLENDER_URL" -O /tmp/blender.tar.xz && mkdir /opt/blender && tar -xf /tmp/blender.tar.xz -C /opt/blender --strip-components=1 && rm /tmp/blender.tar.xz && ln -s /opt/blender/blender /usr/local/bin/blender
 RUN pip3 install --no-cache-dir runpod
 WORKDIR /app
-COPY render.py handler.py ./
+COPY server/render-worker/render.py server/render-worker/handler.py ./
 CMD ["python3", "-u", "handler.py"]
