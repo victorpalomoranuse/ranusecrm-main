@@ -22,7 +22,7 @@ export async function indexaSubidos(lista, dir) {
     try {
       n++; const esImg = /\.(jpe?g|png|webp|heic|heif)$/i.test(it.nombre || it.ruta);
       if (esImg) {
-        const jpg = path.join(dir, 'up' + n + '.jpg'); run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', it.ruta, '-vf', 'scale=1600:1600:force_original_aspect_ratio=decrease', '-frames:v', '1', '-q:v', '3', jpg]);
+        const jpg = path.join(dir, 'up' + n + '.png'); run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', it.ruta, '-vf', 'scale=1600:1600:force_original_aspect_ratio=decrease', '-frames:v', '1', jpg]);
         const peq = path.join(dir, 'up' + n + '_p.jpg'); run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', jpg, '-vf', 'scale=640:640:force_original_aspect_ratio=decrease', peq]);
         if (!fs.existsSync(jpg)) continue; const d = await describe([{ t: 0, fichero: peq }], it.nombre, 0, true);
         out.push({ id: 'up' + n, nombre: it.nombre, es_imagen: true, ruta: jpg, duracion: 600, calidad: d.calidad || 'media', tipo: 'imagen', resumen: 'IMAGEN FIJA: ' + (d.resumen || ''), etiquetas: d.etiquetas || [], planos: [{ t: 0, descripcion: d.resumen || '' }], ruta_abs: 'subidos', _elegido: true });
