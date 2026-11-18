@@ -1,5 +1,5 @@
 # Worker de RunPod Serverless: descarga la escena (.glb + luces .json), la renderiza con Blender Cycles (OptiX) y sube el PNG.
-import os, subprocess, tempfile, urllib.request
+import os, subprocess, tempfile, time, urllib.request
 import runpod
 
 
@@ -22,7 +22,15 @@ def handler(job):
         descargar(i['luces'], js)
         cmd = ['blender', '-b', '-P', os.path.join(os.path.dirname(__file__), 'render.py'), '--', glb, js, png,
                str(i.get('exposicion', 3)), str(i.get('ancho', 1600)), str(i.get('muestras', 64))]
+        t0 = time.time()
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=1500)
+        # Se muestran en el registro de RunPod las líneas útiles de Blender: dispositivo usado, exposición, tiempo y errores
+        for linea in (r.stdout or '').splitlines():
+            if linea.startswith(('DISPOSITIVO', 'EXPOSICION', 'LISTO', 'Error', 'Traceback')):
+                print(linea, flush=True)
+        print('TIEMPO_BLENDER_S', round(time.time() - t0, 1), flush=True)
+        if r.returncode != 0:
+            print((r.stderr or '')[-800:], flush=True)
         if not os.path.exists(png):
             return {'error': 'Blender no generó la imagen: ' + (r.stderr or r.stdout)[-400:]}
         subir(i['subida'], png)
