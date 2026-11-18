@@ -2455,6 +2455,7 @@ export default function Visor3D({ cliente = false }) {
   const texturas = useMemo(() => [...ESPEJOS, ...CRISTALES, ...SUELOS_TEC, ...texturasBase], [texturasBase]);
   const texturasRef = useRef([]); texturasRef.current = texturasBase;
   const [mtTab, setMtTab] = useState('color'), [mtLock, setMtLock] = useState(true), [mtAvz, setMtAvz] = useState(false);
+  const [mtImg, setMtImg] = useState({ br: 100, co: 100, sa: 100, hu: 0 }), [mtImgOcup, setMtImgOcup] = useState(false);
   const [b3dAbierta, setB3dAbierta] = useState(false);
   const [elegirMod, setElegirMod] = useState(false), [elegirFiltro, setElegirFiltro] = useState('');
   const [b3d, setB3d] = useState(null);           // índice de la biblioteca 3D gratuita
@@ -6730,6 +6731,25 @@ export default function Visor3D({ cliente = false }) {
     const t = texturasBase.find(x => x.id === matSel?.id);
     if (!t) return editorTextura();
     const P = t.pbr || {}, esColor = !!t.color, base = esColor ? t.color : (P.tinte || '#ffffff');
+    // aplica un color en hexadecimal: color liso (se genera su imagen) o tinte de la textura
+    const aplicaHexMat = hx => {
+      if (esColor) { try { const cv = document.createElement('canvas'); cv.width = cv.height = 8; const cx2 = cv.getContext('2d'); cx2.fillStyle = hx; cx2.fillRect(0, 0, 8, 8); ajustaMat(t.id, { color: hx, url: cv.toDataURL('image/png'), nombre: 'Color ' + hx.toUpperCase() }); } catch { ajustaMat(t.id, { color: hx }); } }
+      else ajustaMat(t.id, { pbr: { tinte: hx === '#ffffff' ? null : hx } });
+    };
+    // ajusta los colores de la imagen del mapa (brillo, contraste, saturación, tono) y la guarda como nueva imagen del material
+    const filtroImg = `brightness(${mtImg.br}%) contrast(${mtImg.co}%) saturate(${mtImg.sa}%) hue-rotate(${mtImg.hu}deg)`;
+    const aplicaAjusteImg = async () => {
+      setMtImgOcup(true);
+      try {
+        const img = new Image(); img.crossOrigin = 'anonymous';
+        await new Promise((ok, ko) => { img.onload = ok; img.onerror = () => ko(new Error('carga')); img.src = t.url; });
+        const W = Math.min(2048, img.naturalWidth || 1024), H = Math.round(W * (img.naturalHeight || 1024) / (img.naturalWidth || 1024));
+        const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const cx2 = cv.getContext('2d'); cx2.filter = filtroImg; cx2.drawImage(img, 0, 0, W, H);
+        ajustaMat(t.id, { url: cv.toDataURL('image/jpeg', 0.92) });
+        setMtImg({ br: 100, co: 100, sa: 100, hu: 0 }); setGuardado('Colores de la imagen ajustados ✓');
+      } catch { setAviso('No se pudo ajustar la imagen (puede estar protegida). Prueba con «Cambiar imagen…».'); }
+      setMtImgOcup(false);
+    };
     const cuadro = { width: 30, height: 30, borderRadius: 5, border: '1px solid #666', flex: '0 0 30px', cursor: 'pointer', position: 'relative', overflow: 'hidden', backgroundColor: '#e8e8e8', backgroundImage: 'linear-gradient(45deg,#bbb 25%,transparent 25%,transparent 75%,#bbb 75%),linear-gradient(45deg,#bbb 25%,transparent 25%,transparent 75%,#bbb 75%)', backgroundSize: '10px 10px', backgroundPosition: '0 0,5px 5px', display: 'block' };
     const casilla = (tipo) => (
       <label title={t.maps?.[tipo] ? 'Mapa cargado: pulsa para cambiarlo' : 'Cargar una imagen para este ajuste (vacío = sin mapa)'} style={cuadro}>
@@ -6771,6 +6791,10 @@ export default function Visor3D({ cliente = false }) {
           <div style={{ display: 'flex', marginBottom: 8, borderBottom: '1px solid #333' }}>{pestana('color', 'Color base')}{pestana('mapa', 'Mapa base de colores')}</div>
           {mtTab === 'color' ? (
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <input type="text" key={'hex' + base} defaultValue={/^#[0-9a-fA-F]{6}$/.test(base) ? base.toUpperCase() : '#FFFFFF'} maxLength={7} spellCheck={false} aria-label="Color en hexadecimal" title="Escribe el color en hexadecimal (ej. #8C8076) y pulsa Enter" onClick={e => e.stopPropagation()}
+                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                onBlur={e => { let v = e.target.value.trim(); if (/^[0-9a-fA-F]{6}$/.test(v)) v = '#' + v; if (!/^#[0-9a-fA-F]{6}$/.test(v)) { e.target.value = /^#[0-9a-fA-F]{6}$/.test(base) ? base.toUpperCase() : '#FFFFFF'; return; } e.target.value = v.toUpperCase(); aplicaHexMat(v.toLowerCase()); }}
+                style={{ ...btn, width: 84, padding: '6px 8px', fontFamily: 'monospace', textTransform: 'uppercase' }} />
               <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(base) ? base : '#ffffff'} onChange={e => {
                 const hx = e.target.value.toLowerCase();
                 if (esColor) { try { const cv = document.createElement('canvas'); cv.width = cv.height = 8; const cx2 = cv.getContext('2d'); cx2.fillStyle = hx; cx2.fillRect(0, 0, 8, 8); ajustaMat(t.id, { color: hx, url: cv.toDataURL('image/png'), nombre: 'Color ' + hx.toUpperCase() }); } catch { ajustaMat(t.id, { color: hx }); } }
@@ -6783,6 +6807,20 @@ export default function Visor3D({ cliente = false }) {
               <span style={{ width: 56, height: 56, borderRadius: 6, border: '1px solid #666', background: 'url(' + t.url + ') center/cover', flex: '0 0 56px' }} />
               <label style={{ ...btn, cursor: 'pointer', padding: '5px 10px', fontSize: 12 }}>Cambiar imagen…<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { cambiaImagenMat(t, e.target.files?.[0]); e.target.value = ''; }} /></label>
               <span style={{ fontSize: 11, opacity: 0.6 }}>{esColor ? 'Ahora es un color liso; al poner una imagen pasa a ser una textura.' : 'La imagen que da el dibujo al material.'}</span>
+            </div>
+          )}
+          {mtTab === 'mapa' && !esColor && (
+            <div style={{ marginBottom: 8, padding: '8px 10px', border: '1px solid #3a342f', borderRadius: 8 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 12 }}>Colores de la imagen</div>
+              <span style={{ display: 'block', height: 54, borderRadius: 6, border: '1px solid #666', background: 'url(' + t.url + ') center/cover', filter: filtroImg, marginBottom: 6 }} />
+              {[['Brillo', 'br', 20, 200, 1, '%'], ['Contraste', 'co', 20, 200, 1, '%'], ['Saturación', 'sa', 0, 250, 1, '%'], ['Tono', 'hu', -180, 180, 1, '°']].map(([n, k, mn, mx, st, u]) => (
+                <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, fontSize: 12 }}><span style={{ width: 70, opacity: 0.8 }}>{n}</span><input type="range" min={mn} max={mx} step={st} value={mtImg[k]} onChange={e => setMtImg(o => ({ ...o, [k]: parseFloat(e.target.value) }))} style={{ flex: 1, minWidth: 0 }} /><span style={{ width: 44, textAlign: 'right', opacity: 0.7 }}>{mtImg[k]}{u}</span></label>
+              ))}
+              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                <button type="button" style={{ ...btn, flex: 1 }} onClick={() => setMtImg({ br: 100, co: 100, sa: 100, hu: 0 })}>Restablecer</button>
+                <button type="button" style={{ ...btn, flex: 1, background: '#8c8076', fontWeight: 700 }} disabled={mtImgOcup || (mtImg.br === 100 && mtImg.co === 100 && mtImg.sa === 100 && mtImg.hu === 0)} onClick={aplicaAjusteImg}>{mtImgOcup ? 'Aplicando…' : 'Aplicar a la imagen'}</button>
+              </div>
+              <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>Cambia la imagen de este material. Si quieres conservar el original, pulsa antes «Duplicar».</div>
             </div>
           )}
           <div style={cab}>Ajustes</div>
@@ -7039,6 +7077,7 @@ export default function Visor3D({ cliente = false }) {
           {railBtn(herr === 'gotero', 'pintar', 'Materiales', 'Elegir y aplicar un material', () => { setLuzSel(null); setCamAbierta(false); setRenderAbierto(false); irTab('pintura'); })}
           {railBtn(renderAbierto && pestanaRender === 'ambiente', 'luz', 'Luces', 'Ajustar el ambiente o seleccionar un foco', () => { setLuzSel(null); setCamAbierta(false); setHerr('sel'); setPestanaRender('ambiente'); setRenderAbierto(true); })}
           {railBtn(camAbierta, '📷', 'Cámara', 'Ajustar el encuadre', () => { setLuzSel(null); setHerr('sel'); setRenderAbierto(false); setCamAbierta(true); })}
+          {railBtn(escAbierta, '🎞', 'Escenas' + (escenas.length ? ' (' + escenas.length + ')' : ''), 'Vistas guardadas: volver a una vista y renderizarla', () => setEscAbierta(v => !v))}
         </> : <>
         {grupoRail([
           railBtn(herr === 'sel', 'sel', 'Seleccionar', modoRender ? 'Modo render: el modelo está bloqueado; aquí solo se eligen luces' : 'Seleccionar y mover objetos (Espacio)', () => setHerr('sel')),
