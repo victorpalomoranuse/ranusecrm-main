@@ -59,13 +59,7 @@ for L in info['luces']:
         d.energy = L['i'] * L['w'] * L['h'] * math.pi / 683.0 * LED_K
         ob = bpy.data.objects.new('a', d); sc.collection.objects.link(ob); ob.location = G(L['pos'])
         ob.visible_camera = False
-        if L['h'] < 0.12 and L['w'] > 0.2:  # tira LED: línea luminosa visible, cálida y sin quemarse (como en el visor)
-            me = bpy.data.meshes.new('ledm'); me.from_pydata([(-L['w'] / 2, -max(L['h'], 0.012) / 2, 0), (L['w'] / 2, -max(L['h'], 0.012) / 2, 0), (L['w'] / 2, max(L['h'], 0.012) / 2, 0), (-L['w'] / 2, max(L['h'], 0.012) / 2, 0)], [], [(0, 1, 2, 3)])
-            em = bpy.data.objects.new('led', me); sc.collection.objects.link(em); em.location = ob.location; em.rotation_euler = ob.rotation_euler
-            mt = bpy.data.materials.new('ledmat'); mt.use_nodes = True; nt2 = mt.node_tree; nt2.nodes.clear()
-            e = nt2.nodes.new('ShaderNodeEmission'); e.inputs['Color'].default_value = (*col, 1.0); e.inputs['Strength'].default_value = 4.0
-            o2 = nt2.nodes.new('ShaderNodeOutputMaterial'); nt2.links.new(e.outputs[0], o2.inputs[0]); me.materials.append(mt)
-            em.visible_shadow = False
+        # La línea luminosa visible de cada LED ya viaja en la escena (su cinta); aquí solo se añade la luz que emite, sin dibujarla de nuevo
         dr = Vector((L['dir'][0], -L['dir'][2], L['dir'][1]))
         ob.rotation_euler = dr.to_track_quat('-Z', 'Y').to_euler()
     elif L['t'] == 'sol':
