@@ -3305,6 +3305,13 @@ export default function Visor3D({ cliente = false }) {
       const valor = mat.conMapa ? 'tinte:' + (mat.tinte || '#ffffff') : (mat.hex || ('tex:' + mat.id));
       const u = hit.object.userData;
 
+      // Revestimientos (palillería, lamas…): al pintar se pinta TODO el revestimiento, no listón a listón (solo en modo «pieza» se pinta una sola pieza)
+      const gRev = (() => { let q = hit.object; while (q && !q.userData.oid) q = q.parent; return q && objsRef.current.find(o => o.id === q.userData.oid)?.tipo === 'revest' ? q.userData.oid : null; })();
+      if (gRev && modoPincelRef.current !== 'pieza') {
+        setAcab(a => { const reg = { ...(a.regiones || {}) }; Object.keys(reg).forEach(k => { if (k.startsWith('o:' + gRev + ':')) delete reg[k]; }); return { ...a, regiones: reg }; });
+        setObjs(prev => prev.map(x => (x.id === gRev ? { ...x, color: valor, caras: undefined } : x)));
+        return;
+      }
       {
         const clave = (modoPincelRef.current === 'cara' || modoPincelRef.current === 'pieza') && !todos ? claveRegion(hit) : null;
         if (clave && (modoPincelRef.current === 'cara' || clave.startsWith('e:'))) {
