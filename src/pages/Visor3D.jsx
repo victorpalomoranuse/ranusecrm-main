@@ -1283,10 +1283,11 @@ function construirLed(o, presup, amb, seleccionado, iluminado) {
       for(const sign of [-1,1]){const side=new THREE.Mesh(new THREE.BoxGeometry(largo,depth,.001),profile);side.position.set(0,-depth/2,sign*(ancho/2+.0005));holder.add(side);}
       g.add(holder);
     }
-    const tira = new THREE.Mesh(new THREE.BoxGeometry(largo, L.empotrado ? .001 : 0.008, ancho), mat); tira.position.copy(mid); if(L.empotrado)tira.position.y-=.0005; tira.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]); g.add(tira);
+    const tira = new THREE.Mesh(new THREE.BoxGeometry(largo, L.empotrado ? .001 : 0.008, ancho), mat); tira.position.copy(mid); if(L.empotrado)tira.position.y-=.0005; tira.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]); if (!L.oculta) g.add(tira); // «oculta»: solo se ve la luz (retroiluminado)
     if (!encendida) continue;
     const u = new THREE.Vector3(ux, 0, uy), dir = { abajo: new THREE.Vector3(0, -1, 0), arriba: new THREE.Vector3(0, 1, 0), izq: new THREE.Vector3(-uy, 0, ux), der: new THREE.Vector3(uy, 0, -ux) }[L.dir || 'abajo'];
     luzArea(g, mid.clone().add(dir.clone().multiplyScalar(0.006)), dir, largo, Math.max(0.03, ancho * 3), col, luminanciaArea((L.lm ?? 800) * largo, largo, Math.max(0.03, ancho * 3)) * amb, presup, u);
+    if (L.oculta) { const rl = g.children[g.children.length - 1]; if (rl?.isRectAreaLight) rl.userData.retro = true; }
   }
   return g;
 }
@@ -2415,7 +2416,7 @@ export default function Visor3D({ cliente = false }) {
       if (!o.isLight || !o.parent) return; let vis = true; for (let p = o; p; p = p.parent) if (p.visible === false) vis = false; if (!vis || !o.intensity) return;
       o.updateWorldMatrix(true, false);
       const dir = new THREE.Vector3(0, 0, -1).transformDirection(o.matrixWorld), col = '#' + o.color.getHexString();
-      if (o.isRectAreaLight) { const ex = new THREE.Vector3(1, 0, 0).transformDirection(o.matrixWorld); luces.push({ t: 'area', pos: V(o), dir: [dir.x, dir.y, dir.z], ex: [ex.x, ex.y, ex.z], w: o.width, h: o.height, col, i: o.intensity }); } // ex: eje del ancho de la luz (para orientar bien las tiras verticales)
+      if (o.isRectAreaLight) { const ex = new THREE.Vector3(1, 0, 0).transformDirection(o.matrixWorld); luces.push({ t: 'area', pos: V(o), dir: [dir.x, dir.y, dir.z], ex: [ex.x, ex.y, ex.z], w: o.width, h: o.height, col, i: o.intensity, retro: !!o.userData.retro }); } // ex: eje del ancho de la luz (para orientar bien las tiras verticales)
       else if (o.isSpotLight) { const tg = new THREE.Vector3(); o.target.updateWorldMatrix(true, false); o.target.getWorldPosition(tg); luces.push({ t: 'spot', pos: V(o), tg: [tg.x, tg.y, tg.z], ang: o.angle, pen: o.penumbra, col, i: o.intensity }); }
       else if (o.isPointLight) luces.push({ t: 'point', pos: V(o), col, i: o.intensity });
       else if (o.isDirectionalLight) { const tg = new THREE.Vector3(); o.target.updateWorldMatrix(true, false); o.target.getWorldPosition(tg); luces.push({ t: 'sol', pos: V(o), tg: [tg.x, tg.y, tg.z], col, i: o.intensity }); }
@@ -9291,6 +9292,7 @@ export default function Visor3D({ cliente = false }) {
                     if (Math.abs(angulo) > 0.001 && pts.length === 2) cambiar(objSel.id, { pts: [[-ml * 50, 0], [ml * 50, 0]], w: ml * 100, d: 0, inclinacionX: 0, inclinacionZ: 90 });
                   }}>Vertical</button>}
                 </div>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6, cursor: 'pointer' }} title="Si lo desmarcas, no se ve la tira: solo su luz sobre lo que ilumina (espejo retroiluminado, LED oculto)"><input type="checkbox" checked={!Lk.oculta} onChange={e => set({ oculta: !e.target.checked })} /> Ver la tira (si no, solo se ve su luz)</label>
                 {objSel.pts?.length === 2 && <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>Longitud (cm)
                   <input type="number" min="1" step="10" value={Math.round(ml * 100)} style={{ ...btn, width: 90 }} onChange={e => {
                     const longitud = Number(e.target.value), actual = largoCamino(objSel.pts);

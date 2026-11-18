@@ -61,6 +61,8 @@ for L in info['luces']:
             d.spread = math.radians(100)  # la tira concentra su luz en un haz (lava la pared en vez de aclarar toda la sala)
         ob = bpy.data.objects.new('a', d); sc.collection.objects.link(ob); ob.location = G(L['pos'])
         ob.visible_camera = False
+        if L.get('retro'):
+            d.use_shadow = False  # luz retroiluminada (detrás de un espejo o un panel): rodea el objeto y baña la pared, como en el visor
         # La línea luminosa visible de cada LED ya viaja en la escena (su cinta); aquí solo se añade la luz que emite, sin dibujarla de nuevo
         dr = Vector((L['dir'][0], -L['dir'][2], L['dir'][1]))
         if L.get('ex'):  # orientación completa: el ancho de la luz sigue su eje real (las tiras LED verticales son verticales)
