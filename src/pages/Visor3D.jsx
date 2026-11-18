@@ -2440,6 +2440,8 @@ export default function Visor3D({ cliente = false }) {
   const cargasRef = useRef({ pend: 0, pes: 0 });
   const [encuadre, setEncuadre] = useState(() => { try { return localStorage.getItem('visor3dEncuadre') || '16:9'; } catch { return '16:9'; } });
   const [lienzo, setLienzo] = useState({ w: 0, h: 0 });
+  const [expNube, setExpNube] = useState(() => { try { return localStorage.getItem('visor3dExpNube') || 'visor'; } catch { return 'visor'; } });
+  useEffect(() => { try { localStorage.setItem('visor3dExpNube', expNube); } catch { /* sin almacenamiento */ } }, [expNube]);
   useEffect(() => { try { localStorage.setItem('visor3dEncuadre', encuadre); } catch { /* sin almacenamiento */ } }, [encuadre]);
   useEffect(() => {
     const el = api3d.current.el; if (!el || typeof ResizeObserver === 'undefined') return;
@@ -2474,7 +2476,7 @@ export default function Visor3D({ cliente = false }) {
         await new Promise(r => setTimeout(r, 4000));
       }
       const { buf, info } = await prepararEscena();
-      info.exposicion = ambiente.exposicion; info.ev = ambiente.ev ?? 7;
+      info.exposicion = ambiente.exposicion; info.ev = ambiente.ev ?? 7; info.modoExposicion = expNube; info.hora = hora; info.norte = entRot; info.solOn = ambiente.solOn !== false; info.solI = ambiente.solI ?? 1; // 'visor' = la exposición que tienes puesta en el visor; 'auto' = la calcula el servidor
       { const m = marcoRender(); if (m && info.camara) { info.camara.aspect = m.r; info.camara.fov = 2 * Math.atan(Math.tan((info.camara.fov * Math.PI) / 360) * (m.bh / m.H)) * 180 / Math.PI; } } // el render sale con el encuadre elegido
       const url = await enviarARenderNube({ glb: new Blob([buf], { type: 'model/gltf-binary' }), info, calidad, exposicion: 3, alAvanzar: t => setNube({ estado: 'trabajando', texto: t }) });
       setNube({ estado: 'listo', url });
@@ -7956,6 +7958,7 @@ export default function Visor3D({ cliente = false }) {
                 <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>La IA solo retoca la imagen ya renderizada: no cambia la geometría, los materiales ni los objetos. Para un cambio de ambiente completo sigue estando «Render con IA».</div>
               </>)}
               {sec('Render realista en la nube', <>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 12 }} title="Como el visor: usa la exposición que tienes en Luces (Exposición EV100). Automática: el servidor la calcula"><span style={{ width: 70, opacity: 0.8 }}>Exposición</span><select value={expNube} onChange={e => setExpNube(e.target.value)} style={{ ...btn, flex: 1 }}><option value="visor">Como en el visor</option><option value="auto">Automática</option></select></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 12 }}><span style={{ width: 70, opacity: 0.8 }}>Encuadre</span><select value={encuadre} onChange={e => setEncuadre(e.target.value)} style={{ ...btn, flex: 1 }}>{['16:9', '3:2', '4:3', '1:1', '9:16'].map(x => <option key={x} value={x}>{x}</option>)}</select></label>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {[['previa', 'Vista previa'], ['hd', '4K'], ['8k', '8K']].map(([k, n]) => <button key={k} style={{ ...btn, flex: 1 }} disabled={estado !== 'listo' || nube?.estado === 'trabajando'} onClick={() => renderNube(k)} title="Trazado de rayos con Blender Cycles en una GPU: luz y reflejos reales">{'☁ ' + n}</button>)}

@@ -20,8 +20,16 @@ nt = w.node_tree; nt.nodes.clear()
 sky = nt.nodes.new('ShaderNodeTexSky')
 try: sky.sky_type = 'MULTIPLE_SCATTERING'
 except Exception: sky.sky_type = 'NISHITA'
-sky.sun_elevation = math.radians(40); sky.sun_rotation = math.radians(200)
-bg = nt.nodes.new('ShaderNodeBackground'); bg.inputs['Strength'].default_value = 0.6
+# Sol y cielo como en el visor: misma hora, orientación al norte, sol encendido o apagado e intensidad del sol
+hora = float(info.get('hora') or 12); t = max(0.0, min(1.0, (hora - 6) / 15)); k = math.sin(math.pi * t)
+elev = max(0.05, k) * math.radians(65); az = math.pi * (1 - t) + math.radians(float(info.get('norte') or 0))
+noche = hora <= 6 or hora >= 21
+sky.sun_elevation = elev; sky.sun_rotation = az % (2 * math.pi)
+try: sky.sun_intensity = 0.0 if (noche or info.get('solOn') is False) else float(info.get('solI') or 1.0)
+except Exception: pass
+bg = nt.nodes.new('ShaderNodeBackground')
+# luz del cielo: de día 0,6; al atardecer baja; de noche casi nada (solo se ven las luces del proyecto)
+bg.inputs['Strength'].default_value = 0.02 if noche else 0.08 + 0.52 * min(1.0, k / 0.4)
 o = nt.nodes.new('ShaderNodeOutputWorld')
 nt.links.new(sky.outputs[0], bg.inputs[0]); nt.links.new(bg.outputs[0], o.inputs[0])
 
@@ -100,7 +108,12 @@ def brillo(exp):
     n = len(px) // 4; m = sum(0.2126 * px[4*k] + 0.7152 * px[4*k+1] + 0.0722 * px[4*k+2] for k in range(n)) / max(1, n)
     sc.render.resolution_x, sc.render.resolution_y, sc.cycles.samples, sc.cycles.use_denoising = r0
     return m
-if os.environ.get('EXPO_AUTO', '1') == '1':
+# Exposición del visor: se traduce a la del render (3,5 pasos con los valores por defecto del visor: exposición 1 y EV 7); cada paso de EV hacia arriba oscurece un paso
+if info.get('modoExposicion') == 'visor':
+    ex = float(info.get('exposicion') or 1.0); ev = float(info.get('ev') if info.get('ev') is not None else 7)
+    sc.view_settings.exposure = 3.5 + math.log2(max(0.05, ex)) - (ev - 7)
+    print('EXPOSICION_VISOR', round(sc.view_settings.exposure, 2), 'exposicion', ex, 'EV', ev)
+elif os.environ.get('EXPO_AUTO', '1') == '1':
     exp = EXPO
     for _ in range(3):
         m = brillo(exp)
