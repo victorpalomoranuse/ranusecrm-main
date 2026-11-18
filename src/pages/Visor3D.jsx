@@ -4122,6 +4122,8 @@ export default function Visor3D({ cliente = false }) {
     ctrl.update();
   }, [alturaOjos, plantaPers]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Con el modo realista activo, mover los controles de imagen (exposición, contraste…) ya no reconstruye todo el postproceso: solo cambian valores y responde al instante
+  const fxEf = realista || fxActivo;
   // Modo realista: reflejos de un entorno de estudio, oclusión ambiental (sombras de contacto) y bordes suavizados. Es opcional: en equipos flojos se deja apagado.
   useEffect(() => {
     const a = api3d.current; if (!a.renderer || estado === 'cargando') return;
@@ -4137,7 +4139,7 @@ export default function Visor3D({ cliente = false }) {
       espejoSucio = true; a.despertar?.();
       return;
     }
-    if (!realista && !fxActivo) return;
+    if (!fxEf) return;
     try {
       if (realista) {
         const pm = new THREE.PMREMGenerator(a.renderer), CIELOS = { dia: ['#5f9cff', '#dbe8f5', '#a09584', 0], atardecer: ['#34426f', '#ffae78', '#4a3a33', 0.5], calido: ['#7a5230', '#e0a566', '#3a2a1c', 0.55], noche: ['#0a1020', '#27345a', '#0a0a0c', 0] };
@@ -4194,7 +4196,7 @@ export default function Visor3D({ cliente = false }) {
         a.contacto = null;
       };
     } catch (e) { console.warn('modo realista', e); setRealista(false); }
-  }, [realista, estado, fxActivo, entorno, hdris, modoRender, calidad]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [realista, estado, fxEf, entorno, hdris, modoRender, calidad]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Varias plantas: se pueden ocultar por separado
   useEffect(() => {
