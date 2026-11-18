@@ -2440,6 +2440,7 @@ export default function Visor3D({ cliente = false }) {
   const cargasRef = useRef({ pend: 0, pes: 0 });
   const [encuadre, setEncuadre] = useState(() => { try { return localStorage.getItem('visor3dEncuadre') || '16:9'; } catch { return '16:9'; } });
   const [lienzo, setLienzo] = useState({ w: 0, h: 0 });
+  const [paso2Ia, setPaso2Ia] = useState(false); // el retoque con IA puede reinterpretar texturas: apagado por defecto
   const [expNube, setExpNube] = useState(() => { try { return localStorage.getItem('visor3dExpNube') || 'visor'; } catch { return 'visor'; } });
   useEffect(() => { try { localStorage.setItem('visor3dExpNube', expNube); } catch { /* sin almacenamiento */ } }, [expNube]);
   useEffect(() => { try { localStorage.setItem('visor3dEncuadre', encuadre); } catch { /* sin almacenamiento */ } }, [encuadre]);
@@ -7965,7 +7966,7 @@ export default function Visor3D({ cliente = false }) {
                 </div>
                 {nube?.estado === 'trabajando' && <div style={{ fontSize: 12, marginTop: 6 }}>⏳ {nube.texto}</div>}
                 {nube?.estado === 'error' && <div style={{ fontSize: 12, marginTop: 6, color: '#e9a' }}>{nube.texto}</div>}
-                {nube?.estado === 'listo' && <div style={{ marginTop: 6 }}><img src={nube.url} alt="Render realista" style={{ width: '100%', borderRadius: 6, display: 'block' }} /><a href={nube.url} download="render-realista.png" target="_blank" rel="noreferrer" style={{ ...btn, display: 'block', textAlign: 'center', marginTop: 6, textDecoration: 'none' }}>⬇ Descargar</a><button style={{ ...btn, width: '100%', marginTop: 6, background: '#8c8076', fontWeight: 700 }} disabled={ia?.estado === 'trabajando'} onClick={mejorarNubeConIA} title="Paso 2: la IA retoca esta imagen (nitidez y luz) sin cambiar la escena">✨ Paso 2 · Postproducción con IA</button></div>}
+                {nube?.estado === 'listo' && <div style={{ marginTop: 6 }}><img src={nube.url} alt="Render realista" style={{ width: '100%', borderRadius: 6, display: 'block' }} /><a href={nube.url} download="render-realista.png" target="_blank" rel="noreferrer" style={{ ...btn, display: 'block', textAlign: 'center', marginTop: 6, textDecoration: 'none' }}>⬇ Descargar</a><label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 11, marginTop: 8, opacity: 0.8 }}><input type="checkbox" checked={paso2Ia} onChange={e => setPaso2Ia(e.target.checked)} /> Retoque con IA (opcional)</label>{paso2Ia && <><div style={{ fontSize: 11, color: '#e9c', marginTop: 4 }}>Ojo: la IA puede reinterpretar texturas y detalles. La imagen de arriba es fiel a tu escena.</div><button style={{ ...btn, width: '100%', marginTop: 4 }} disabled={ia?.estado === 'trabajando'} onClick={mejorarNubeConIA} title="La IA retoca esta imagen (nitidez y luz)">✨ Retocar con IA</button></>}</div>}
                 <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>Calcula la luz real (rebotes, sombras suaves, reflejos) en una GPU en la nube. Tarda de segundos a unos minutos según la calidad. Usa la vista de cámara actual.</div>
               </>)}
               {sec('Exportar imagen', <>

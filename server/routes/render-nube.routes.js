@@ -13,7 +13,7 @@ router.use(authenticateToken, requirePermission('proyectos'));
 const BUCKET = 'project-documents';
 const BASE = 'render-nube';
 const RUNPOD = 'https://api.runpod.ai/v2';
-const CALIDADES = { previa: { ancho: 1280, muestras: 48 }, hd: { ancho: 3840, muestras: 128 }, '8k': { ancho: 7680, muestras: 192 } };
+const CALIDADES = { previa: { ancho: 1280, muestras: 48 }, hd: { ancho: 3840, muestras: 192 }, '8k': { ancho: 7680, muestras: 256 } };
 const clave = () => process.env.RUNPOD_API_KEY, endpoint = () => process.env.RUNPOD_ENDPOINT_ID;
 const idValido = s => /^[a-f0-9]{16}$/.test(String(s || ''));
 const rp = (ruta, opc = {}) => fetch(RUNPOD + '/' + endpoint() + ruta, { ...opc, headers: { Authorization: 'Bearer ' + clave(), 'Content-Type': 'application/json' } });
