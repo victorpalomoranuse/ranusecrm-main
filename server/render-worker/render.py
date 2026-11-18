@@ -58,7 +58,14 @@ for L in info['luces']:
         # luminancia (nits) * superficie * pi = lumenes; vatios = lumenes / 683
         d.energy = L['i'] * L['w'] * L['h'] * math.pi / 683.0 * LED_K
         ob = bpy.data.objects.new('a', d); sc.collection.objects.link(ob); ob.location = G(L['pos'])
-        ob.visible_camera = True  # las tiras LED se ven como líneas luminosas, como en el visor
+        ob.visible_camera = False
+        if L['h'] < 0.12 and L['w'] > 0.2:  # tira LED: línea luminosa visible, cálida y sin quemarse (como en el visor)
+            me = bpy.data.meshes.new('ledm'); me.from_pydata([(-L['w'] / 2, -max(L['h'], 0.012) / 2, 0), (L['w'] / 2, -max(L['h'], 0.012) / 2, 0), (L['w'] / 2, max(L['h'], 0.012) / 2, 0), (-L['w'] / 2, max(L['h'], 0.012) / 2, 0)], [], [(0, 1, 2, 3)])
+            em = bpy.data.objects.new('led', me); sc.collection.objects.link(em); em.location = ob.location; em.rotation_euler = ob.rotation_euler
+            mt = bpy.data.materials.new('ledmat'); mt.use_nodes = True; nt2 = mt.node_tree; nt2.nodes.clear()
+            e = nt2.nodes.new('ShaderNodeEmission'); e.inputs['Color'].default_value = (*col, 1.0); e.inputs['Strength'].default_value = 4.0
+            o2 = nt2.nodes.new('ShaderNodeOutputMaterial'); nt2.links.new(e.outputs[0], o2.inputs[0]); me.materials.append(mt)
+            em.visible_shadow = False
         dr = Vector((L['dir'][0], -L['dir'][2], L['dir'][1]))
         ob.rotation_euler = dr.to_track_quat('-Z', 'Y').to_euler()
     elif L['t'] == 'sol':
@@ -125,10 +132,10 @@ def brillo(exp):
     n = len(px) // 4; m = sum(0.2126 * px[4*k] + 0.7152 * px[4*k+1] + 0.0722 * px[4*k+2] for k in range(n)) / max(1, n)
     sc.render.resolution_x, sc.render.resolution_y, sc.cycles.samples, sc.cycles.use_denoising = r0
     return m
-# Exposición del visor: se traduce a la del render (3,5 pasos con los valores por defecto del visor: exposición 1 y EV 7); cada paso de EV hacia arriba oscurece un paso
+# Exposición del visor: se traduce a la del render (2,8 pasos con los valores por defecto del visor: exposición 1 y EV 7); cada paso de EV hacia arriba oscurece un paso
 if info.get('modoExposicion') == 'visor':
     ex = float(info.get('exposicion') or 1.0); ev = float(info.get('ev') if info.get('ev') is not None else 7)
-    sc.view_settings.exposure = 3.5 + math.log2(max(0.05, ex)) - (ev - 7)
+    sc.view_settings.exposure = 2.8 + math.log2(max(0.05, ex)) - (ev - 7)
     print('EXPOSICION_VISOR', round(sc.view_settings.exposure, 2), 'exposicion', ex, 'EV', ev)
 elif os.environ.get('EXPO_AUTO', '1') == '1':
     exp = EXPO
