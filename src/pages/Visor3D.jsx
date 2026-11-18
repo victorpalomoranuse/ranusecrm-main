@@ -6396,8 +6396,10 @@ export default function Visor3D({ cliente = false }) {
   // ── Escenas: una vista guardada (cámara, hora, luces, capas visibles y textos de IA) a la que se vuelve y desde la que se renderiza
   const txtDe = e => ({ estancia: e.meta?.estancia || '', estilo: e.meta?.estilo || '', extra: e.meta?.extra || '', libertad: e.meta?.libertad || 'equilibrado', proveedor: iaTxt.proveedor, aspecto: iaTxt.aspecto || 'realista' });
   const irAEscena = async (e) => { restaurarVista(e.meta); setOcultas(e.ocultas || []); setIaTxt(t => ({ ...t, ...txtDe(e) })); await esperar(450); };
-  const guardarEscena = () => { const nombre = (escNombre || '').trim() || ('Escena ' + (escenas.length + 1)); setEscenas(x => [...x, { id: 'e' + Date.now().toString(36), nombre, meta: metaActual(), ocultas }]); setEscNombre(''); };
-  const actualizarEscena = id2 => { setEscenas(x => x.map(e => (e.id === id2 ? { ...e, meta: metaActual(), ocultas } : e))); setGuardado('Escena actualizada con la vista de ahora'); };
+  // Miniatura de la escena (como en D5): una captura pequeña de la vista, para reconocerla y volver a ella con un clic
+  const miniEscena = async () => { try { return await renderHDurl({ ancho: 360, fmt: 'jpg' }); } catch { return null; } };
+  const guardarEscena = async () => { const nombre = (escNombre || '').trim() || ('Escena ' + (escenas.length + 1)), meta = metaActual(), oc = ocultas, mini = await miniEscena(); setEscenas(x => [...x, { id: 'e' + Date.now().toString(36), nombre, meta, ocultas: oc, mini }]); setEscNombre(''); };
+  const actualizarEscena = async id2 => { const meta = metaActual(), oc = ocultas, mini = await miniEscena(); setEscenas(x => x.map(e => (e.id === id2 ? { ...e, meta, ocultas: oc, mini: mini || e.mini } : e))); setGuardado('Escena actualizada con la vista de ahora'); };
   const renderEscena = async (e, tipo) => {
     await irAEscena(e);
     if (tipo === 'ia') return renderIA(txtDe(e), { autoGuardar: true, nombre: e.nombre });
@@ -7527,33 +7529,30 @@ export default function Visor3D({ cliente = false }) {
           <span style={{ position: 'absolute', left: 8, top: 6, fontSize: 11, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>Encuadre del render · {encuadre}</span>
         </div>); })()}
       {escAbierta && (
-        <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 330, background: 'rgba(24,24,24,0.95)', color: '#fff', borderRadius: 10, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
-          <div style={{ fontWeight: 700, marginBottom: 2 }}>🎬 Escenas <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>vistas guardadas</span></div>
-          <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 8 }}>Una escena recuerda la cámara, la hora, las luces, las capas visibles y los textos de la IA. Colócate, ponle nombre y guárdala: luego vuelves a ella o la renderizas.</div>
+        <div style={{ position: 'absolute', left: railOculto ? 12 : railW + 16, top: 96, bottom: 12, width: 232, background: 'rgba(24,24,24,0.95)', color: '#fff', borderRadius: 10, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}><b style={{ flex: 1 }}>🎬 Escenas</b><span onClick={() => setEscAbierta(false)} style={{ cursor: 'pointer', opacity: 0.7, padding: '0 4px' }} title="Cerrar">✕</span></div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-            <input value={escNombre} onChange={e => setEscNombre(e.target.value)} placeholder="Nombre (ej. Salón desde la entrada)" onKeyDown={e => { if (e.key === 'Enter') guardarEscena(); }} style={{ ...btn, flex: 1, minWidth: 0 }} />
-            <button style={{ ...btn, background: '#6b6159' }} onClick={guardarEscena} title="Guarda la vista actual como escena">＋ Guardar</button>
+            <input value={escNombre} onChange={e => setEscNombre(e.target.value)} placeholder="Nombre de la escena" onKeyDown={e => { if (e.key === 'Enter') guardarEscena(); }} style={{ ...btn, flex: 1, minWidth: 0 }} />
+            <button style={{ ...btn, background: '#6b6159' }} onClick={guardarEscena} title="Guarda la vista actual como escena">＋</button>
           </div>
-          {!escenas.length && <p style={{ opacity: 0.65 }}>Aún no hay escenas.</p>}
+          {!escenas.length && <p style={{ opacity: 0.65, fontSize: 12 }}>Aún no hay escenas. Colócate donde quieras, ponle nombre y pulsa ＋. Luego, un clic en su miniatura te lleva a ella.</p>}
           {escenas.map(e => (
-            <div key={e.id} style={{ borderTop: '1px solid #333', padding: '8px 0' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <input defaultValue={e.nombre} key={e.id + e.nombre} onBlur={ev => { if (ev.target.value !== e.nombre) setEscenas(x => x.map(y => (y.id === e.id ? { ...y, nombre: ev.target.value } : y))); }} style={{ ...btn, flex: 1, padding: '3px 6px', fontWeight: 700 }} />
-                <span onClick={() => { if (window.confirm('¿Borrar la escena «' + e.nombre + '»?')) setEscenas(x => x.filter(y => y.id !== e.id)); }} style={{ cursor: 'pointer', opacity: 0.6, padding: '0 4px' }} title="Borrar">✕</span>
+            <div key={e.id} style={{ marginBottom: 10 }}>
+              <div onClick={() => irAEscena(e)} title="Ir a la escena" style={{ position: 'relative', cursor: 'pointer', borderRadius: 8, overflow: 'hidden', border: '1px solid #4a423b', background: '#1b1917', aspectRatio: '16 / 9' }}>
+                {e.mini ? <img src={e.mini} alt={e.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.45, fontSize: 11 }}>Sin miniatura · pulsa «Actualizar»</div>}
+                <span style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '14px 8px 5px', fontWeight: 700, fontSize: 12, background: 'linear-gradient(transparent, rgba(0,0,0,0.75))' }}>{e.nombre}</span>
               </div>
-              <div style={{ opacity: 0.6, fontSize: 11, margin: '3px 0 5px' }}>{e.meta?.estancia ? e.meta.estancia + ' · ' : ''}{e.meta?.hora != null ? e.meta.hora + ' h' : ''}{(e.ocultas || []).length ? ' · ' + e.ocultas.length + ' capa(s) oculta(s)' : ''}</div>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                <button style={{ ...btn, padding: '3px 9px' }} onClick={() => irAEscena(e)}>Ir a la escena</button>
-                <button style={{ ...btn, padding: '3px 9px' }} onClick={() => actualizarEscena(e.id)} title="Sustituye la escena por la vista de ahora">Actualizar</button>
-                <button style={{ ...btn, padding: '3px 9px', background: '#8c8076' }} disabled={!!lote} onClick={() => renderEscena(e, 'ia')} title="Va a la escena y genera el render con IA, que se guarda en la galería">✨ IA</button>
-                <button style={{ ...btn, padding: '3px 9px' }} disabled={!!lote} onClick={() => renderEscena(e, 'hd')} title="Va a la escena y guarda un render HD en la galería">🖼 HD</button>
+              <div style={{ display: 'flex', gap: 4, marginTop: 4, alignItems: 'center' }}>
+                <button style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => actualizarEscena(e.id)} title="Sustituye la escena por la vista de ahora y su miniatura">Actualizar</button>
+                <button style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => { const n = window.prompt('Nombre de la escena', e.nombre); if (n && n.trim()) setEscenas(x => x.map(y => (y.id === e.id ? { ...y, nombre: n.trim() } : y))); }} title="Cambiar el nombre">✎</button>
+                <span style={{ flex: 1 }} />
+                <span onClick={() => { if (window.confirm('¿Borrar la escena «' + e.nombre + '»?')) setEscenas(x => x.filter(y => y.id !== e.id)); }} style={{ cursor: 'pointer', opacity: 0.6, padding: '0 4px' }} title="Borrar">✕</span>
               </div>
             </div>
           ))}
           {escenas.length > 1 && (
             <div style={{ borderTop: '1px solid #333', paddingTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button style={{ ...btn, background: '#8c8076' }} disabled={!!lote} onClick={() => renderTodas('ia')}>✨ Todas con IA ({escenas.length})</button>
-              <button style={btn} disabled={!!lote} onClick={() => renderTodas('hd')}>🖼 Todas en HD</button>
+              <button style={btn} disabled={!!lote} onClick={() => renderTodas('hd')} title="Renderiza todas las escenas en HD y las guarda en la galería">🖼 Todas en HD</button>
             </div>
           )}
           {lote && <div style={{ marginTop: 8, color: '#8fb8de' }}>Renderizando {lote.i} de {lote.n}: {lote.nombre}…</div>}
