@@ -88,7 +88,7 @@ for t in ('OPTIX', 'CUDA'):
 sc.cycles.device = 'GPU' if usado != 'CPU' else 'CPU'
 print('DISPOSITIVO_USADO', usado, [d.name for d in prefs.devices])
 
-# Exposición automática: renders pequeños y rápidos que miden el brillo medio y corrigen la exposición hasta ~35 % de gris medio en pantalla
+# Exposición automática: renders pequeños y rápidos que miden el brillo medio y corrigen la exposición hasta ~22 % de gris medio en pantalla (las salas oscuras se quedan oscuras)
 import os, tempfile
 def brillo(exp):
     sc.view_settings.exposure = exp
@@ -105,7 +105,7 @@ if os.environ.get('EXPO_AUTO', '1') == '1':
     for _ in range(3):
         m = brillo(exp)
         if m < 0.01: exp += 3; continue
-        d = 2.2 * math.log2(0.35 / m)
+        d = 2.2 * math.log2(0.22 / m)
         print('EXPOSICION', round(exp, 2), 'brillo', round(m, 3), 'corr', round(d, 2))
         if abs(d) < 0.3: break
         exp = max(-6, min(9, exp + d * 0.8))
