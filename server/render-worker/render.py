@@ -42,7 +42,7 @@ def srgb2lin(c): return [(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) *
 
 # Escala: en el CRM la intensidad física va con una exposición muy baja; aquí convertimos a vatios de Blender y calibramos con la exposición
 SPOT_K = 3.0  # los focos del visor marcan círculos de luz más contundentes que la luz estrictamente física
-LED_K = 3.0  # las tiras LED del visor emiten mucho más de lo que se aprecia con la luz estrictamente física: se refuerzan
+LED_K = 5.0  # las tiras LED del visor lavan la pared con un haz cálido y marcado; con la luz estrictamente física quedaba débil (con valores mayores se aclara toda la sala)
 W_PER_CD = 4 * math.pi * math.pi / 683.0  # candelas -> vatios de Blender (aprox.)
 for L in info['luces']:
     col = srgb2lin(hexc(L['col']))
