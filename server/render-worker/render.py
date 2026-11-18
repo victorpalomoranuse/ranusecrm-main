@@ -31,18 +31,23 @@ bg = nt.nodes.new('ShaderNodeBackground')
 # luz del cielo: de día 0,6; al atardecer baja; de noche casi nada (solo se ven las luces del proyecto)
 bg.inputs['Strength'].default_value = 0.02 if noche else 0.08 + 0.52 * min(1.0, k / 0.4)
 o = nt.nodes.new('ShaderNodeOutputWorld')
-nt.links.new(sky.outputs[0], bg.inputs[0]); nt.links.new(bg.outputs[0], o.inputs[0])
+# Los reflejos (espejos, cromados) no ven el cielo azul tal cual: se ven con un gris neutro y oscuro, como en el visor
+lp = nt.nodes.new('ShaderNodeLightPath'); mx = nt.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'
+mx.inputs[7].default_value = (0.03, 0.03, 0.03, 1.0)
+nt.links.new(sky.outputs[0], mx.inputs[6]); nt.links.new(lp.outputs['Is Glossy Ray'], mx.inputs[0])
+nt.links.new(mx.outputs[2], bg.inputs[0]); nt.links.new(bg.outputs[0], o.inputs[0])
 
 def hexc(h): h = h.lstrip('#'); return [int(h[i:i+2], 16) / 255 for i in (0, 2, 4)]
 def srgb2lin(c): return [(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4) for x in c]
 
 # Escala: en el CRM la intensidad física va con una exposición muy baja; aquí convertimos a vatios de Blender y calibramos con la exposición
+SPOT_K = 3.0  # los focos del visor marcan círculos de luz más contundentes que la luz estrictamente física
 LED_K = 3.0  # las tiras LED del visor emiten mucho más de lo que se aprecia con la luz estrictamente física: se refuerzan
 W_PER_CD = 4 * math.pi * math.pi / 683.0  # candelas -> vatios de Blender (aprox.)
 for L in info['luces']:
     col = srgb2lin(hexc(L['col']))
     if L['t'] == 'spot':
-        d = bpy.data.lights.new('s', 'SPOT'); d.energy = L['i'] * W_PER_CD; d.spot_size = min(math.pi, L['ang'] * 2); d.spot_blend = max(0.05, L['pen']); d.shadow_soft_size = 0.05
+        d = bpy.data.lights.new('s', 'SPOT'); d.energy = L['i'] * W_PER_CD * SPOT_K; d.spot_size = min(math.pi, L['ang'] * 2); d.spot_blend = max(0.05, L['pen']); d.shadow_soft_size = 0.05
         ob = bpy.data.objects.new('s', d); sc.collection.objects.link(ob); ob.location = G(L['pos'])
         ob.rotation_euler = (G(L['tg']) - ob.location).to_track_quat('-Z', 'Y').to_euler()
     elif L['t'] == 'point':
