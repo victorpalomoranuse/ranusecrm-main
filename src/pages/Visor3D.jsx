@@ -7054,6 +7054,7 @@ export default function Visor3D({ cliente = false }) {
           ['Escenas' + (escenas.length ? ' (' + escenas.length + ')' : ''), () => setEscAbierta(v => !v), escAbierta, false, 'Vistas guardadas', '3'],
         ])}
         <span style={{ flex: 1 }} />
+        {modoRender && !cliente && <button style={{ ...bTop, background: '#8c8076', borderColor: '#8c8076', fontWeight: 700 }} onClick={() => { setLuzSel(null); setCamAbierta(false); setHerr('sel'); setPestanaRender('salida'); setRenderAbierto(true); }} title="Render realista en la nube: abre el encuadre y las calidades (vista previa, 4K y 8K)">{nube?.estado === 'trabajando' ? '⏳ ' + (nube.texto || 'Renderizando…').slice(0, 22) : '☁ Render realista'}</button>}
         {modoRender && menuTop2('Crear render', 'crear-render', [
           ['Render con IA · ajustar', abrirFormIA, false, estado !== 'listo' || ia?.estado === 'trabajando', 'Elige estilo, materiales y referencias antes de generar'],
           ['Render rápido con IA', renderRapido, false, estado !== 'listo' || ia?.estado === 'trabajando', 'Genera desde la vista actual'],
