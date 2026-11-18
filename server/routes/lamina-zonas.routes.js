@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { disenadorDe, proyectoEsDe } from '../utils/asignados.js';
-import { clasificaNombres, construye, laminaSvg, laminaPdf, clave, TIPOS, NOMBRE } from '../utils/lamina-zonas.js';
+import { clasificaNombres, construye, laminaSvg, laminaPdf, clave, TIPOS, NOMBRE, COLOR } from '../utils/lamina-zonas.js';
 
 // Lámina de zonas para el cliente: se genera a partir del plano guardado (mediciones.data) y se guarda la clasificación (tipo y grupo de cada máquina)
 // dentro del propio plano (data.zonasLamina), para que la IA clasifique solo lo nuevo y lo que corrija el usuario se respete.
@@ -34,6 +34,8 @@ async function asegura(fila) {
   }
   return { zl, nombres };
 }
+const tiposDe = zl => [...TIPOS.map(id => ({ id, nombre: NOMBRE[id], color: COLOR[id] })), ...(zl.tipos || [])];
+const gruposDe = zl => [...new Set([...GRUPOS, ...(zl.grupos || []), ...Object.values(zl.clasif || {}).map(c => c.grupo).filter(Boolean)])];
 const titulos = (fila, zl) => ({ titulo: txt(zl.titulo, 80) || (fila.nombre || 'Distribución') + ' · zonas', subtitulo: txt(zl.subtitulo, 120) });
 
 router.get('/:id', async (req, res) => {
@@ -41,17 +43,24 @@ router.get('/:id', async (req, res) => {
     const fila = await cargar(req, res); if (!fila) return;
     const { zl, nombres } = await asegura(fila), g = construye(fila.data, zl.clasif), t = titulos(fila, zl);
     const cuenta = {}; (fila.data.eq || []).filter(e => e.s !== 'dem').forEach(e => { const k = clave(e); cuenta[k] = (cuenta[k] || 0) + 1; });
-    res.json({ ...t, plano: fila.nombre, svg: laminaSvg(g, t.titulo, t.subtitulo), total: g.total, zonas: g.zonas, tipos: TIPOS.map(x => ({ id: x, nombre: NOMBRE[x] })), grupos: GRUPOS,
+    res.json({ ...t, plano: fila.nombre, svg: laminaSvg(g, t.titulo, t.subtitulo), total: g.total, zonas: g.zonas, tipos: tiposDe(zl), grupos: gruposDe(zl),
       maquinas: Object.keys(nombres).map(k => ({ clave: k, nombre: nombres[k], cantidad: cuenta[k] || 0, tipo: zl.clasif[k]?.tipo || 'otro', grupo: zl.clasif[k]?.grupo || 'Otros' })).sort((a, b) => a.nombre.localeCompare(b.nombre)) });
   } catch (e) { console.error('lámina zonas:', e); res.status(500).json({ error: 'No se pudo preparar la lámina: ' + String(e.message || '').slice(0, 140) }); }
 });
 router.put('/:id', async (req, res) => {
   try {
     const fila = await cargar(req, res); if (!fila) return; const d = fila.data || {}, zl = (d.zonasLamina = d.zonasLamina || { clasif: {} }); zl.clasif = zl.clasif || {};
-    (Array.isArray(req.body?.maquinas) ? req.body.maquinas : []).slice(0, 300).forEach(m => { const k = txt(m?.clave, 120); if (!k) return; zl.clasif[k] = { ...(zl.clasif[k] || {}), tipo: TIPOS.includes(m.tipo) ? m.tipo : 'otro', grupo: GRUPOS.includes(m.grupo) ? m.grupo : 'Otros', auto: false }; });
+    if (req.body?.nuevaZona) {
+      const zona = req.body.nuevaZona, nombre = txt(zona.nombre, 60), id = txt(zona.id, 80);
+      if (!nombre || !/^zona-[a-z0-9-]+$/.test(id) || !/^#[0-9a-f]{6}$/i.test(zona.color || '')) return res.status(400).json({ error: 'Nombre o color de zona incorrecto' });
+      zl.tipos = zl.tipos || [];
+      if (!tiposDe(zl).some(t => t.id === id || t.nombre.toLowerCase() === nombre.toLowerCase())) zl.tipos.push({ id, nombre, color: zona.color });
+    }
+    const tipos = tiposDe(zl);
+    (Array.isArray(req.body?.maquinas) ? req.body.maquinas : []).slice(0, 300).forEach(m => { const k = txt(m?.clave, 120); if (!k) return; zl.clasif[k] = { ...(zl.clasif[k] || {}), tipo: tipos.some(t => t.id === m.tipo) ? m.tipo : 'otro', grupo: txt(m.grupo, 60) || 'Otros', auto: false }; });
     if (typeof req.body?.titulo === 'string') zl.titulo = txt(req.body.titulo, 80); if (typeof req.body?.subtitulo === 'string') zl.subtitulo = txt(req.body.subtitulo, 120);
     const { error } = await supabase.from('mediciones').update({ data: d }).eq('id', fila.id); if (error) throw error;
-    const g = construye(d, zl.clasif), t = titulos(fila, zl); res.json({ svg: laminaSvg(g, t.titulo, t.subtitulo), total: g.total, zonas: g.zonas });
+    const g = construye(d, zl.clasif), t = titulos(fila, zl); res.json({ svg: laminaSvg(g, t.titulo, t.subtitulo), total: g.total, zonas: g.zonas, tipos: tiposDe(zl), grupos: gruposDe(zl) });
   } catch (e) { console.error('lámina zonas guarda:', e); res.status(500).json({ error: 'No se pudo guardar la clasificación' }); }
 });
 router.post('/:id/pdf', async (req, res) => {

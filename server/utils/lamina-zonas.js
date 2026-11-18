@@ -39,11 +39,15 @@ const dBox = (a, b) => Math.hypot(Math.max(0, Math.max(a[0], b[0]) - Math.min(a[
 const mezcla = (hex, con, k) => { const h = (x) => [1, 3, 5].map(i => parseInt(x.slice(i, i + 2), 16)); const a = h(hex), b = h(con); return '#' + a.map((v, i) => Math.round(v * (1 - k) + b[i] * k).toString(16).padStart(2, '0')).join(''); };
 
 export function construye(data, clasif, opciones = {}) {
+  const personalizados = data.zonasLamina?.tipos || [];
+  const tipos = [...TIPOS, ...personalizados.map(t => t.id)];
+  const colores = { ...COLOR, ...Object.fromEntries(personalizados.map(t => [t.id, t.color])) };
+  const nombres = { ...NOMBRE, ...Object.fromEntries(personalizados.map(t => [t.id, t.nombre])) };
   const N = nodoMap(data), BG = '#f6f3ee', vivo = (o) => o && o.s !== 'dem';
   const maq = (data.eq || []).filter(vivo).map(e => { const g = esquinas(e, N); if (!g) return null; const c = clasif[clave(e)] || { tipo: 'otro', grupo: 'Otros' }; return { e, g, tipo: c.tipo, grupo: c.grupo, nombre: txt(e.nm, 80) || 'Máquina' }; }).filter(Boolean);
   // zonas: por tipo, juntando las máquinas que están a menos de ~2 m unas de otras
   const zonas = [], UMBRAL = opciones.umbral || 200;
-  TIPOS.filter(t => t !== 'otro').forEach(t => {
+  tipos.filter(t => t !== 'otro').forEach(t => {
     const l = maq.filter(m => m.tipo === t), caja = l.map(m => bbox(m.g)), padre = l.map((_, i) => i), raiz = (i) => (padre[i] === i ? i : (padre[i] = raiz(padre[i])));
     for (let i = 0; i < l.length; i++) for (let j = i + 1; j < l.length; j++) if (dBox(caja[i], caja[j]) <= UMBRAL) padre[raiz(i)] = raiz(j);
     const gr = {}; l.forEach((m, i) => { (gr[raiz(i)] = gr[raiz(i)] || []).push(m); });
@@ -55,7 +59,7 @@ export function construye(data, clasif, opciones = {}) {
   const x0 = Math.min(...px) - 60, y0 = Math.min(...py) - 60, x1 = Math.max(...px) + 60, y1 = Math.max(...py) + 60;
   const prim = [];
   // manchas de zona (color suave sin transparencias, para que se vea igual en pantalla y en PDF)
-  zonas.forEach(z => prim.push({ k: 'poly', pts: z.hull, fill: mezcla(COLOR[z.tipo], BG, 0.8), stroke: mezcla(COLOR[z.tipo], BG, 0.8), sw: 70 }));
+  zonas.forEach(z => prim.push({ k: 'poly', pts: z.hull, fill: mezcla(colores[z.tipo], BG, 0.8), stroke: mezcla(colores[z.tipo], BG, 0.8), sw: 70 }));
   // muros, huecos y pilares
   const W = Object.fromEntries((data.walls || []).map(w => [w.id, w]));
   (data.walls || []).filter(vivo).forEach(w => { const a = N[w.a], b = N[w.b]; if (a && b) prim.push({ k: 'line', x1: a.x, y1: a.y, x2: b.x, y2: b.y, sw: Math.max(8, Math.min(40, w.t || 15)), col: '#3a3530', cap: 'square' }); });
@@ -65,14 +69,14 @@ export function construye(data, clasif, opciones = {}) {
     prim.push(o.t === 'door' ? { k: 'line', x1: xa, y1: ya, x2: xb, y2: yb, sw: 3, col: '#b9b2a8', cap: 'butt' } : { k: 'line', x1: xa, y1: ya, x2: xb, y2: yb, sw: 6, col: '#a9c4d3', cap: 'butt' }); });
   // máquinas: el tono varía un poco por grupo muscular dentro de cada tipo
   const tonos = {}; maq.forEach(m => { const k = m.tipo; tonos[k] = tonos[k] || []; if (!tonos[k].includes(m.grupo)) tonos[k].push(m.grupo); });
-  maq.forEach(m => { const gs = tonos[m.tipo], i = gs.indexOf(m.grupo), k = gs.length > 1 ? (i / (gs.length - 1)) * 0.42 : 0, base = COLOR[m.tipo]; m.col = mezcla(base, '#ffffff', k);
+  maq.forEach(m => { const gs = tonos[m.tipo], i = gs.indexOf(m.grupo), k = gs.length > 1 ? (i / (gs.length - 1)) * 0.42 : 0, base = colores[m.tipo]; m.col = mezcla(base, '#ffffff', k);
     prim.push({ k: 'rrect', cx: m.g.cx, cy: m.g.cy, w: m.g.w, h: m.g.d, rot: m.g.rot, r: 7, fill: m.col, stroke: '#ffffff', sw: 2 }); });
   (data.pil || []).filter(vivo).forEach(p => { const n = N[p.n]; if (n) prim.push({ k: 'rrect', cx: n.x + (p.dx || 0), cy: n.y + (p.dy || 0), w: p.w || 40, h: p.d || 40, rot: 0, r: 2, fill: '#3a3530', stroke: '#3a3530', sw: 1 }); });
   // rótulos: nombre de la zona y, si hay varios grupos, el grupo muscular
-  zonas.forEach(z => { prim.push({ k: 'etiqueta', x: z.cx, y: z.ytop - 52, txt: NOMBRE[z.tipo], size: 11, col: '#ffffff', bg: COLOR[z.tipo] }); const g = {}; z.ms.forEach(m => { (g[m.grupo] = g[m.grupo] || []).push(m); });
+  zonas.forEach(z => { prim.push({ k: 'etiqueta', x: z.cx, y: z.ytop - 52, txt: nombres[z.tipo], size: 11, col: '#ffffff', bg: colores[z.tipo] }); const g = {}; z.ms.forEach(m => { (g[m.grupo] = g[m.grupo] || []).push(m); });
     if (Object.keys(g).length > 1) Object.entries(g).forEach(([nom, ms]) => { const cx = ms.reduce((s, m) => s + m.g.cx, 0) / ms.length, cy = ms.reduce((s, m) => s + m.g.cy, 0) / ms.length; prim.push({ k: 'etiqueta', x: cx, y: cy, txt: nom, size: 8, col: '#3a3530', bg: '#ffffffd9' }); }); });
   // leyenda: tipo → grupo → máquinas
-  const leyenda = TIPOS.filter(t => maq.some(m => m.tipo === t)).map(t => { const l = maq.filter(m => m.tipo === t), g = {}; l.forEach(m => { const x = (g[m.grupo] = g[m.grupo] || {}); x[m.nombre] = (x[m.nombre] || 0) + 1; }); return { tipo: t, nombre: NOMBRE[t], color: COLOR[t], total: l.length, grupos: Object.entries(g).map(([nom, mp]) => ({ nombre: nom, n: Object.values(mp).reduce((a, b) => a + b, 0), maquinas: Object.entries(mp).map(([n, c]) => n + (c > 1 ? ' ×' + c : '')) })) }; });
+  const leyenda = tipos.filter(t => maq.some(m => m.tipo === t)).map(t => { const l = maq.filter(m => m.tipo === t), g = {}; l.forEach(m => { const x = (g[m.grupo] = g[m.grupo] || {}); x[m.nombre] = (x[m.nombre] || 0) + 1; }); return { tipo: t, nombre: nombres[t], color: colores[t], total: l.length, grupos: Object.entries(g).map(([nom, mp]) => ({ nombre: nom, n: Object.values(mp).reduce((a, b) => a + b, 0), maquinas: Object.entries(mp).map(([n, c]) => n + (c > 1 ? ' ×' + c : '')) })) }; });
   return { prim, caja: [x0, y0, x1, y1], bg: BG, leyenda, total: maq.length, zonas: zonas.length };
 }
 
