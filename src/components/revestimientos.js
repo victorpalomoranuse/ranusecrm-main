@@ -20,7 +20,13 @@ export const PERFILES_MOLDURA = {
 };
 
 // Catalogo de modelos listos para aplicar
+// Referencias: catálogo oficial Orac 3D Wall Covering. Geometrías paramétricas aproximadas, no modelos oficiales.
 export const PRESETS_REVEST = [
+  { id: 'orac-hill', cat: 'Inspiración Orac Decor', nombre: 'Hill · ondas redondeadas', desc: 'Inspirado en W110 Hill. Relieve aproximado de 1,6 cm, pintable.', tipo: 'lamas', color: '#f1eee8', p: { dir: 'v', ancho: 3.125, grueso: 1.6, sep: 0, forma: 'redondo', fondo: 'ninguno' } },
+  { id: 'orac-bar', cat: 'Inspiración Orac Decor', nombre: 'Bar · estriado recto', desc: 'Inspirado en W111 Bar. Relieve aproximado de 2 cm, pintable.', tipo: 'lamas', color: '#f1eee8', p: { dir: 'v', ancho: 2.5, grueso: 2, sep: 1.6667, forma: 'rect', fondo: 'ninguno' } },
+  { id: 'orac-bar-xl', cat: 'Inspiración Orac Decor', nombre: 'Bar XL · bandas anchas', desc: 'Inspirado en W116 Bar XL. Perfil aproximado, pintable.', tipo: 'lamas', color: '#f1eee8', p: { dir: 'v', ancho: 6, grueso: 2, sep: 2.3333, forma: 'rect', fondo: 'ninguno' } },
+  { id: 'orac-cuarterones', cat: 'Inspiración Orac Decor', nombre: 'Cuarterones clásicos', desc: 'Composición de molduras pintables inspirada en boiserie. Diseño propio.', tipo: 'cuadros', color: '#f1eee8', p: { ancho: 65, filas: 2, sep: 10, moldura: 3, relieve: 1.5, zocalo: 15 } },
+
   { id: 'pal-vert', cat: 'Palillería y lamas', nombre: 'Palillería vertical', desc: 'Listones de madera de 4 cm con fondo oscuro', tipo: 'lamas', color: '#b98b5e', p: { dir: 'v', ancho: 4, grueso: 2.5, sep: 2, forma: 'rect', fondo: 'oscuro' } },
   { id: 'pal-fina', cat: 'Palillería y lamas', nombre: 'Palillería fina', desc: 'Listones de 2 cm muy juntos', tipo: 'lamas', color: '#c9a577', p: { dir: 'v', ancho: 2, grueso: 2, sep: 1.5, forma: 'rect', fondo: 'oscuro' } },
   { id: 'pal-horiz', cat: 'Palillería y lamas', nombre: 'Palillería horizontal', desc: 'Listones tumbados', tipo: 'lamas', color: '#b98b5e', p: { dir: 'h', ancho: 4, grueso: 2.5, sep: 2, forma: 'rect', fondo: 'oscuro' } },
@@ -93,7 +99,7 @@ export function construirRevest(o) {
     for (let i = 0; i < n; i++) {
       const a = ini + i * paso, b = a + P.ancho, r = vert ? { x0: a, x1: b, y0: 0, y1: H } : { x0, x1, y0: a, y1: b };
       if (P.forma === 'redondo' && vert) {
-        for (const q of resta(r, hu)) { const rad = P.ancho / 2, cg = new THREE.CylinderGeometry(rad * CM, rad * CM, (q.y1 - q.y0) * CM, 10, 1, false, -Math.PI / 2, Math.PI); cg.scale(1, 1, P.grueso / rad); cg.translate(((q.x0 + q.x1) / 2 - W / 2) * CM, ((q.y0 + q.y1) / 2) * CM, fondoE * CM); geos.push(cg); }
+        for (const q of resta(r, hu)) { const rad = P.ancho / 2, cg = new THREE.CylinderGeometry(rad * CM, rad * CM, (q.y1 - q.y0) * CM, 24, 1, false, -Math.PI / 2, Math.PI); cg.scale(1, 1, P.grueso / rad); cg.translate(((q.x0 + q.x1) / 2 - W / 2) * CM, ((q.y0 + q.y1) / 2) * CM, fondoE * CM); geos.push(cg); }
       } else caja(r, fondoE, fondoE + P.grueso);
     }
   } else if (R.tipo === 'cuadros') {

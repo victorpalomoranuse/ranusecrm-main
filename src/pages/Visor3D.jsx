@@ -285,6 +285,7 @@ function aplicaEspejos(scene, renderActivo) {
       let m = m0;
       if (m.metalness === undefined) return;
       if (m.userData.ledColor) m.emissiveIntensity = renderActivo ? 3 : 0;
+      if (m.userData.pinturaMapa) { m.bumpMap = renderActivo ? m.userData.pinturaMapa : null; m.bumpScale = 0.00015; m.needsUpdate = true; }
       const pb = m.map?.userData?.pbr, mp = m.map?.userData?.mapsUrl, esp = o.userData.espejoDeco || m.map?.userData?.espejo;
       if (esp) {
         if (!m.userData.espOn) { m.userData.espOn = true; m.userData.esp0 = { metalness: m.metalness, roughness: m.roughness, envMapIntensity: m.envMapIntensity }; }
@@ -415,6 +416,16 @@ function texturaDe(t, uvEnCm) {
 }
 // Aplica un color (#hex) o una textura ('tex:ID') a una malla; si no hay valor, vuelve a su color de origen
 const MODOS_SUELO = { moteado: { antirep: true, junta: false, tono: 0.03 }, aguas: { antirep: true, junta: false, tono: 0.05, crop: 0.6 }, liso: { antirep: true, junta: false, tono: 0.04 } };
+let mapaPintura;
+function relievePintura() {
+  if (mapaPintura) return mapaPintura;
+  const data = new Uint8Array(128 * 128 * 4); let seed = 18731;
+  for (let i = 0; i < 128 * 128; i++) { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; const v = 112 + (seed >>> 27); data.set([v, v, v, 255], i * 4); }
+  mapaPintura = new THREE.DataTexture(data, 128, 128);
+  mapaPintura.wrapS = mapaPintura.wrapT = THREE.RepeatWrapping;
+  mapaPintura.magFilter = THREE.LinearFilter; mapaPintura.minFilter = THREE.LinearMipmapLinearFilter; mapaPintura.generateMipmaps = true; mapaPintura.needsUpdate = true;
+  return mapaPintura;
+}
 function pinturaMate(m) {
   for (const key of ['map', 'emissiveMap', 'normalMap', 'bumpMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'envMap']) m[key] = null;
   m.metalness = 0; m.roughness = 0.9; m.opacity = 1; m.transparent = false; m.depthWrite = true;
@@ -425,6 +436,10 @@ function pinturaMate(m) {
 }
 function pintar(mesh, valor, texturas, uvEnCm, repBox, modoSuelo) {
   const u = mesh.userData;
+  const paredPintada = (u.muroId || u.techoKey) && (!valor || /^#[0-9a-f]{6}$/i.test(valor));
+  if (paredPintada) {
+    if (!mesh.material.userData.pinturaMapa) { const mp = relievePintura().clone(); mp.repeat.setScalar(uvEnCm ? 0.1 : 10); mesh.material.userData.pinturaMapa = mp; }
+  } else delete mesh.material.userData.pinturaMapa;
   if (/^#[0-9a-f]{6}$/i.test(valor || '')) pinturaMate(mesh.material);
   if (u.col0 === undefined) u.col0 = mesh.material.color.getHex();
   const t = valor && String(valor).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === valor) : null;
@@ -2880,8 +2895,26 @@ export default function Visor3D({ cliente = false }) {
       const visible = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
       if (herrRef.current === 'revest') {
         const pr = presetRevest(revSelRef.current); if (!pr) return;
-        const h = rayo.intersectObjects(raiz.children, true).find(x => x.object.isMesh && !x.object.userData.hit && !x.object.userData.overlay && x.object.userData.muroId && !String(x.object.userData.muroId).startsWith('rc-') && visible(x.object));
-        if (!h || !h.face) { setAviso('Pulsa sobre la cara de un muro'); return; }
+        const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(impactoVisible);
+        if (!h || !h.face) { setAviso('Pulsa sobre una cara vertical del muro o recrecido'); return; }
+        if (h.object.userData.recrecidoId || h.object.userData.oid) {
+          const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+          if (Math.abs(n.y) > 0.01) { setAviso('Selecciona una cara vertical'); return; }
+          const tangent = new THREE.Vector3(n.z, 0, -n.x), pos = h.object.geometry.attributes.position;
+          const vertices = [];
+          for (let j = 0; j < pos.count; j++) {
+            const q = new THREE.Vector3().fromBufferAttribute(pos, j).applyMatrix4(h.object.matrixWorld);
+            if (Math.abs(q.clone().sub(h.point).dot(n)) < 0.001) vertices.push(q);
+          }
+          if (vertices.length < 3) return;
+          const xx = vertices.map(q => q.dot(tangent)), yy = vertices.map(q => q.y);
+          const x0 = Math.min(...xx), x1 = Math.max(...xx), y0 = Math.min(...yy), y1 = Math.max(...yy);
+          const center = tangent.clone().multiplyScalar((x0 + x1) / 2).addScaledVector(n, h.point.dot(n) + 0.001);
+          const base = { w: (x1 - x0) / CM, alto: (y1 - y0) / CM, revest: { id: pr.id, tipo: pr.tipo, p: { ...pr.p } } };
+          const nuevo = { ...base, id: 'o' + Date.now().toString(36), tipo: 'revest', nombre: pr.nombre, etiqueta: 'Revestimientos', cx: center.x / CM, cy: center.z / CM, rot: Math.atan2(tangent.z, tangent.x) * 180 / Math.PI, d: espesorRevest(base), z0: y0 / CM, color: pr.color };
+          setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); if (!e.shiftKey) setHerr('sel'); return;
+        }
+        if (!h.object.userData.muroId) { setAviso('Selecciona un muro o una cara del recrecido; no se aplicará a la pared de detrás.'); return; }
         const mod = api3d.current.modelo, mu = (mod?.plantas || [mod]).flatMap(p => p?.muros || []).find(m => m.id === h.object.userData.muroId); if (!mu) return;
         const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L;
         const nW = h.face.normal.clone().transformDirection(h.object.matrixWorld), dot = nW.x * -uy + nW.z * ux;
