@@ -2437,6 +2437,30 @@ export default function Visor3D({ cliente = false }) {
   };
   // Render realista en la nube (Blender Cycles en una GPU): sube la escena, espera y enseña la imagen
   const [nube, setNube] = useState(null);
+  const [encuadre, setEncuadre] = useState(() => { try { return localStorage.getItem('visor3dEncuadre') || '16:9'; } catch { return '16:9'; } });
+  const [lienzo, setLienzo] = useState({ w: 0, h: 0 });
+  useEffect(() => { try { localStorage.setItem('visor3dEncuadre', encuadre); } catch { /* sin almacenamiento */ } }, [encuadre]);
+  useEffect(() => {
+    const el = api3d.current.el; if (!el || typeof ResizeObserver === 'undefined') return;
+    const act = () => setLienzo({ w: el.clientWidth, h: el.clientHeight });
+    act(); const ro = new ResizeObserver(act); ro.observe(el); return () => ro.disconnect();
+  }, [estado]);
+  // Encuadre del render: caja con la proporción elegida, centrada en el visor (lo que sale dentro de la caja es lo que se renderiza)
+  const marcoRender = () => {
+    const [aw, ah] = encuadre.split(':').map(Number), r = aw / ah, { w, h } = lienzo; if (!w || !h) return null;
+    const bw = Math.min(w, h * r), bh = bw / r; return { r, bw, bh, W: w, H: h };
+  };
+  // Segundo paso del flujo: la imagen renderizada en la nube se retoca con IA (solo mejora, no cambia la escena)
+  const mejorarNubeConIA = async () => {
+    if (!nube?.url) return;
+    setIa({ estado: 'trabajando' });
+    try {
+      const blob = await (await fetch(nube.url)).blob();
+      const imagen = await new Promise((ok, ko) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = ko; fr.readAsDataURL(blob); });
+      const r = await api.post('/render-ia', { imagen, modo: 'mejora', ajustes: mejoraOpc, proveedor: iaTxt.proveedor }, { timeout: 240000 });
+      setIa({ estado: 'listo', imagen: r.data.imagen, original: imagen, meta: metaActual(), guardado: false });
+    } catch (e) { setIa({ estado: 'error', mensaje: e.response?.data?.error || 'No se ha podido mejorar la imagen' }); }
+  };
   const renderNube = async (calidad = 'hd') => {
     if (nube?.estado === 'trabajando') return;
     setNube({ estado: 'trabajando', texto: 'Preparando la escena…' });
@@ -2444,6 +2468,7 @@ export default function Visor3D({ cliente = false }) {
       const est = await renderNubeDisponible(); if (!est.disponible) { setNube(null); setAviso(est.motivo || 'El render en la nube aún no está activado.'); return; }
       const { buf, info } = await prepararEscena();
       info.exposicion = ambiente.exposicion; info.ev = ambiente.ev ?? 7;
+      { const m = marcoRender(); if (m && info.camara) { info.camara.aspect = m.r; info.camara.fov = 2 * Math.atan(Math.tan((info.camara.fov * Math.PI) / 360) * (m.bh / m.H)) * 180 / Math.PI; } } // el render sale con el encuadre elegido
       const url = await enviarARenderNube({ glb: new Blob([buf], { type: 'model/gltf-binary' }), info, calidad, exposicion: 3, alAvanzar: t => setNube({ estado: 'trabajando', texto: t }) });
       setNube({ estado: 'listo', url });
     } catch (e) { setNube({ estado: 'error', texto: e.message || 'No se pudo hacer el render' }); }
@@ -7485,6 +7510,10 @@ export default function Visor3D({ cliente = false }) {
           <div style={{ color: '#fff', opacity: 0.5, fontSize: 11 }}>La imagen descargada es un panorama equirrectangular estándar: se abre en cualquier visor 360 (Facebook, Google Fotos, Kuula, etc.).</div>
         </div>
       )}
+      {modoRender && renderAbierto && pestanaRender === 'salida' && (() => { const m = marcoRender(); if (!m) return null; return (
+        <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: m.bw, height: m.bh, border: '2px solid #fff', boxShadow: '0 0 0 9999px rgba(0,0,0,0.38)', pointerEvents: 'none', zIndex: 4, borderRadius: 2 }}>
+          <span style={{ position: 'absolute', left: 8, top: 6, fontSize: 11, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>Encuadre del render · {encuadre}</span>
+        </div>); })()}
       {escAbierta && (
         <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 330, background: 'rgba(24,24,24,0.95)', color: '#fff', borderRadius: 10, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
           <div style={{ fontWeight: 700, marginBottom: 2 }}>🎬 Escenas <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>vistas guardadas</span></div>
@@ -7918,12 +7947,13 @@ export default function Visor3D({ cliente = false }) {
                 <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>La IA solo retoca la imagen ya renderizada: no cambia la geometría, los materiales ni los objetos. Para un cambio de ambiente completo sigue estando «Render con IA».</div>
               </>)}
               {sec('Render realista en la nube', <>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 12 }}><span style={{ width: 70, opacity: 0.8 }}>Encuadre</span><select value={encuadre} onChange={e => setEncuadre(e.target.value)} style={{ ...btn, flex: 1 }}>{['16:9', '3:2', '4:3', '1:1', '9:16'].map(x => <option key={x} value={x}>{x}</option>)}</select></label>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {[['previa', 'Vista previa'], ['hd', '4K'], ['8k', '8K']].map(([k, n]) => <button key={k} style={{ ...btn, flex: 1 }} disabled={estado !== 'listo' || nube?.estado === 'trabajando'} onClick={() => renderNube(k)} title="Trazado de rayos con Blender Cycles en una GPU: luz y reflejos reales">{'☁ ' + n}</button>)}
                 </div>
                 {nube?.estado === 'trabajando' && <div style={{ fontSize: 12, marginTop: 6 }}>⏳ {nube.texto}</div>}
                 {nube?.estado === 'error' && <div style={{ fontSize: 12, marginTop: 6, color: '#e9a' }}>{nube.texto}</div>}
-                {nube?.estado === 'listo' && <div style={{ marginTop: 6 }}><img src={nube.url} alt="Render realista" style={{ width: '100%', borderRadius: 6, display: 'block' }} /><a href={nube.url} download="render-realista.png" target="_blank" rel="noreferrer" style={{ ...btn, display: 'block', textAlign: 'center', marginTop: 6, textDecoration: 'none' }}>⬇ Descargar</a></div>}
+                {nube?.estado === 'listo' && <div style={{ marginTop: 6 }}><img src={nube.url} alt="Render realista" style={{ width: '100%', borderRadius: 6, display: 'block' }} /><a href={nube.url} download="render-realista.png" target="_blank" rel="noreferrer" style={{ ...btn, display: 'block', textAlign: 'center', marginTop: 6, textDecoration: 'none' }}>⬇ Descargar</a><button style={{ ...btn, width: '100%', marginTop: 6, background: '#8c8076', fontWeight: 700 }} disabled={ia?.estado === 'trabajando'} onClick={mejorarNubeConIA} title="Paso 2: la IA retoca esta imagen (nitidez y luz) sin cambiar la escena">✨ Paso 2 · Postproducción con IA</button></div>}
                 <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>Calcula la luz real (rebotes, sombras suaves, reflejos) en una GPU en la nube. Tarda de segundos a unos minutos según la calidad. Usa la vista de cámara actual.</div>
               </>)}
               {sec('Exportar imagen', <>
