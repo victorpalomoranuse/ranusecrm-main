@@ -1179,8 +1179,16 @@ const kelvinHex = K => '#' + kelvinColor(KGLOBAL.luces || K).getHexString();
 RectAreaLightUniformsLib.init();
 // Luz de área (la que usan las tiras LED y los paneles luminosos): mira hacia dir; u = eje largo de la tira (si va en horizontal o vertical)
 // Integra el perfil smoothstep del foco para conservar el flujo al variar el haz.
-function candelasFoco(lumenes, apertura, penumbra = 0.45) {
-  const angulo = Math.min(170, Math.max(5, apertura)) * Math.PI / 360;
+function anguloExteriorFoco(apertura, penumbra = 0.8) {
+  // Apertura nominal a media intensidad; la transición continúa más allá.
+  const nominal = Math.min(170, Math.max(5, apertura)) * Math.PI / 360;
+  const p = Math.max(0, Math.min(1, penumbra));
+  let lo=nominal, hi=Math.PI/2-0.001;
+  for(let i=0;i<24;i++){const mid=(lo+hi)/2; if((Math.cos(mid)+Math.cos(mid*(1-p)))/2 > Math.cos(nominal))lo=mid;else hi=mid;}
+  return (lo+hi)/2;
+}
+function candelasFoco(lumenes, apertura, penumbra = 0.8) {
+  const angulo = anguloExteriorFoco(apertura, penumbra);
   const exterior = Math.cos(angulo), interior = Math.cos(angulo * (1 - penumbra));
   const anguloSolido = 2 * Math.PI * (1 - (interior + exterior) / 2);
   return Math.max(0, lumenes) / anguloSolido;
@@ -1767,7 +1775,7 @@ function construirCarril(o, presup, amb, seleccionado) {
   if (o.suspendido) [pts[0], pts[pts.length - 1]].forEach(p => { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.4, 6), mat); c.position.set(p[0] * CM, y + 0.2, p[1] * CM); g.add(c); });
   const luz = (cd, ap, pos, dir, K) => {
     if (presup.n >= 24) return; presup.n++;
-    const s = new THREE.SpotLight(colorK(K), cd * amb, 0, Math.min(170, Math.max(5, ap)) * Math.PI / 360, 0.45, 2);
+    const s = new THREE.SpotLight(colorK(K), cd * amb, 0, anguloExteriorFoco(ap, 0.8), 0.8, 2);
     s.position.copy(pos); s.target.position.copy(pos.clone().add(dir.clone().multiplyScalar(2.5))); g.add(s); g.add(s.target);
   };
   (o.focos || []).forEach(f => {
@@ -3789,7 +3797,7 @@ export default function Visor3D({ cliente = false }) {
           luzPos = cab.position.clone().add(dir.clone().multiplyScalar(0.09));
         }
         grp.position.set(l.x * CM, yTop, l.y * CM); grp.traverse(x => { x.userData.luzId = l.id; }); g.add(grp);
-        cand.push({ penumbra, seleccionada: !!sel2(l.id, luzSel), lp: grp.position.clone().add(luzPos), col, i: intSp, ang: Math.min(170, Math.max(5, ap)) * Math.PI / 360, dirE: dir.clone().multiplyScalar(2.5) });
+        cand.push({ penumbra, seleccionada: !!sel2(l.id, luzSel), lp: grp.position.clone().add(luzPos), col, i: intSp, ang: anguloExteriorFoco(ap, penumbra), dirE: dir.clone().multiplyScalar(2.5) });
         return;
       }
       const hcm = l.h != null ? l.h : (altDe(l.kid, techoEn(l.x, l.y)) ?? 250);
@@ -3831,7 +3839,7 @@ export default function Visor3D({ cliente = false }) {
         const proy = aj.proy || 'arriba_abajo', base = marca.position.clone().add(frente.clone().multiplyScalar(0.08));
         const haz = (dir, k, angulo, desde) => {
           if (!puede()) return;
-          const sl = new THREE.SpotLight(col, candelasFoco(lm * k, angulo ?? ap, penumbra) * 1, 0, Math.min(170, Math.max(5, angulo ?? ap)) * Math.PI / 360, penumbra, 2);
+          const sl = new THREE.SpotLight(col, candelasFoco(lm * k, angulo ?? ap, penumbra) * 1, 0, anguloExteriorFoco(angulo ?? ap, penumbra), penumbra, 2);
           sl.position.copy(desde || base); sl.target.position.copy(base.clone().add(dir.clone().multiplyScalar(2.5))); g.add(sl); g.add(sl.target);
         };
         if (proy === 'difusa') { if (puede()) { const p = new THREE.PointLight(col, inten, 0, 2); p.position.copy(luzMundo); g.add(p); } }
@@ -3848,7 +3856,7 @@ export default function Visor3D({ cliente = false }) {
         return;
       }
       if (l.kid === 'foco' || l.kid === 'plaf') {
-        cand.push({ penumbra, seleccionada: !!sel2(l.id, luzSel), lp: luzMundo.clone(), col, i: intSp, ang: Math.min(170, Math.max(5, ap)) * Math.PI / 360, dirE: dirL ? dirL.clone().multiplyScalar(2.5) : new THREE.Vector3(l.x * CM, 0, l.y * CM).sub(luzMundo) });
+        cand.push({ penumbra, seleccionada: !!sel2(l.id, luzSel), lp: luzMundo.clone(), col, i: intSp, ang: anguloExteriorFoco(ap, penumbra), dirE: dirL ? dirL.clone().multiplyScalar(2.5) : new THREE.Vector3(l.x * CM, 0, l.y * CM).sub(luzMundo) });
         return;
       }
       if (!puede()) return;
