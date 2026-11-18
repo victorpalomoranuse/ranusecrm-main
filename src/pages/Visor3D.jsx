@@ -2408,7 +2408,26 @@ export default function Visor3D({ cliente = false }) {
     new GLTFExporter().parse([a.raiz, a.esc], buf => {
       ocultos.forEach(o => { o.visible = true; });
       const blob = new Blob([buf], { type: 'model/gltf-binary' }), u = URL.createObjectURL(blob), l = document.createElement('a');
-      l.href = u; l.download = (String(titulo || 'espacio').replace(/[^\w-]+/g, '-') || 'espacio') + '.glb'; l.click(); setTimeout(() => URL.revokeObjectURL(u), 4000);
+      const base = String(titulo || 'espacio').replace(/[^\w-]+/g, '-') || 'espacio';
+      l.href = u; l.download = base + '.glb'; l.click(); setTimeout(() => URL.revokeObjectURL(u), 4000);
+      // Luces y cámara en un .json aparte: el .glb no lleva las luces de área y el render realista (Blender/nube) las necesita
+      try {
+        const V = o => { const v = new THREE.Vector3(); o.getWorldPosition(v); return [v.x, v.y, v.z]; };
+        const luces = [];
+        [a.raiz, a.esc].forEach(g => g.traverse(o => {
+          if (!o.isLight || !o.parent) return; let vis = true; for (let p = o; p; p = p.parent) if (p.visible === false) vis = false; if (!vis || !o.intensity) return;
+          o.updateWorldMatrix(true, false);
+          const dir = new THREE.Vector3(0, 0, -1).transformDirection(o.matrixWorld), col = '#' + o.color.getHexString();
+          if (o.isRectAreaLight) luces.push({ t: 'area', pos: V(o), dir: [dir.x, dir.y, dir.z], w: o.width, h: o.height, col, i: o.intensity });
+          else if (o.isSpotLight) { const tg = new THREE.Vector3(); o.target.updateWorldMatrix(true, false); o.target.getWorldPosition(tg); luces.push({ t: 'spot', pos: V(o), tg: [tg.x, tg.y, tg.z], ang: o.angle, pen: o.penumbra, col, i: o.intensity }); }
+          else if (o.isPointLight) luces.push({ t: 'point', pos: V(o), col, i: o.intensity });
+          else if (o.isDirectionalLight) { const tg = new THREE.Vector3(); o.target.updateWorldMatrix(true, false); o.target.getWorldPosition(tg); luces.push({ t: 'sol', pos: V(o), tg: [tg.x, tg.y, tg.z], col, i: o.intensity }); }
+        }));
+        const { cam, ctrl } = a;
+        const info = { camara: { pos: [cam.position.x, cam.position.y, cam.position.z], tg: [ctrl.target.x, ctrl.target.y, ctrl.target.z], fov: cam.fov, aspect: cam.aspect }, hora, exposicion: ambiente.exposicion, ev: ambiente.ev ?? 7, luces };
+        const u2 = URL.createObjectURL(new Blob([JSON.stringify(info)], { type: 'application/json' })), l2 = document.createElement('a');
+        l2.href = u2; l2.download = base + '-luces.json'; setTimeout(() => { l2.click(); setTimeout(() => URL.revokeObjectURL(u2), 4000); }, 600);
+      } catch (e) { console.warn('luces', e); }
       setGuardado('Archivo .glb descargado ✓ (' + (blob.size / 1048576).toFixed(1) + ' MB). Ábrelo en D5: Importar → modelo');
     }, err => { ocultos.forEach(o => { o.visible = true; }); console.warn('glb', err); setAviso('No se pudo exportar el modelo'); }, { binary: true, onlyVisible: true, trs: false, maxTextureSize: 2048 });
   };
