@@ -27,7 +27,7 @@ const limpia = (t, n = 200) => String(t ?? '').trim().slice(0, n);
 // Formato por defecto = el estilo "Dopamínico serio" que se ha ido afinando. Cada formato es una receta editable.
 export const FORMATO_BASE = {
   id: 'dopaminico-serio', nombre: 'Dopamínico serio', descripcion: 'Cortes rápidos, zoom lento en cada plano, subtítulos pop de 1-2 palabras con las claves en dorado, barra de progreso. Serio y premium.',
-  receta: { corte: { min: 0.9, max: 2.3 }, acento: '#E3D2B8', zoomFinal: 1.14, whoosh: 0.16, flash: true, subs: { palabrasPorBloque: 2, tam: 84, margenV: 600 }, titulo: true, mayusculas: false, fuente: 'Montserrat', musica: { volumen: -12 } },
+  receta: { corte: { min: 0.9, max: 2.3 }, acento: '#E3D2B8', zoomFinal: 1.14, whoosh: 0.16, flash: false, subs: { palabrasPorBloque: 2, tam: 84, margenV: 600 }, titulo: true, mayusculas: false, fuente: 'Montserrat', musica: { volumen: -12 } },
   notas: 'Vídeo serio y profesional, sin humor. Prioriza planos de calidad alta.',
 };
 // Sacado del vídeo de referencia "Suelos" (Dani): una toma limpia, subtítulos pequeños y blancos, sin efectos.
@@ -39,7 +39,7 @@ export const FORMATO_LIMPIO = {
 // Clips cortos con edición muy dinámica (para sacar varios vídeos de una entrevista larga): cortes y zooms rápidos, subtítulos grandes, gráficos y escenas superpuestas
 export const FORMATO_CLIPS = {
   id: 'clips-dopaminicos', nombre: 'Clips dopamínicos (entrevista → varios clips)', descripcion: 'Edición rápida y llamativa para clips cortos: sin pausas, zooms in/out constantes que esconden los cortes, subtítulos grandes con la palabra clave resaltada, gráficos animados con cifras y escenas superpuestas si eliges recursos.',
-  receta: { corte: { min: 1.2, max: 3 }, acento: '#E3D2B8', zoomFinal: 1.18, whoosh: 0, flash: false, subs: { palabrasPorBloque: 3, tam: 84, margenV: 600 }, estiloSubs: 'karaoke', titulo: false, barra: false, mayusculas: false, resaltar: true, whoosh: 0.14, flash: true, cambioCada: 2.6, encuadre: true, encuadreZoom: 1.4, subsBajoCara: true, graficos: true, pausa: 0.18, fuente: 'Rubik', limpiar: true, musica: { volumen: -12 } },
+  receta: { corte: { min: 1.2, max: 3 }, acento: '#E3D2B8', zoomFinal: 1.18, whoosh: 0, flash: false, subs: { palabrasPorBloque: 3, tam: 84, margenV: 600 }, estiloSubs: 'karaoke', titulo: false, barra: false, mayusculas: false, resaltar: true, cambioCada: 2.6, encuadre: true, encuadreZoom: 1.4, subsBajoCara: true, graficos: true, pausa: 0.18, fuente: 'Rubik', limpiar: true, musica: { volumen: -12 } },
   notas: 'Ritmo muy alto y dinámico: cortes y zooms rápidos, sin pausas. Quita muletillas, repeticiones y errores. Gráficos cuando haya cifras o medidas. Si hay recursos, superpón escenas en los momentos clave.',
 };
 export const FORMATO_DINAMICO = {
@@ -71,6 +71,7 @@ const RUTA_ESTILOS = 'crm/estudio-video/estilos.json';
 const ESTRUCTURALES = ['collage', 'preguntaSoloEscrita', 'layout', 'inserciones'];
 const sinEstructura = (r) => { const o = JSON.parse(JSON.stringify(r || {})); for (const k of ESTRUCTURALES) delete o[k]; return o; };
 async function estilos() {
+  await formatos(); // aplica también la migración de estilos guardados
   const e = await leerJson(RUTA_ESTILOS, null);
   if (e?.lista?.length) return e.lista;
   const fl = await formatos(); const lista = fl.map(f => ({ id: f.id, nombre: f.nombre, descripcion: f.descripcion || '', receta: sinEstructura(f.receta) }));
@@ -88,7 +89,13 @@ export const FORMATO_AUTO = {
   receta: { corte: { min: 1.2, max: 3 }, acento: '#E3D2B8', zoomFinal: 1.12, whoosh: 0.1, flash: false, subs: { palabrasPorBloque: 3, tam: 84, margenV: 600 }, estiloSubs: 'karaoke', titulo: false, barra: false, mayusculas: false, resaltar: true, director: true, cambiosEnFrases: true },
   notas: '',
 };
-const SEMBRADOS = [FORMATO_BASE, FORMATO_LIMPIO, FORMATO_DINAMICO, FORMATO_DIA, FORMATO_CLIPS, FORMATO_ONETAKE, FORMATO_COLLAGE];
+
+const ESTILOS_REFERENCIA = [
+  { id: 'entrevista-limpia', nombre: 'Entrevista limpia', descripcion: 'Discurso completo, plano estable y subtítulos discretos. Sin flashes ni cambios de plano obligatorios.', notas: 'Conserva el contexto y las preguntas necesarias. Respeta pausas expresivas. No añadas efectos por rutina.', receta: { corte: { min: 4, max: 10 }, cambioCada: 20, cortesAutomaticos: false, intensidad: 'sobria', zoomFinal: 1, whoosh: 0, flash: false, director: true, ilustraciones: false, graficos: false, titulo: false, barra: false, resaltar: false, mayusculas: false, encuadre: false, subsBajoCara: true, pausa: 0.6, fuente: 'Montserrat', estiloSubs: 'normal', subs: { palabrasPorBloque: 4, tam: 54, margenV: 420 }, musica: { volumen: -24 } } },
+  { id: 'explicacion-visual', nombre: 'Explicación visual', descripcion: 'Presentador visible con imágenes o vídeos de apoyo en una ventana inferior. Usa PNG transparentes para objetos recortados.', notas: 'Relaciona cada recurso con la frase exacta. Mantén visibles la cara y los subtítulos; no inventes recursos ni representes imágenes generadas como proyectos reales.', receta: { corte: { min: 3, max: 8 }, cambioCada: 12, cortesAutomaticos: false, intensidad: 'sobria', zoomFinal: 1, whoosh: 0, flash: false, director: true, ilustraciones: false, graficos: false, titulo: false, barra: false, resaltar: false, mayusculas: false, encuadre: false, subsBajoCara: true, pausa: 0.5, fuente: 'Montserrat', estiloSubs: 'normal', superposicion: 'ventana', subs: { palabrasPorBloque: 4, tam: 54, margenV: 740 }, musica: { volumen: -24 } } },
+  { id: 'recorrido-proyecto', nombre: 'Recorrido de proyecto', descripcion: 'Espacios, materiales y detalles en orden narrativo, con cortes limpios y recursos a pantalla completa.', notas: 'Respeta la secuencia espacial y temporal del recorrido. Muestra el proyecto y detalle del que se habla. No cambies de plano por obligación ni mezcles obras como si fueran la misma.', receta: { corte: { min: 3, max: 8 }, cambioCada: 12, cortesAutomaticos: false, intensidad: 'sobria', zoomFinal: 1, whoosh: 0, flash: false, director: true, ilustraciones: false, motion: false, graficos: false, titulo: false, barra: false, resaltar: false, mayusculas: false, fuente: 'Montserrat', estiloSubs: 'normal', superposicion: 'completa', subs: { palabrasPorBloque: 4, tam: 54, margenV: 420 }, musica: { volumen: -22 } } },
+];
+const SEMBRADOS = [...ESTILOS_REFERENCIA, FORMATO_BASE, FORMATO_LIMPIO, FORMATO_DINAMICO, FORMATO_DIA, FORMATO_CLIPS, FORMATO_ONETAKE, FORMATO_COLLAGE];
 async function formatos() {
   const f = await leerJson(RUTA_FORMATOS, null);
   if (!f?.lista?.length) { const lista = SEMBRADOS.map(x => JSON.parse(JSON.stringify(x))); await guardarJson(RUTA_FORMATOS, { lista, sembrados: lista.map(x => x.id) }); return lista; }
@@ -103,13 +110,23 @@ async function formatos() {
   if (!f.diaV5) { const x = f.lista.find(z => z.id === 'mi-dia-voz'); if (x?.receta) x.receta.corte = { min: 2.0, max: 3.2 }; f.diaV5 = true; await guardarJson(RUTA_FORMATOS, f); }
   // Sin destellos blancos en los cortes (Víctor: «hace todo el rato flashes, no tiene sentido») y cambios de plano al ritmo del habla
   if (!f.sinFlashV1) { for (const x of f.lista) { const r = x.receta || (x.receta = {}); r.flash = false; if (x.id === 'clips-dopaminicos' || x.id === 'entrevista-dinamica') { r.cambiosEnFrases = true; r.cambioCada = Math.max(Number(r.cambioCada) || 0, 4.2); } } f.sinFlashV1 = true; await guardarJson(RUTA_FORMATOS, f); }
-  if (!f.directorV1) { for (const x of f.lista) { const r = x.receta || (x.receta = {}); r.director = true; r.cambiosEnFrases = true; if (['dopaminico-serio', 'clips-dopaminicos', 'entrevista-dinamica'].includes(x.id)) r.flash = true; } f.directorV1 = true; await guardarJson(RUTA_FORMATOS, f); const e = await leerJson(RUTA_ESTILOS, null); if (e?.lista) { for (const s of e.lista) { const r = s.receta || (s.receta = {}); r.director = true; r.cambiosEnFrases = true; if (['dopaminico-serio', 'clips-dopaminicos', 'entrevista-dinamica'].includes(s.id)) r.flash = true; } await guardarJson(RUTA_ESTILOS, e); } }
+  if (!f.directorV1) { for (const x of f.lista) { const r = x.receta || (x.receta = {}); r.director = true; r.cambiosEnFrases = true; if (['dopaminico-serio', 'clips-dopaminicos', 'entrevista-dinamica'].includes(x.id)) r.flash = false; } f.directorV1 = true; await guardarJson(RUTA_FORMATOS, f); const e = await leerJson(RUTA_ESTILOS, null); if (e?.lista) { for (const s of e.lista) { const r = s.receta || (s.receta = {}); r.director = true; r.cambiosEnFrases = true; if (['dopaminico-serio', 'clips-dopaminicos', 'entrevista-dinamica'].includes(s.id)) r.flash = false; } await guardarJson(RUTA_ESTILOS, e); } }
   if (!f.clipsV3) { const x = f.lista.find(z => z.id === 'clips-dopaminicos'); if (x?.receta) { x.receta.estiloSubs = 'karaoke'; x.receta.subs = { ...(x.receta.subs || {}), palabrasPorBloque: 3 }; } f.clipsV3 = true; await guardarJson(RUTA_FORMATOS, f); }
   if (!f.clipsV2) { const x = f.lista.find(z => z.id === FORMATO_CLIPS.id); if (x) x.receta = JSON.parse(JSON.stringify(FORMATO_CLIPS.receta)); f.clipsV2 = true; await guardarJson(RUTA_FORMATOS, f); }
   if (!f.autoV1) { if (!f.lista.some(x => x.id === FORMATO_AUTO.id)) f.lista.unshift(JSON.parse(JSON.stringify(FORMATO_AUTO))); f.autoV1 = true; f.sembrados = [...(f.sembrados || []), FORMATO_AUTO.id]; await guardarJson(RUTA_FORMATOS, f); }
   // formatos nuevos de fábrica se añaden una sola vez (si luego los borras, no vuelven)
   const ya = new Set(f.sembrados || [FORMATO_BASE.id]); const nuevos = SEMBRADOS.filter(x => !ya.has(x.id));
   if (nuevos.length) { f.lista.push(...nuevos.map(x => JSON.parse(JSON.stringify(x)))); f.sembrados = [...ya, ...nuevos.map(x => x.id)]; await guardarJson(RUTA_FORMATOS, f); }
+  if (!f.referenciasV1) {
+    for (const x of f.lista) { x.receta = { ...x.receta, flash: false }; }
+    const e = await leerJson(RUTA_ESTILOS, null);
+    if (e?.lista) {
+      for (const x of e.lista) x.receta = { ...x.receta, flash: false };
+      for (const x of ESTILOS_REFERENCIA) if (!e.lista.some(y => y.id === x.id)) e.lista.push(JSON.parse(JSON.stringify(x)));
+      await guardarJson(RUTA_ESTILOS, e);
+    }
+    f.referenciasV1 = true; await guardarJson(RUTA_FORMATOS, f);
+  }
   return f.lista;
 }
 const guardarFormatos = async (lista) => { const f = await leerJson(RUTA_FORMATOS, {}); await guardarJson(RUTA_FORMATOS, { ...f, lista }); };
@@ -327,6 +344,8 @@ function aplicaReceta(f, r) {
   if (r.acento && /^#[0-9a-fA-F]{6}$/.test(r.acento)) f.receta.acento = r.acento;
   if (r.zoomFinal !== undefined) f.receta.zoomFinal = num(r.zoomFinal, 1, 1.4, 1.14);
   if (r.whoosh !== undefined) f.receta.whoosh = num(r.whoosh, 0, 0.5, 0.16);
+  if (['ventana', 'completa'].includes(r.superposicion)) f.receta.superposicion = r.superposicion;
+  if (r.cortesAutomaticos !== undefined) f.receta.cortesAutomaticos = !!r.cortesAutomaticos;
   if (r.flash !== undefined) f.receta.flash = !!r.flash; /* permiso: el director de edición decide dónde va cada destello */
   for (const k of ['titulo', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'subsBajoCara', 'graficos', 'horas', 'preguntaSoloEscrita', 'collage', 'motion', 'etiquetas', 'aperturaPremium']) if (r[k] !== undefined) f.receta[k] = !!r[k];
   if (['Montserrat', 'Rubik'].includes(r.fuente)) f.receta.fuente = r.fuente;
@@ -441,7 +460,7 @@ router.post('/trabajos', async (req, res) => {
     if (b.tipo === 'base' || b.base?.id) { if (!/^[\w-]{10,60}$/.test(b.base?.id || '')) return res.status(400).json({ error: 'Elige el archivo de Drive' }); }
     else if (!/^entradas\//.test(b.archivo || '')) return res.status(400).json({ error: 'Falta el archivo subido' });
     const recFin = await recetaFinal(fmt, b.estilo); let notasFmt = fmt.notas || '';
-    if (fmt.id === 'auto-redes') { const dr = await direccionRedes(); recFin.receta = { ...recFin.receta, ...dr.receta }; notasFmt = dr.notas; }
+    if (fmt.id === 'auto-redes') { const dr = await direccionRedes(); recFin.receta = b.estilo ? recFin.receta : { ...recFin.receta, ...dr.receta, flash: false, intensidad: 'sobria', ilustraciones: false, cortesAutomaticos: false }; notasFmt = dr.notas; }
     const t = { id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), por: req.user?.name || req.user?.email || null, reglas: await textoReglasCompleto(), tipo: b.tipo, ...(b.tipo === 'clips' ? { num_clips: Math.max(0, Math.min(12, parseInt(b.num_clips) || 0)), dur_min: Math.max(10, Math.min(120, parseInt(b.dur_min) || 25)), dur_max: Math.max(15, Math.min(180, parseInt(b.dur_max) || 70)) } : {}), archivo: b.base?.id ? null : b.archivo, base: b.base?.id ? { id: limpia(b.base.id, 80), nombre: limpia(b.base.nombre, 160), ruta: limpia(b.base.ruta, 400) } : null, nombre_archivo: limpia(b.nombre_archivo, 120), formato: fmt.id, formato_nombre: fmt.nombre, receta: recFin.receta, estilo: recFin.estilo?.id || null, estilo_nombre: recFin.estilo?.nombre || null, notas_formato: notasFmt, indicaciones: limpia(b.indicaciones, 800), guion: limpia(b.guion, 20000), ...(b.fase === 'transcribir' && b.tipo === 'clips' ? { fase: 'transcribir' } : {}), ...(b.fase === 'audio' && b.tipo === 'voz' ? { fase: 'audio' } : {}), ...(Array.isArray(b.reparto) && b.reparto.length ? { reparto: b.reparto.slice(0, 40).map(p => ({ texto: limpia(p?.texto, 700), clips: (Array.isArray(p?.clips) ? p.clips : []).slice(0, 10).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['video', 'imagen', 'carpeta'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => /^[\w-]{10,60}$/.test(x.id)) })).filter(p => p.texto && p.clips.length) } : {}), musica: limpia(b.musica, 150) || 'auto', carpetas: (Array.isArray(b.carpetas) ? b.carpetas : []).slice(0, 30).map(c => limpia(c, 200)).filter(Boolean), recursos: (Array.isArray(b.recursos) ? b.recursos : []).slice(0, 60).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['carpeta', 'video', 'imagen', 'subido'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => x.id), estado: 'pendiente', progreso: 'En cola', version: 1, origen: b.origen || null };
     t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t);
     if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); } // si Google no arranca, lo hace el PC
