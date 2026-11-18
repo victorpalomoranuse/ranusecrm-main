@@ -336,6 +336,13 @@ function aplicaEspejos(scene, renderActivo) {
           const mk = k => { const e = ents.find(x => x[0] === k); if (!e) return null; const t = e[1].tex.clone(); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.NoColorSpace; t.repeat.copy(B.repeat); t.rotation = B.rotation; t.center.copy(B.center); t.offset.copy(B.offset); t.needsUpdate = true; return t; };
           m.normalMap = mk('normal'); m.roughnessMap = mk('rough'); m.aoMap = mk('ao'); m.metalnessMap = mk('metal'); if (m.isMeshPhysicalMaterial) m.specularColorMap = mk('espec');
         }
+        // Los techos pintados son mates incluso si un color guardado conserva rugosidad cero.
+        // Los espejos, metales, vidrios y materiales emisivos mantienen sus propiedades.
+        if (o.userData.techoKey && (P.metal ?? 0) === 0 && (P.opac ?? 1) === 1 && !(P.emis > 0)) {
+          m.roughness = Math.max(0.92, m.roughness);
+          m.roughnessMap = null; m.envMap = null; m.envMapIntensity = 0;
+          if (m.isMeshPhysicalMaterial) { m.clearcoat = 0; m.specularIntensity = 0; }
+        }
         if (m.normalMap) m.normalScale.set(P.normal ?? 1, P.normal ?? 1);
         if (m.metalnessMap && P.metal == null) m.metalness = 1;
         if (m.aoMap) m.aoMapIntensity = P.ao ?? 1;
@@ -2646,7 +2653,7 @@ export default function Visor3D({ cliente = false }) {
     scene.add(raiz);
     const esc = new THREE.Group(); // objetos colocados en el visor (biblioteca y cajas)
     scene.add(esc);
-    const base = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0xd9d4cd, roughness: 1 }));
+    const base = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshBasicMaterial({ color: 0xd9d4cd, toneMapped: false }));
     base.rotation.x = -Math.PI / 2; base.position.y = -0.02; base.receiveShadow = true;
     scene.add(base);
     let raf = 0, pausa = null, vivo = true;
@@ -3715,13 +3722,18 @@ export default function Visor3D({ cliente = false }) {
     let nLuces = 0; const presupL = { n: 0 }; const cand = [], nSp = lucesPl.slice(0, 120).filter(x => ['spot', 'spotl', 'foco', 'plaf'].includes(x.kid) && !x.vs).length;
     const gl0 = a.renderer && a.renderer.getContext ? a.renderer.getContext() : null, maxVec = gl0 ? (gl0.getParameter(gl0.MAX_FRAGMENT_UNIFORM_VECTORS) || 224) : 224;
     const porUnif = Math.max(8, Math.floor((maxVec - 200) / 8) - 24), porCal = { baja: 12, media: 40, alta: 64 }[calidad] || 24, POOL = Math.min(nSp, porCal, porUnif); a.luzPool = null;
+    let flujoInterior = 0; const colorRebote = new THREE.Color(0, 0, 0);
     lucesPl.slice(0, 120).forEach(l0 => {
       const l = { ...l0, ...(luzOver[l0.id] || {}) };
       const cat = lumCat.find(c => c.id === l.lid), lm = lucesAj[l.id]?.lm ?? (l.lm ?? cat?.lm ?? 800), K = lucesAj[l.id]?.k ?? (cat?.k || 3000);
       const col = colorK(K), aj = lucesAj[l.id] || {};
       const ap = aj.ap ?? l.ap ?? (l.kid === 'spotl' ? 80 : 60);
+      const penumbra = Math.max(0, Math.min(1, aj.penumbra ?? 0.8));
+      const longitud = l.vs ? l.vs.slice(1).reduce((sum, p, i) => sum + Math.hypot(p[0]-l.vs[i][0], p[1]-l.vs[i][1]) * CM, 0) : 1;
+      const flujo = Math.max(0, lm) * longitud;
+      flujoInterior += flujo; colorRebote.add(col.clone().multiplyScalar(flujo));
       // Flujo en lúmenes, intensidad en candelas y distancias en metros.
-      const inten = Math.max(0, lm) / (4 * Math.PI) * 1, intSp = candelasFoco(lm, ap) * 1;
+      const inten = Math.max(0, lm) / (4 * Math.PI) * 1, intSp = candelasFoco(lm, ap, penumbra) * 1;
       const puede = () => nLuces < 24 && (nLuces++, true);
       // carriles, tiras LED y luminarias lineales: se modelan a lo largo de su recorrido
       if (l.vs) {
@@ -3756,7 +3768,7 @@ export default function Visor3D({ cliente = false }) {
           luzPos = cab.position.clone().add(dir.clone().multiplyScalar(0.09));
         }
         grp.position.set(l.x * CM, yTop, l.y * CM); grp.traverse(x => { x.userData.luzId = l.id; }); g.add(grp);
-        cand.push({ seleccionada: !!sel2(l.id, luzSel), lp: grp.position.clone().add(luzPos), col, i: intSp, ang: Math.min(170, Math.max(5, ap)) * Math.PI / 360, dirE: dir.clone().multiplyScalar(2.5) });
+        cand.push({ penumbra, seleccionada: !!sel2(l.id, luzSel), lp: grp.position.clone().add(luzPos), col, i: intSp, ang: Math.min(170, Math.max(5, ap)) * Math.PI / 360, dirE: dir.clone().multiplyScalar(2.5) });
         return;
       }
       const hcm = l.h != null ? l.h : (altDe(l.kid, techoEn(l.x, l.y)) ?? 250);
@@ -3798,7 +3810,7 @@ export default function Visor3D({ cliente = false }) {
         const proy = aj.proy || 'arriba_abajo', base = marca.position.clone().add(frente.clone().multiplyScalar(0.08));
         const haz = (dir, k, angulo, desde) => {
           if (!puede()) return;
-          const sl = new THREE.SpotLight(col, candelasFoco(lm * k, angulo ?? ap, 0.6) * 1, 0, Math.min(170, Math.max(5, angulo ?? ap)) * Math.PI / 360, 0.6, 2);
+          const sl = new THREE.SpotLight(col, candelasFoco(lm * k, angulo ?? ap, penumbra) * 1, 0, Math.min(170, Math.max(5, angulo ?? ap)) * Math.PI / 360, penumbra, 2);
           sl.position.copy(desde || base); sl.target.position.copy(base.clone().add(dir.clone().multiplyScalar(2.5))); g.add(sl); g.add(sl.target);
         };
         if (proy === 'difusa') { if (puede()) { const p = new THREE.PointLight(col, inten, 0, 2); p.position.copy(luzMundo); g.add(p); } }
@@ -3815,7 +3827,7 @@ export default function Visor3D({ cliente = false }) {
         return;
       }
       if (l.kid === 'foco' || l.kid === 'plaf') {
-        cand.push({ seleccionada: !!sel2(l.id, luzSel), lp: luzMundo.clone(), col, i: intSp, ang: Math.min(170, Math.max(5, ap)) * Math.PI / 360, dirE: dirL ? dirL.clone().multiplyScalar(2.5) : new THREE.Vector3(l.x * CM, 0, l.y * CM).sub(luzMundo) });
+        cand.push({ penumbra, seleccionada: !!sel2(l.id, luzSel), lp: luzMundo.clone(), col, i: intSp, ang: Math.min(170, Math.max(5, ap)) * Math.PI / 360, dirE: dirL ? dirL.clone().multiplyScalar(2.5) : new THREE.Vector3(l.x * CM, 0, l.y * CM).sub(luzMundo) });
         return;
       }
       if (!puede()) return;
@@ -3826,7 +3838,7 @@ export default function Visor3D({ cliente = false }) {
       const pool = []; for (let i = 0; i < Math.min(POOL, cand.length); i++) { const sl = new THREE.SpotLight(0xffffff, 0, 0, 0.5, 0.45, 2); g.add(sl); g.add(sl.target); pool.push(sl); }
       const aplica = (sl, c) => {
         sl.color.copy(c.col);
-        sl.intensity = c.i;
+        sl.intensity = c.i; sl.penumbra = c.penumbra ?? 0.8;
         sl.angle = c.ang;
         sl.position.copy(c.lp);
         sl.target.position.copy(c.lp).add(c.dirE);
@@ -3844,13 +3856,21 @@ export default function Visor3D({ cliente = false }) {
         a.luzPool = { asigna, ult: a.cam.position.clone(), t: 0 };
       }
     }
+    // Preview-only diffuse bounce estimate: proportional to installed luminous flux, never a fixed fill.
+    const salasRebote = (a.modelo.plantas || [a.modelo]).flatMap(p => p.salas || []);
+    const areaRebote = salasRebote.reduce((sum, sa) => sum + Math.abs((sa.pts || []).reduce((v, p, i, ps) => { const q = ps[(i+1)%ps.length]; return v + p[0]*q[1]-q[0]*p[1]; }, 0)) * CM * CM / 2, 0);
+    if (flujoInterior > 0 && areaRebote > 0 && !modelando) {
+      colorRebote.multiplyScalar(1 / flujoInterior);
+      const rebote = new THREE.HemisphereLight(colorRebote, colorRebote, flujoInterior * (ambiente.rebote ?? 0.35) / areaRebote);
+      rebote.userData.reboteAproximado = true; g.add(rebote);
+    }
     if (modelando) {
       g.traverse(o => { if (o.isLight) o.visible = false; });
       a.luzPool = null;
     }
     a.scene.add(g); a.luzG = g;
     a.despertar?.();
-  }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas, 1, ambiente.kLuces, luzOver, rev, calidad, modelando]);
+  }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas, 1, ambiente.kLuces, ambiente.rebote, luzOver, rev, calidad, modelando]);
 
   // Luz difusa de la parte del cielo visible desde cada ventana de fachada.
   useEffect(() => {
@@ -3940,7 +3960,7 @@ export default function Visor3D({ cliente = false }) {
       if (ud.fondoTex && sc.background === ud.fondoTex) sc.backgroundIntensity = modelando ? 1 : 0.9 / Math.max(0.00001, a.renderer.toneMappingExposure);
       if (a.base?.material?.color) a.base.material.color.set(modelando ? 0xd9d4cd : 0x6f7d5c);
     }
-    try { localStorage.setItem('visor3dAmb', JSON.stringify({ exposicion: ambiente.exposicion, ev: ambiente.ev ?? 7, luces: 1, kLuces: ambiente.kLuces ?? null, kSol: ambiente.kSol ?? null, solI: ambiente.solI ?? 1, solOn: ambiente.solOn !== false })); } catch { /* sin almacenamiento */ }
+    try { localStorage.setItem('visor3dAmb', JSON.stringify({ exposicion: ambiente.exposicion, ev: ambiente.ev ?? 7, luces: 1, kLuces: ambiente.kLuces ?? null, kSol: ambiente.kSol ?? null, solI: ambiente.solI ?? 1, solOn: ambiente.solOn !== false, rebote: ambiente.rebote ?? 0.35 })); } catch { /* sin almacenamiento */ }
   }, [hora, entRot, ambiente.ev, ambiente.exposicion, 1, ambiente.kSol, ambiente.solI, ambiente.solOn, realista, modelando, estado, rev]);
 
   // Modo cliente: se empieza dentro del espacio, en la primera parada del tour (o en el centro), con refinado por trazado de rayos si la gráfica lo aguanta
@@ -6684,6 +6704,8 @@ export default function Visor3D({ cliente = false }) {
             </div>
           )}
           <div style={cab}>Ajustes</div>
+          <button type="button" style={{ ...btn, width: '100%', marginBottom: 8 }} onClick={() => ajustaMat(t.id, { pbr: { rough: 0.95, espec: 0, metal: 0, clearcoat: 0, env: 0, emis: null, emisHex: null, opac: null } })}>Pintura mate · sin brillo</button>
+          <div style={{ fontSize: 11, opacity: 0.65, marginBottom: 8 }}>Rugosidad: 0 = pulido · 1 = mate.</div>
           {fila('Normal', 'normal', 'normal', P.normal ?? 1, 0, 2, undefined, 'Fuerza del relieve del mapa de normales. Cárgale una imagen en la casilla.')}
           {fila('Especular', 'espec', 'espec', P.espec ?? 0.3, 0, 1, undefined, 'Cuánto brilla el reflejo directo de la luz')}
           {fila('Rugosidad', 'rough', 'rough', P.rough ?? 0.6, 0, 1, undefined, '0 = pulido como un espejo · 1 = totalmente mate')}
@@ -6879,7 +6901,13 @@ export default function Visor3D({ cliente = false }) {
           ['Escenas' + (escenas.length ? ' (' + escenas.length + ')' : ''), () => setEscAbierta(v => !v), escAbierta, false, 'Vistas guardadas', '3'],
         ])}
         <span style={{ flex: 1 }} />
-        {modoRender && <button style={{ ...btn, background: '#e7d7bd', color: '#201c18', fontWeight: 700 }} disabled={renderizando || estado !== 'listo'} onClick={descargarRender}>{renderizando ? 'Renderizando…' : 'Crear render'}</button>}
+        {modoRender && menuTop2('Crear render', 'crear-render', [
+          ['Render con IA · ajustar', abrirFormIA, false, estado !== 'listo' || ia?.estado === 'trabajando', 'Elige estilo, materiales y referencias antes de generar'],
+          ['Render rápido con IA', renderRapido, false, estado !== 'listo' || ia?.estado === 'trabajando', 'Genera desde la vista actual'],
+          ['Render HD · descargar', descargarRender, false, renderizando || estado !== 'listo', 'Imagen del modelo sin IA'],
+          ['Panorama 360°', hacer360, false, generando360 || estado !== 'listo', 'Vista panorámica'],
+          ['Ajustes de salida', () => { setLuzSel(null); setRenderAbierto(true); setPestanaRender('salida'); }, false, false, 'Resolución, formato y galería'],
+        ], true)}
         {menuTop2('Exportar', 'salida', [
           ['Captura de la vista', captura, false, false, 'Guarda la vista actual como imagen'],
           [renderizando ? 'Renderizando…' : 'Render HD', async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.jpg'; el.click(); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }, false, renderizando || estado !== 'listo', 'Render HD limpio con sombras suaves'],
@@ -7267,6 +7295,7 @@ export default function Visor3D({ cliente = false }) {
               <select value={String(lucesAj[l.id]?.k ?? (cat?.k || 3000))} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, k: parseInt(e.target.value, 10) } }))} style={btn}>{[2200, 2700, 3000, 3500, 4000, 5000, 6500].map(k => <option key={k} value={k}>{k} K{k <= 2700 ? ' cálida' : k >= 5000 ? ' fría' : ''}</option>)}{![2200, 2700, 3000, 3500, 4000, 5000, 6500].includes(lucesAj[l.id]?.k ?? (cat?.k || 3000)) && <option value={lucesAj[l.id]?.k ?? (cat?.k || 3000)}>{lucesAj[l.id]?.k ?? (cat?.k || 3000)} K</option>}</select>
               <span style={{ width: 14, height: 14, borderRadius: 7, background: kelvinHex(lucesAj[l.id]?.k ?? (cat?.k || 3000)), border: '1px solid #666' }} />
             </label>
+            {spot && <label style={{ display: 'flex', gap: 6, marginBottom: 8 }}>Borde del haz <input aria-label="Suavidad del borde del foco" type="range" min="0" max="1" step="0.05" value={lucesAj[l.id]?.penumbra ?? 0.8} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), penumbra: Number(e.target.value) } }))} /><span>{Math.round((lucesAj[l.id]?.penumbra ?? 0.8)*100)}%</span></label>}
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>{esLin ? 'Lúmenes por metro' : 'Lúmenes'}</span><input type="number" step="50" value={lucesAj[l.id]?.lm ?? (l.lm ?? cat?.lm ?? 800)} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, lm: Math.max(0, parseFloat(e.target.value) || 0) } }))} style={{ ...btn, width: 80 }} /></label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Altura (cm)</span><input key={'h' + Math.round(l.h ?? -1)} type="number" defaultValue={Math.round(l.h != null ? l.h : (ALT_LUZ[l.kid] ?? 250))} onBlur={e => moverLuz(0, 0, 0, parseFloat(e.target.value) || 0)} style={{ ...btn, width: 80 }} /></label>
             {['foco', 'plaf', 'colg'].includes(l.kid) && <button style={{ ...btn, width: '100%', marginBottom: 6, background: '#6b6159' }} onClick={() => moverLuz(0, 0, 0, alturaTecho(l.x, l.y))} title="Sube la luminaria hasta el techo de esa sala">⬆ Pegar al techo ({Math.round(alturaTecho(l.x, l.y))} cm)</button>}
@@ -7601,6 +7630,10 @@ export default function Visor3D({ cliente = false }) {
                     setGuardado('Tira LED creada. Arrástrala o ajusta su longitud, posición y altura.');
                   }}>Tira LED</button>
                 </div>
+              </>)}
+              {sec('Rebote de las luces interiores', <>
+                {fila('Rebote aproximado', ambiente.rebote ?? 0.35, 0, 1, 0.05, v => setAmbiente(a => ({ ...a, rebote: v })), Math.round((ambiente.rebote ?? 0.35) * 100) + '%')}
+                <div style={{ fontSize: 11, opacity: 0.65 }}>Estimación para la vista previa según lúmenes y superficie. No calcula rebotes ni oclusiones por habitación; no es un cálculo de lux.</div>
               </>)}
               {sec('Luminosidad global', <>
                 {seg([['geo', 'Geo Sky'], ['custom', 'Personalizado'], ['hdri', 'HDRI']], modo, cambiaModo)}
