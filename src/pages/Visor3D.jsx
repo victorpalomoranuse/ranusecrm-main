@@ -1,3 +1,4 @@
+import { recortarRanura, colocarEmpotrado } from '../components/ledEmpotrado3d';
 import './VisorEstudio.css';
 import { dibujarModelar } from '../components/vistaModelar3d';
 import { impactoVisible } from '../components/seleccion3d';
@@ -1261,11 +1262,19 @@ function construirLed(o, presup, amb, seleccionado, iluminado) {
   const encendida = iluminado && (L.lm ?? 800) > 0;
   // El difusor es una fuente visible; la exposición fotográfica no debe convertirlo en negro.
   // Su luminaria mantiene los lúmenes configurados, sin amplificarlos para aclarar el perfil.
-  const mat = encendida ? new THREE.MeshBasicMaterial({ color: col, toneMapped: false }) : new THREE.MeshStandardMaterial({ color: seleccionado ? 0x9cc8ff : 0xbebbb7, roughness: 0.85 });
+  const mat = encendida ? new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(0.65), toneMapped: false }) : new THREE.MeshStandardMaterial({ color: seleccionado ? 0x9cc8ff : 0xbebbb7, roughness: 0.85 });
   for (let i = 0; i < m; i++) {
     const a = pts[i], b = pts[(i + 1) % n], largo = Math.hypot(b[0] - a[0], b[1] - a[1]) * CM; if (largo < 0.01) continue;
     const ux = (b[0] - a[0]) / (largo / CM), uy = (b[1] - a[1]) / (largo / CM), mid = new THREE.Vector3(((a[0] + b[0]) / 2) * CM, y, ((a[1] + b[1]) / 2) * CM);
-    const tira = new THREE.Mesh(new THREE.BoxGeometry(largo, 0.008, ancho), mat); tira.position.copy(mid); tira.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]); g.add(tira);
+    if (L.empotrado) {
+      const profile=new THREE.MeshStandardMaterial({color:0x454548,roughness:.8,metalness:.3});
+      const depth=Math.max(.005,(L.profundidad||1.5)*CM);
+      const holder=new THREE.Group();holder.position.copy(mid);holder.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);
+      const base=new THREE.Mesh(new THREE.BoxGeometry(largo, .002, ancho+.002),profile);base.position.y=-depth;holder.add(base);
+      for(const sign of [-1,1]){const side=new THREE.Mesh(new THREE.BoxGeometry(largo,depth,.001),profile);side.position.set(0,-depth/2,sign*(ancho/2+.0005));holder.add(side);}
+      g.add(holder);
+    }
+    const tira = new THREE.Mesh(new THREE.BoxGeometry(largo, L.empotrado ? .001 : 0.008, ancho), mat); tira.position.copy(mid); if(L.empotrado)tira.position.y-=.0005; tira.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]); g.add(tira);
     if (!encendida) continue;
     const u = new THREE.Vector3(ux, 0, uy), dir = { abajo: new THREE.Vector3(0, -1, 0), arriba: new THREE.Vector3(0, 1, 0), izq: new THREE.Vector3(-uy, 0, ux), der: new THREE.Vector3(uy, 0, -ux) }[L.dir || 'abajo'];
     luzArea(g, mid.clone().add(dir.clone().multiplyScalar(0.006)), dir, largo, Math.max(0.03, ancho * 3), col, luminanciaArea((L.lm ?? 800) * largo, largo, Math.max(0.03, ancho * 3)) * amb, presup, u);
@@ -2903,6 +2912,15 @@ export default function Visor3D({ cliente = false }) {
       p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       rayo.setFromCamera(p2, cam);
       const visible = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
+      if (herrRef.current === 'ledEmpotrado') {
+        const hit=rayo.intersectObjects([...raiz.children,...esc.children],true).find(impactoVisible);
+        if(!hit?.face)return;
+        let parent=hit.object;while(parent&&!parent.userData.oid)parent=parent.parent;
+        const u=hit.object.userData, superficie=u.muroId?'m:'+u.muroId:u.techoKey?'t:'+u.techoKey:parent?'o:'+parent.userData.oid:null;
+        if(!superficie || (parent && objsRef.current.find(o=>o.id===parent.userData.oid)?.tipo==='led')){setAviso('Pulsa una pared, recrecido o techo');return;}
+        const nuevo={id:'o'+Date.now().toString(36),tipo:'led',nombre:'LED empotrado',etiqueta:'Iluminación',...colocarEmpotrado(hit),w:100,d:2,alto:2,pts:[[-50,0],[50,0]],led:{ancho:1.2,k:3000,lm:800,dir:'arriba',empotrado:true,superficie,profundidad:1.5}};
+        setObjs(prev=>[...prev,nuevo]);setSelObj(nuevo.id);setHerr('sel');setGuardado('LED empotrado colocado. Ajusta longitud y posición en su ficha.');return;
+      }
       if (herrRef.current === 'revest') {
         const pr = presetRevest(revSelRef.current); if (!pr) return;
         const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(impactoVisible);
@@ -4700,6 +4718,23 @@ export default function Visor3D({ cliente = false }) {
     });
     a.esc.children.forEach(gr => aplicarRegiones(gr, 'o:' + gr.userData.oid + ':', acab.regiones, texturas));
   }, [objs, selObj, selExtraKey, estado, biblioteca, ocultas, texturas, rev, 1, ambiente.kLuces, acab.regiones, acab.modoSuelo, acab.antirepSuelos, modoRender, cliente, lucesPl, lucesAj, luzOver]);
+  useEffect(() => {
+    const a=api3d.current;if(!a.scene)return;
+    const slots=objs.filter(o=>o.tipo==='led'&&o.led?.empotrado&&o.pts?.length===2);
+    const restored=[];
+    a.scene.updateMatrixWorld(true);
+    for(const root of [a.raiz,a.esc])root?.traverse(mesh=>{
+      if(!mesh.isMesh||!mesh.geometry||mesh.userData.overlay)return;
+      let parent=mesh;while(parent&&!parent.userData.oid)parent=parent.parent;
+      const u=mesh.userData,key=u.muroId?'m:'+u.muroId:u.techoKey?'t:'+u.techoKey:parent?'o:'+parent.userData.oid:null;
+      const matches=slots.filter(o=>o.led.superficie===key);if(!matches.length)return;
+      const original=mesh.geometry;let changed=false;
+      for(const slot of matches){const cut=recortarRanura(mesh,slot);if(cut){if(changed)mesh.geometry.dispose();mesh.geometry=cut;changed=true;}}
+      if(changed)restored.push([mesh,original]);
+    });
+    a.despertar?.();
+    return ()=>{for(const [mesh,original] of restored){mesh.geometry.dispose();mesh.geometry=original;}};
+  }, [objs, selObj, selExtraKey, estado, biblioteca, ocultas, texturas, rev, ambiente.kLuces, acab.regiones, acab.modoSuelo, acab.antirepSuelos, modoRender, cliente, lucesPl, lucesAj, luzOver]);
   // Lo que pones en una planta (ideas de IA, ventanas, césped, decoración…) se oculta con ella: la planta de un objeto se deduce de su altura y de dónde cae
   useEffect(() => {
     const A = api3d.current; if (!A.esc || !A.modelo) return;
@@ -7632,6 +7667,7 @@ export default function Visor3D({ cliente = false }) {
                     insertarTiraLed();
                     setGuardado('Tira LED creada. Arrástrala o ajusta su longitud, posición y altura.');
                   }}>Tira LED</button>
+                  <button style={btn} onClick={()=>{setHerr('ledEmpotrado');setSelObj(null);setLuzSel(null);setRenderAbierto(false);setGuardado('LED empotrado: pulsa una pared, recrecido o techo.');}}>LED empotrado</button>
                 </div>
               </>)}
               {sec('Rebote de las luces interiores', <>
@@ -9095,15 +9131,20 @@ export default function Visor3D({ cliente = false }) {
             const Lk = objSel.led || { ancho: 1.2, k: 3000, lm: 800, dir: 'abajo' }, set = c => cambiar(objSel.id, { led: { ...Lk, ...c } }), ml = largoCamino(objSel.pts || []) / 100;
             return (
               <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
-                <div style={{ fontWeight: 700, marginBottom: 4 }}>Tira LED · {ml.toFixed(2)} m</div>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>{Lk.empotrado ? 'LED empotrado' : 'Tira LED'} · {ml.toFixed(2)} m</div>
+                {Lk.empotrado && <p style={{fontSize:11,opacity:.7}}>Difusor frontal enrasado. La ranura sigue su posición sobre la superficie elegida. Para cambiar de pared o techo, coloca uno nuevo.</p>}
                 <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                  <button style={btn} onClick={() => cambiar(objSel.id, { inclinacionX: 0, inclinacionZ: 0 })}>Horizontal</button>
-                  <button style={btn} onClick={() => {
+                  {Lk.empotrado ? <button style={btn} onClick={()=>{
+                    const e=new THREE.Euler((objSel.inclinacionX||0)*Math.PI/180,-(objSel.rot||0)*Math.PI/180,(objSel.inclinacionZ||0)*Math.PI/180,'YXZ');
+                    const q=new THREE.Quaternion().setFromEuler(e).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI/2));
+                    e.setFromQuaternion(q,'YXZ');cambiar(objSel.id,{inclinacionX:e.x*180/Math.PI,rot:-e.y*180/Math.PI,inclinacionZ:e.z*180/Math.PI});
+                  }}>Girar 90° sobre la superficie</button> : <button style={btn} onClick={() => cambiar(objSel.id, { inclinacionX: 0, inclinacionZ: 0 })}>Horizontal</button>}
+                  {!Lk.empotrado && <button style={btn} onClick={() => {
                     const pts = objSel.pts || [], a = pts[0] || [0, 0], b = pts[pts.length - 1] || [1, 0];
                     const angulo = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI;
                     cambiar(objSel.id, { inclinacionX: 0, inclinacionZ: 90, rot: (objSel.rot || 0) - angulo });
                     if (Math.abs(angulo) > 0.001 && pts.length === 2) cambiar(objSel.id, { pts: [[-ml * 50, 0], [ml * 50, 0]], w: ml * 100, d: 0, inclinacionX: 0, inclinacionZ: 90 });
-                  }}>Vertical</button>
+                  }}>Vertical</button>}
                 </div>
                 {objSel.pts?.length === 2 && <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>Longitud (cm)
                   <input type="number" min="1" step="10" value={Math.round(ml * 100)} style={{ ...btn, width: 90 }} onChange={e => {
@@ -9120,8 +9161,8 @@ export default function Visor3D({ cliente = false }) {
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Temperatura</span><select value={Lk.k} onChange={e => set({ k: parseInt(e.target.value, 10) })} style={btn}><option value={2700}>2700 K cálida</option><option value={3000}>3000 K</option><option value={4000}>4000 K neutra</option><option value={5000}>5000 K</option><option value={6500}>6500 K fría</option></select></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Lúmenes / m</span><input type="number" step="50" value={Lk.lm} onChange={e => set({ lm: Math.max(0, parseFloat(e.target.value) || 0) })} style={{ ...btn, width: 80 }} /></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Ancho cm</span><input type="number" step="0.2" value={Lk.ancho} onChange={e => set({ ancho: parseFloat(e.target.value) || 1 })} style={{ ...btn, width: 80 }} /></label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Alumbra hacia</span><select value={Lk.dir || 'abajo'} onChange={e => set({ dir: e.target.value })} style={btn}><option value="abajo">Abajo</option><option value="arriba">Arriba (techo)</option><option value="izq">Lado izquierdo</option><option value="der">Lado derecho</option></select></label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}><input type="checkbox" checked={!!Lk.cerrado} onChange={e => set({ cerrado: e.target.checked })} /> Cerrar en lazo</label>
+                {!Lk.empotrado && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Alumbra hacia</span><select value={Lk.dir || 'abajo'} onChange={e => set({ dir: e.target.value })} style={btn}><option value="abajo">Abajo</option><option value="arriba">Arriba (techo)</option><option value="izq">Lado izquierdo</option><option value="der">Lado derecho</option></select></label>}
+                {!Lk.empotrado && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}><input type="checkbox" checked={!!Lk.cerrado} onChange={e => set({ cerrado: e.target.checked })} /> Cerrar en lazo</label>}
                 <div style={{ opacity: 0.5, fontSize: 11 }}>La «Altura desde suelo» de arriba es dónde va la tira. Sale en el despiece con su fuente de alimentación. Si alumbra poco o demasiado, ajusta «Intensidad luces» en ☀ Ambiente.</div>
               </div>
             );
