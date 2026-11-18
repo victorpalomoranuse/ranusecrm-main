@@ -2404,7 +2404,7 @@ export default function Visor3D({ cliente = false }) {
     const a = api3d.current; if (!a.raiz) return;
     setGuardado('Preparando el archivo para D5…');
     const ocultos = [];
-    [a.raiz, a.esc].forEach(g => g.traverse(o => { if (o.visible && (o.userData?.eje || o.userData?.guia || o.userData?.asa || o.isLine || o.isSprite || o.isLight || (o.isMesh && o.material && !Array.isArray(o.material) && o.material.depthTest === false))) { o.visible = false; ocultos.push(o); } }));
+    [a.raiz, a.esc].forEach(g => g.traverse(o => { if (o.visible && (o.userData?.eje || o.userData?.guia || o.userData?.asa || o.isLine || o.isSprite || o.isLight || (o.isMesh && o.material && !Array.isArray(o.material) && o.material.depthTest === false) || (o.isMesh && o.material && o.material.colorWrite === false))) { o.visible = false; ocultos.push(o); } }));
     new GLTFExporter().parse([a.raiz, a.esc], buf => {
       ocultos.forEach(o => { o.visible = true; });
       const blob = new Blob([buf], { type: 'model/gltf-binary' }), u = URL.createObjectURL(blob), l = document.createElement('a');
@@ -2414,7 +2414,7 @@ export default function Visor3D({ cliente = false }) {
       try {
         const V = o => { const v = new THREE.Vector3(); o.getWorldPosition(v); return [v.x, v.y, v.z]; };
         const luces = [];
-        [a.raiz, a.esc].forEach(g => g.traverse(o => {
+        [a.scene].forEach(g => g.traverse(o => {
           if (!o.isLight || !o.parent) return; let vis = true; for (let p = o; p; p = p.parent) if (p.visible === false) vis = false; if (!vis || !o.intensity) return;
           o.updateWorldMatrix(true, false);
           const dir = new THREE.Vector3(0, 0, -1).transformDirection(o.matrixWorld), col = '#' + o.color.getHexString();
