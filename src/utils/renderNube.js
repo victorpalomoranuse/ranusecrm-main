@@ -1,16 +1,31 @@
-// Render final en la nube (Blender Cycles). INTERFAZ PREPARADA, NO IMPLEMENTADA: ningún servicio está conectado todavía.
-// Cuando exista un proveedor, solo hay que completar enviarARenderNube y consultarRenderNube (y la ruta del servidor server/routes/render-nube.routes.js).
+// Render realista en la nube (Blender Cycles en una GPU de RunPod). Servidor: server/routes/render-nube.routes.js; worker: server/render-worker.
 import api from '../services/api';
 
 export async function renderNubeDisponible() {
   try { const { data } = await api.get('/render-nube/estado'); return data; } catch { return { disponible: false, motores: [], motivo: 'No se pudo consultar el servicio.' }; }
 }
 
-// escena = { glb: Blob, camara: { px, py, pz, tx, ty, tz, fov }, resolucion: { ancho, alto }, muestras, motor }
-export async function enviarARenderNube(/* escena */) {
-  throw new Error('El render en la nube todavía no está disponible.');
-}
+const subir = async (url, cuerpo, tipo) => {
+  const r = await fetch(url, { method: 'PUT', headers: { 'Content-Type': tipo, 'x-upsert': 'true' }, body: cuerpo });
+  if (!r.ok) throw new Error('No se pudo subir la escena (' + r.status + ')');
+};
+const esperar = ms => new Promise(r => setTimeout(r, ms));
 
-export async function consultarRenderNube(/* trabajoId */) {
-  throw new Error('El render en la nube todavía no está disponible.');
+// escena = { glb: Blob, info: { camara, luces, … }, calidad: 'previa' | 'hd' | '8k', exposicion, alAvanzar(texto) }. Devuelve la URL de la imagen.
+export async function enviarARenderNube({ glb, info, calidad = 'hd', exposicion = 3, alAvanzar = () => {} }) {
+  alAvanzar('Subiendo la escena…');
+  const { data: t } = await api.post('/render-nube/crear');
+  await subir(t.escena, glb, 'model/gltf-binary');
+  await subir(t.luces, new Blob([JSON.stringify(info)], { type: 'application/json' }), 'application/json');
+  alAvanzar('Enviando a la GPU…');
+  await api.post('/render-nube/iniciar', { id: t.id, calidad, exposicion });
+  const t0 = Date.now();
+  for (;;) {
+    await esperar(3000);
+    const { data } = await api.get('/render-nube/estado/' + t.id);
+    if (data.estado === 'listo' && data.url) return data.url;
+    if (data.estado === 'error') throw new Error(data.mensaje || 'El render ha fallado');
+    alAvanzar((data.estado === 'en_cola' ? 'En cola' : 'Renderizando') + ' · ' + Math.round((Date.now() - t0) / 1000) + ' s');
+    if (Date.now() - t0 > 30 * 60 * 1000) throw new Error('El render tarda demasiado. Inténtalo de nuevo.');
+  }
 }

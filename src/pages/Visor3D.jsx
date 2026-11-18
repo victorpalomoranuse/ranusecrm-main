@@ -32,6 +32,7 @@ import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { renderNubeDisponible, enviarARenderNube } from '../utils/renderNube';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
@@ -2400,36 +2401,52 @@ export default function Visor3D({ cliente = false }) {
   const ponerLente = g => { const cam = api3d.current.cam; if (!cam) return; g = Math.max(12, Math.min(110, Math.round(g))); cam.fov = g; cam.updateProjectionMatrix(); lenteRef.current = g; setLente(g); if (api3d.current.persona) api3d.current.fovPersona = g; };
   const mmDe = g => Math.round(12 / Math.tan((g * Math.PI / 180) / 2));
   // Exporta el espacio (muros, suelos, puertas, ventanas, máquinas y objetos) a .glb para abrirlo en D5, Blender, etc. Medidas en metros, Y arriba
-  const exportarGLB = () => {
-    const a = api3d.current; if (!a.raiz) return;
-    setGuardado('Preparando el archivo para D5…');
+  // Prepara la escena para el render realista (Blender): .glb sin cajas de repuesto ni ayudas, más luces y cámara en un .json
+  const prepararEscena = () => new Promise((ok, ko) => {
+    const a = api3d.current; if (!a.raiz) return ko(new Error('No hay escena'));
     const ocultos = [];
     [a.raiz, a.esc].forEach(g => g.traverse(o => { if (o.visible && (o.userData?.eje || o.userData?.guia || o.userData?.asa || o.isLine || o.isSprite || o.isLight || (o.isMesh && o.material && !Array.isArray(o.material) && o.material.depthTest === false) || (o.isMesh && o.material && (o.material.colorWrite === false || o.material.visible === false)))) { o.visible = false; ocultos.push(o); } }));
     new GLTFExporter().parse([a.raiz, a.esc], buf => {
       ocultos.forEach(o => { o.visible = true; });
-      const blob = new Blob([buf], { type: 'model/gltf-binary' }), u = URL.createObjectURL(blob), l = document.createElement('a');
-      const base = String(titulo || 'espacio').replace(/[^\w-]+/g, '-') || 'espacio';
-      l.href = u; l.download = base + '.glb'; l.click(); setTimeout(() => URL.revokeObjectURL(u), 4000);
-      // Luces y cámara en un .json aparte: el .glb no lleva las luces de área y el render realista (Blender/nube) las necesita
       try {
-        const V = o => { const v = new THREE.Vector3(); o.getWorldPosition(v); return [v.x, v.y, v.z]; };
-        const luces = [];
-        [a.scene].forEach(g => g.traverse(o => {
-          if (!o.isLight || !o.parent) return; let vis = true; for (let p = o; p; p = p.parent) if (p.visible === false) vis = false; if (!vis || !o.intensity) return;
-          o.updateWorldMatrix(true, false);
-          const dir = new THREE.Vector3(0, 0, -1).transformDirection(o.matrixWorld), col = '#' + o.color.getHexString();
-          if (o.isRectAreaLight) luces.push({ t: 'area', pos: V(o), dir: [dir.x, dir.y, dir.z], w: o.width, h: o.height, col, i: o.intensity });
-          else if (o.isSpotLight) { const tg = new THREE.Vector3(); o.target.updateWorldMatrix(true, false); o.target.getWorldPosition(tg); luces.push({ t: 'spot', pos: V(o), tg: [tg.x, tg.y, tg.z], ang: o.angle, pen: o.penumbra, col, i: o.intensity }); }
-          else if (o.isPointLight) luces.push({ t: 'point', pos: V(o), col, i: o.intensity });
-          else if (o.isDirectionalLight) { const tg = new THREE.Vector3(); o.target.updateWorldMatrix(true, false); o.target.getWorldPosition(tg); luces.push({ t: 'sol', pos: V(o), tg: [tg.x, tg.y, tg.z], col, i: o.intensity }); }
-        }));
-        const { cam, ctrl } = a;
-        const info = { camara: { pos: [cam.position.x, cam.position.y, cam.position.z], tg: [ctrl.target.x, ctrl.target.y, ctrl.target.z], fov: cam.fov, aspect: cam.aspect }, hora, exposicion: ambiente.exposicion, ev: ambiente.ev ?? 7, luces };
-        const u2 = URL.createObjectURL(new Blob([JSON.stringify(info)], { type: 'application/json' })), l2 = document.createElement('a');
-        l2.href = u2; l2.download = base + '-luces.json'; setTimeout(() => { l2.click(); setTimeout(() => URL.revokeObjectURL(u2), 4000); }, 600);
-      } catch (e) { console.warn('luces', e); }
+          const V = o => { const v = new THREE.Vector3(); o.getWorldPosition(v); return [v.x, v.y, v.z]; };
+          const luces = [];
+          [a.scene].forEach(g => g.traverse(o => {
+      if (!o.isLight || !o.parent) return; let vis = true; for (let p = o; p; p = p.parent) if (p.visible === false) vis = false; if (!vis || !o.intensity) return;
+      o.updateWorldMatrix(true, false);
+      const dir = new THREE.Vector3(0, 0, -1).transformDirection(o.matrixWorld), col = '#' + o.color.getHexString();
+      if (o.isRectAreaLight) luces.push({ t: 'area', pos: V(o), dir: [dir.x, dir.y, dir.z], w: o.width, h: o.height, col, i: o.intensity });
+      else if (o.isSpotLight) { const tg = new THREE.Vector3(); o.target.updateWorldMatrix(true, false); o.target.getWorldPosition(tg); luces.push({ t: 'spot', pos: V(o), tg: [tg.x, tg.y, tg.z], ang: o.angle, pen: o.penumbra, col, i: o.intensity }); }
+      else if (o.isPointLight) luces.push({ t: 'point', pos: V(o), col, i: o.intensity });
+      else if (o.isDirectionalLight) { const tg = new THREE.Vector3(); o.target.updateWorldMatrix(true, false); o.target.getWorldPosition(tg); luces.push({ t: 'sol', pos: V(o), tg: [tg.x, tg.y, tg.z], col, i: o.intensity }); }
+          }));
+          const { cam, ctrl } = a;
+          const info = { camara: { pos: [cam.position.x, cam.position.y, cam.position.z], tg: [ctrl.target.x, ctrl.target.y, ctrl.target.z], fov: cam.fov, aspect: cam.aspect }, hora, exposicion: ambiente.exposicion, ev: ambiente.ev ?? 7, luces };
+        ok({ buf, info, base: String(titulo || 'espacio').replace(/[^\w-]+/g, '-') || 'espacio' });
+      } catch (e) { ko(e); }
+    }, err => { ocultos.forEach(o => { o.visible = true; }); ko(err); }, { binary: true, onlyVisible: true, trs: false, maxTextureSize: 2048 });
+  });
+  const exportarGLB = () => {
+    setGuardado('Preparando el archivo para D5…');
+    prepararEscena().then(({ buf, info, base }) => {
+      const bajar = (blob, nombre, espera = 0) => { const u = URL.createObjectURL(blob), l = document.createElement('a'); l.href = u; l.download = nombre; setTimeout(() => { l.click(); setTimeout(() => URL.revokeObjectURL(u), 4000); }, espera); };
+      const blob = new Blob([buf], { type: 'model/gltf-binary' });
+      bajar(blob, base + '.glb'); bajar(new Blob([JSON.stringify(info)], { type: 'application/json' }), base + '-luces.json', 600);
       setGuardado('Archivo .glb descargado ✓ (' + (blob.size / 1048576).toFixed(1) + ' MB). Ábrelo en D5: Importar → modelo');
-    }, err => { ocultos.forEach(o => { o.visible = true; }); console.warn('glb', err); setAviso('No se pudo exportar el modelo'); }, { binary: true, onlyVisible: true, trs: false, maxTextureSize: 2048 });
+    }).catch(err => { console.warn('glb', err); setAviso('No se pudo exportar el modelo'); });
+  };
+  // Render realista en la nube (Blender Cycles en una GPU): sube la escena, espera y enseña la imagen
+  const [nube, setNube] = useState(null);
+  const renderNube = async (calidad = 'hd') => {
+    if (nube?.estado === 'trabajando') return;
+    setNube({ estado: 'trabajando', texto: 'Preparando la escena…' });
+    try {
+      const est = await renderNubeDisponible(); if (!est.disponible) { setNube(null); setAviso(est.motivo || 'El render en la nube aún no está activado.'); return; }
+      const { buf, info } = await prepararEscena();
+      info.exposicion = ambiente.exposicion; info.ev = ambiente.ev ?? 7;
+      const url = await enviarARenderNube({ glb: new Blob([buf], { type: 'model/gltf-binary' }), info, calidad, exposicion: 3, alAvanzar: t => setNube({ estado: 'trabajando', texto: t }) });
+      setNube({ estado: 'listo', url });
+    } catch (e) { setNube({ estado: 'error', texto: e.message || 'No se pudo hacer el render' }); }
   };
   const [guardado, setGuardado] = useState('');
   const cargadaEscena = useRef(false);
@@ -6988,6 +7005,7 @@ export default function Visor3D({ cliente = false }) {
           [panoIA ? 'Panorama con IA…' : 'Panorama 360° con IA (prueba)', hacer360IA, false, panoIA || generando360 || estado !== 'listo', 'Manda la panorámica a ChatGPT para hacerla fotorrealista'],
           ['Galería' + (renders.length ? ' (' + renders.length + ')' : ''), () => setGalAbierta(v => !v), galAbierta, false, 'Renders y panoramas guardados'],
           ['Despiece y cantidades', abrirDespiece, false, false, 'Despiece y cantidades de todo lo diseñado'],
+          ['Render realista en la nube (4K)', () => { setRenderAbierto(true); setPestanaRender('salida'); renderNube('hd'); }, nube?.estado === 'trabajando', estado !== 'listo', 'Trazado de rayos con Blender en una GPU: luz y reflejos reales'],
           ['Exportar a D5 (.glb)', exportarGLB, false, false, 'Descarga el espacio en 3D para abrirlo en D5 o Blender'],
         ], true)}
         <button style={{ ...bTop, ...(ayudaAbierta ? bOn : {}) }} onClick={() => setAyudaAbierta(v => !v)} title="Tutorial, preguntar cómo se hace algo y lista de atajos">? Ayuda</button>
@@ -7860,9 +7878,14 @@ export default function Visor3D({ cliente = false }) {
                 <button style={{ ...btn, width: '100%' }} disabled={estado !== 'listo' || ia?.estado === 'trabajando'} onClick={mejorarConIA} title="Exporta la vista en alta resolución y la IA solo la retoca">✨ Mejorar la imagen con IA</button>
                 <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>La IA solo retoca la imagen ya renderizada: no cambia la geometría, los materiales ni los objetos. Para un cambio de ambiente completo sigue estando «Render con IA».</div>
               </>)}
-              {sec('Render final en la nube', <>
-                <button style={{ ...btn, width: '100%', opacity: 0.5, cursor: 'not-allowed' }} disabled title="Todavía no hay ningún servicio conectado">☁ Render con Blender Cycles (próximamente)</button>
-                <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>Está preparada la conexión, pero aún no hay un servicio elegido. Mientras tanto, usa «Exportar a D5» o el refinado con trazado de rayos.</div>
+              {sec('Render realista en la nube', <>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[['previa', 'Vista previa'], ['hd', '4K'], ['8k', '8K']].map(([k, n]) => <button key={k} style={{ ...btn, flex: 1 }} disabled={estado !== 'listo' || nube?.estado === 'trabajando'} onClick={() => renderNube(k)} title="Trazado de rayos con Blender Cycles en una GPU: luz y reflejos reales">{'☁ ' + n}</button>)}
+                </div>
+                {nube?.estado === 'trabajando' && <div style={{ fontSize: 12, marginTop: 6 }}>⏳ {nube.texto}</div>}
+                {nube?.estado === 'error' && <div style={{ fontSize: 12, marginTop: 6, color: '#e9a' }}>{nube.texto}</div>}
+                {nube?.estado === 'listo' && <div style={{ marginTop: 6 }}><img src={nube.url} alt="Render realista" style={{ width: '100%', borderRadius: 6, display: 'block' }} /><a href={nube.url} download="render-realista.png" target="_blank" rel="noreferrer" style={{ ...btn, display: 'block', textAlign: 'center', marginTop: 6, textDecoration: 'none' }}>⬇ Descargar</a></div>}
+                <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>Calcula la luz real (rebotes, sombras suaves, reflejos) en una GPU en la nube. Tarda de segundos a unos minutos según la calidad. Usa la vista de cámara actual.</div>
               </>)}
               {sec('Exportar imagen', <>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>Resolución</span><select value={resRender} onChange={e => setResRender(parseInt(e.target.value, 10))} style={{ ...btn, flex: 1 }}>{Object.entries(nombreRes).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></label>
