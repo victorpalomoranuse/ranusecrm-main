@@ -75,6 +75,64 @@ for ob in list(sc.objects):
             v.co += v.normal * 0.002
         me.update()
 
+# Juntas de las losetas del suelo: en el visor se ven; en Blender se pierden por el filtrado de la textura.
+# Si la imagen del suelo trae junta (su borde es más oscuro o más claro que el centro), se dibuja una línea fina y nítida en cada borde de loseta.
+def juntas_suelo():
+    try:
+        import numpy as np
+    except Exception:
+        return
+    hechos = set()
+    for ob in bpy.data.objects:
+        if ob.type != 'MESH':
+            continue
+        bb = [ob.matrix_world @ Vector(c) for c in ob.bound_box]
+        ex = max(p.x for p in bb) - min(p.x for p in bb); ey = max(p.y for p in bb) - min(p.y for p in bb); ez = max(p.z for p in bb) - min(p.z for p in bb)
+        suelo_geo = ez < 0.12 and ex > 1.2 and ey > 1.2 and min(p.z for p in bb) < 0.3
+        if not suelo_geo and not any(s.material and str(s.material.get('sueloKey', '')).startswith('suelo') for s in ob.material_slots):
+            continue  # solo superficies de suelo
+        for sl in ob.material_slots:
+            m = sl.material
+            if not m or not m.use_nodes or m.name in hechos:
+                continue
+            nt = m.node_tree
+            tex = next((n for n in nt.nodes if n.type == 'TEX_IMAGE' and n.image), None)
+            bsdf = next((n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+            if not tex or not bsdf:
+                continue
+            im = tex.image; wd, ht = im.size[0], im.size[1]
+            if wd < 16 or ht < 16 or wd * ht > 4096 * 4096:
+                continue
+            buf = np.empty(wd * ht * 4, dtype=np.float32); im.pixels.foreach_get(buf); a = buf.reshape(ht, wd, 4)[:, :, :3]
+            b = max(2, wd // 256)
+            borde = np.concatenate([a[:b].reshape(-1, 3), a[-b:].reshape(-1, 3), a[:, :b].reshape(-1, 3), a[:, -b:].reshape(-1, 3)]).mean(axis=0)
+            centro = a[ht // 4: 3 * ht // 4, wd // 4: 3 * wd // 4].reshape(-1, 3).mean(axis=0)
+            lum = lambda c: 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+            sk = str(m.get('sueloKey', '')); con_junta = len(sk) > 6 and sk.startswith('suelo') and sk[6] == '1'  # el visor marca «junta» en la clave del suelo
+            if con_junta:
+                borde = np.minimum(centro * 1.8 + 0.03, 1.0)  # color de la junta: el tono del suelo algo más claro (como se ve en el visor)
+            elif abs(lum(borde) - lum(centro)) < 0.04 * max(0.2, lum(centro)) + 0.01:
+                continue
+            hechos.add(m.name)
+            link = next((l for l in nt.links if l.to_node == bsdf and l.to_socket.name == 'Base Color'), None)
+            if not link:
+                continue
+            uv = nt.nodes.new('ShaderNodeUVMap'); sep = nt.nodes.new('ShaderNodeSeparateXYZ'); nt.links.new(uv.outputs[0], sep.inputs[0])
+            def frac_borde(sock):
+                f = nt.nodes.new('ShaderNodeMath'); f.operation = 'FRACT'; nt.links.new(sock, f.inputs[0])
+                inv = nt.nodes.new('ShaderNodeMath'); inv.operation = 'SUBTRACT'; inv.inputs[0].default_value = 1.0; nt.links.new(f.outputs[0], inv.inputs[1])
+                mn = nt.nodes.new('ShaderNodeMath'); mn.operation = 'MINIMUM'; nt.links.new(f.outputs[0], mn.inputs[0]); nt.links.new(inv.outputs[0], mn.inputs[1])
+                return mn.outputs[0]
+            bu = frac_borde(sep.outputs[0]); bv = frac_borde(sep.outputs[1])
+            mn2 = nt.nodes.new('ShaderNodeMath'); mn2.operation = 'MINIMUM'; nt.links.new(bu, mn2.inputs[0]); nt.links.new(bv, mn2.inputs[1])
+            gt = nt.nodes.new('ShaderNodeMath'); gt.operation = 'LESS_THAN'; nt.links.new(mn2.outputs[0], gt.inputs[0]); gt.inputs[1].default_value = 0.0035
+            mx = nt.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'
+            nt.links.new(gt.outputs[0], mx.inputs[0]); nt.links.new(link.from_socket, mx.inputs[6])
+            mx.inputs[7].default_value = (float(borde[0]), float(borde[1]), float(borde[2]), 1.0)
+            nt.links.new(mx.outputs[2], bsdf.inputs['Base Color'])
+            print('JUNTAS', m.name, round(lum(borde), 3), round(lum(centro), 3))
+juntas_suelo()
+
 # Espejos: metal casi perfecto pero de color neutro (si no, salen azules al reflejar el cielo)
 for mat in bpy.data.materials:
     if not mat.use_nodes: continue
