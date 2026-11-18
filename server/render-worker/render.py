@@ -72,13 +72,45 @@ asp = C.get('aspect') or 16 / 9
 sc.render.resolution_x, sc.render.resolution_y = ANCHO, int(ANCHO / asp)
 sc.view_settings.view_transform = 'AgX'
 sc.view_settings.exposure = EXPO
+
+# GPU: OptiX si está, si no CUDA; se muestra en el registro cuál se usa (si sale CPU, el render será muy lento)
 prefs = bpy.context.preferences.addons['cycles'].preferences
+usado = 'CPU'
 for t in ('OPTIX', 'CUDA'):
     try:
-        prefs.compute_device_type = t; prefs.get_devices(); break
-    except Exception: pass
-for dv in prefs.devices: dv.use = True
-sc.cycles.device = 'GPU'
+        prefs.compute_device_type = t; prefs.get_devices()
+        gpus = [d for d in prefs.devices if d.type == t]
+        if gpus:
+            for d in prefs.devices: d.use = d.type == t
+            usado = t; break
+    except Exception as e:
+        print('DISPOSITIVO', t, 'falla', e)
+sc.cycles.device = 'GPU' if usado != 'CPU' else 'CPU'
+print('DISPOSITIVO_USADO', usado, [d.name for d in prefs.devices])
+
+# Exposición automática: renders pequeños y rápidos que miden el brillo medio y corrigen la exposición hasta ~35 % de gris medio en pantalla
+import os, tempfile
+def brillo(exp):
+    sc.view_settings.exposure = exp
+    r0 = (sc.render.resolution_x, sc.render.resolution_y, sc.cycles.samples, sc.cycles.use_denoising)
+    sc.render.resolution_x, sc.render.resolution_y, sc.cycles.samples, sc.cycles.use_denoising = 240, int(240 / asp), 12, False
+    tmp = os.path.join(tempfile.gettempdir(), 'exp.png'); sc.render.filepath = tmp
+    bpy.ops.render.render(write_still=True)
+    im = bpy.data.images.load(tmp); px = list(im.pixels); bpy.data.images.remove(im)
+    n = len(px) // 4; m = sum(0.2126 * px[4*k] + 0.7152 * px[4*k+1] + 0.0722 * px[4*k+2] for k in range(n)) / max(1, n)
+    sc.render.resolution_x, sc.render.resolution_y, sc.cycles.samples, sc.cycles.use_denoising = r0
+    return m
+if os.environ.get('EXPO_AUTO', '1') == '1':
+    exp = EXPO
+    for _ in range(3):
+        m = brillo(exp)
+        if m < 0.01: exp += 3; continue
+        d = 2.2 * math.log2(0.35 / m)
+        print('EXPOSICION', round(exp, 2), 'brillo', round(m, 3), 'corr', round(d, 2))
+        if abs(d) < 0.3: break
+        exp = max(-6, min(9, exp + d * 0.8))
+    sc.view_settings.exposure = exp
+    print('EXPOSICION_FINAL', round(exp, 2))
 sc.render.filepath = out
 bpy.ops.render.render(write_still=True)
 print('LISTO', out, len(info['luces']), 'luces')
