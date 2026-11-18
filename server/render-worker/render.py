@@ -41,8 +41,8 @@ def hexc(h): h = h.lstrip('#'); return [int(h[i:i+2], 16) / 255 for i in (0, 2, 
 def srgb2lin(c): return [(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4) for x in c]
 
 # Escala: en el CRM la intensidad física va con una exposición muy baja; aquí convertimos a vatios de Blender y calibramos con la exposición
-SPOT_K = 3.0  # los focos del visor marcan círculos de luz más contundentes que la luz estrictamente física
-LED_K = 4.0  # con las tiras bien orientadas (verticales) basta con un refuerzo moderado
+SPOT_K = 1.0  # sin refuerzo: luz física
+LED_K = 1.0  # sin refuerzo: luz física
 W_PER_CD = 4 * math.pi * math.pi / 683.0  # candelas -> vatios de Blender (aprox.)
 for L in info['luces']:
     col = srgb2lin(hexc(L['col']))
@@ -209,7 +209,9 @@ def brillo(exp):
 # Exposición del visor: se traduce a la del render (2,8 pasos con los valores por defecto del visor: exposición 1 y EV 7); cada paso de EV hacia arriba oscurece un paso
 if info.get('modoExposicion') == 'visor':
     ex = float(info.get('exposicion') or 1.0); ev = float(info.get('ev') if info.get('ev') is not None else 7)
-    sc.view_settings.exposure = 2.8 + math.log2(max(0.05, ex)) - (ev - 7)
+    # Exposición física, idéntica a la del visor: el visor aplica exposición / (1,2 · 2^EV) a luces en lux; en Blender las luces están en vatios (÷ 683), así que
+    # la exposición en pasos es log2(683 · exposición / (1,2 · 2^EV)). Sin ningún añadido: lo que pone el usuario es lo que se aplica.
+    sc.view_settings.exposure = math.log2(683.0 * max(0.05, ex) / (1.2 * (2.0 ** ev)))
     print('EXPOSICION_VISOR', round(sc.view_settings.exposure, 2), 'exposicion', ex, 'EV', ev)
 elif os.environ.get('EXPO_AUTO', '1') == '1':
     exp = EXPO
