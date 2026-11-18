@@ -2471,10 +2471,10 @@ export default function Visor3D({ cliente = false }) {
     try {
       const est = await renderNubeDisponible(); if (!est.disponible) { setNube(null); setAviso(est.motivo || 'El render en la nube aún no está activado.'); return; }
       // Antes de exportar se cargan todos los modelos de las máquinas (si no, salen como cajas azules en el render)
-      if (cargasRef.current.pend > 0 || cargasRef.current.pes > 0) {
-        setNube({ estado: 'trabajando', texto: 'Cargando los modelos de las máquinas…' }); setCargarModelos(true); setCargarPesados(true);
-        for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 1500)); if (cargasRef.current.pend === 0 && cargasRef.current.pes === 0) break; }
-        await new Promise(r => setTimeout(r, 4000));
+      if (cargasRef.current.pend > 0 || cargasRef.current.pes > 0 || cargasRef.current.lim > 0) {
+        setNube({ estado: 'trabajando', texto: 'Cargando los modelos de las máquinas…' }); setCargarModelos(true); setCargarPesados(true); setLimiteTri(1e12); // sin límite de detalle: ninguna máquina se queda como caja azul
+        for (let i = 0; i < 80; i++) { await new Promise(r => setTimeout(r, 1500)); if (cargasRef.current.pend === 0 && cargasRef.current.pes === 0 && cargasRef.current.lim === 0) break; }
+        await new Promise(r => setTimeout(r, 5000));
       }
       const { buf, info } = await prepararEscena();
       info.exposicion = ambiente.exposicion; info.ev = ambiente.ev ?? 7; info.modoExposicion = expNube; info.hora = hora; info.norte = entRot; info.solOn = ambiente.solOn !== false; info.solI = ambiente.solI ?? 1; // 'visor' = la exposición que tienes puesta en el visor; 'auto' = la calcula el servidor
@@ -2637,7 +2637,7 @@ export default function Visor3D({ cliente = false }) {
   const [cargaN, setCargaN] = useState(0); // cuántos modelos distintos (los más cercanos a la cámara) se han pedido cargar: de 3 en 3
   const [cargarModelos, setCargarModelos] = useState(false); // con muchas máquinas distintas, los modelos no se cargan solos al abrir (la página se quedaba colgada): botón «Cargar modelos»
   const [pendientesN, setPendientesN] = useState(0);
-  cargasRef.current = { pend: pendientesN, pes: pesadosN };
+  cargasRef.current = { pend: pendientesN, pes: pesadosN, lim: limitadasN };
   const [modosEq, setModosEq] = useState({});               // cómo se ajusta el modelo 3D de cada máquina del plano
   const [mtick, setMtick] = useState(0);
   const [huecosCfg, setHuecosCfg] = useState({});          // apertura, bisagra y sentido de cada puerta y ventana (solo 3D)
