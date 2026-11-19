@@ -94,12 +94,42 @@ export async function juzgaClips(clips, palabras, { reglas = '', intento = 0 } =
   await Promise.all(clips.map(async (c) => {
     try {
       const r = await claudeJSON('Eres el editor jefe de Ranuse Design (diseño de espacios deportivos) y vas a publicar este clip en Instagram Reels / TikTok TAL CUAL. Cada línea es un tramo que se oirá en este orden (P = entrevistador que pregunta, R = el experto que responde). Imagínalo como un espectador que NO conoce el contexto.\n\nTÍTULO EN PANTALLA: ' + c.titulo + '\nPRIMERA FRASE: ' + (c.gancho || '') + '\n\nCONTEXTO ORIGINAL (no se reproduce):\n' + textoDeTramos(c.tramos.map(([a,b]) => [Math.max(0,a-20),b+20]), palabras) + '\n\nCLIP FINAL (comprueba que conserva el sentido original y las condiciones):\n' + textoDeTramos(c.tramos, palabras) + '\n\n' +
-        'IMPORTANTE: los tartamudeos, muletillas, palabras repetidas y tomas falsas pequeñas se limpian después automáticamente: NO los penalices salvo que cambien el sentido. Juzga la HISTORIA y lo que no se arregla solo. Juzga con rigor: ¿se entiende solo (sin referencias a cosas que no se han dicho)? ¿la primera frase engancha en 3 segundos? ¿hay mezcla de voces (frases del entrevistador que suenan a respuesta, sugerencias de grabación, el mismo mensaje dicho por los dos)? ¿la idea está completa y termina con remate, o queda cortada? ¿hay frases repetidas o tomas falsas? ¿aporta algo que se comparta o se guarde?' + (reglas ? '\n\nREGLAS DE MARCA: ' + reglas.slice(0, 1200) : '') +
+        'IMPORTANTE: evalúa el clip tal cual; no presupongas una limpieza posterior. Una pregunta inicial es válida. No exijas cifras, una llamada a la acción ni un gancho espectacular para aprobar una explicación útil y completa. La nota mide claridad, fidelidad y coherencia, no viralidad. Las sugerencias estéticas no requieren arreglar si la idea está completa. Juzga con rigor: ¿se entiende solo (sin referencias a cosas que no se han dicho)? ¿la primera frase engancha en 3 segundos? ¿hay mezcla de voces (frases del entrevistador que suenan a respuesta, sugerencias de grabación, el mismo mensaje dicho por los dos)? ¿la idea está completa y termina con remate, o queda cortada? ¿hay frases repetidas o tomas falsas? ¿aporta algo que se comparta o se guarde?' + (reglas ? '\n\nREGLAS DE MARCA: ' + reglas.slice(0, 1200) : '') +
         '\n\nResponde SOLO JSON: {"nota": 0-100, "se_entiende_solo": true|false, "mezcla_de_voces": true|false, "incompleto": true|false, "gancho": "fuerte|normal|flojo", "problemas": ["frase corta"], "quitar_tramos": [números de línea que sobran y se pueden quitar sin romper la idea], "veredicto": "publicar|arreglar|descartar"}', { max: 900 });
       c.juicio = { nota: typeof r.nota === 'number' && Number.isFinite(r.nota) ? r.nota : null, entiendeSolo: r.se_entiende_solo === true, mezcla: !!r.mezcla_de_voces, incompleto: !!r.incompleto, gancho: String(r.gancho || ''), problemas: (r.problemas || []).slice(0, 4).map(x => String(x).slice(0, 140)), veredicto: String(r.veredicto || 'revisar') };
-      const sob = new Set((r.quitar_tramos || []).map(Number).filter(n => n >= 2 && n <= c.tramos.length)); // la primera línea (el comienzo) no se toca
-      if (sob.size && c.juicio.veredicto === 'arreglar') { c.tramos = c.tramos.filter((_, k) => !sob.has(k + 1)); c.total = c.tramos.reduce((s, t) => s + (t[1] - t[0]), 0); c.juicio.arreglado = [...sob]; if (intento === 0) await juzgaClips([c], palabras, { reglas, intento: 1 }); }
+      if (c.juicio.veredicto === 'arreglar' && intento === 0) {
+        const sob = new Set((r.quitar_tramos || []).map(Number).filter(n => n >= 2 && n <= c.tramos.length));
+        if (sob.size) c.tramos = c.tramos.filter((_, k) => !sob.has(k + 1));
+        else {
+          const contexto = palabras.map((w, i) => ({ ...w, i })).filter(w => c.tramos.some(([a,b]) => w.a >= a - 20 && w.de <= b + 20));
+          const arreglo = await claudeJSON('Repara este clip usando SOLO palabras grabadas del contexto. Corrige frases cortadas, preguntas, enumeraciones y matices. No añadas llamadas a la acción, cifras ni frases inventadas. Mantén una idea completa y evita repeticiones. Devuelve JSON {"rangos":[[indicePrimeraPalabra,indiceUltimaPalabra]],"titulo":"título fiel al contenido"}. Los índices son inclusivos; conserva preguntas necesarias. Problemas: ' + JSON.stringify(c.juicio.problemas) + '\nCLIP: ' + textoDeTramos(c.tramos, palabras) + '\nCONTEXTO CON ÍNDICES: ' + contexto.map(w => w.i + ':' + w.t).join(' '), { max: 2000 });
+          c.tramos = tramosReparados(arreglo.rangos, palabras, c.tramos);
+          if (typeof arreglo.titulo === 'string' && arreglo.titulo.trim()) c.titulo = arreglo.titulo.slice(0, 90);
+        }
+        c.total = c.tramos.reduce((s, t) => s + t[1] - t[0], 0);
+        c.ini = c.tramos[0][0]; c.fin = c.tramos.at(-1)[1];
+        c.gancho = palabras.filter(w => w.de >= c.tramos[0][0] && w.a <= c.tramos[0][1]).slice(0, 14).map(w => w.t).join(' ');
+        await juzgaClips([c], palabras, { reglas, intento: 1 });
+      }
     } catch (e) { c.juicio = { veredicto: 'revisar', nota: null, entiendeSolo: false, problemas: ['No se pudo verificar el clip'] }; console.log('Sin juicio del editor jefe para un clip:', e.message); }
   }));
   return clips;
+}
+
+export function tramosReparados(rangos, palabras, originales) {
+  if (!Array.isArray(rangos) || !rangos.length || rangos.length > 12) throw new Error('Reparación sin tramos válidos');
+  const usados = new Set();
+  const tramos = rangos.map(r => {
+    if (!Array.isArray(r) || r.length !== 2) throw new Error('Rango inválido');
+    const [a,b] = r;
+    if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < a || b >= palabras.length) throw new Error('Índices inválidos');
+    for (let i=a;i<=b;i++) {
+      const w=palabras[i];
+      if (usados.has(i) || !originales.some(([x,y]) => w.de >= x-20 && w.a <= y+20)) throw new Error('Reparación fuera del contexto o repetida');
+      usados.add(i);
+    }
+    return [palabras[a].de, palabras[b].a];
+  });
+  if (tramos.reduce((n,[a,b])=>n+b-a,0)>180) throw new Error('Reparación demasiado larga');
+  return tramos;
 }

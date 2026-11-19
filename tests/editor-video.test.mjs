@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { aceptaClip, efectosPermitidos, admiteDestello, geometriaSuperposicion } from '../video-worker/editor-policy.mjs';
-import { juzgaClips } from '../video-worker/entrevista.mjs';
+import { juzgaClips, tramosReparados } from '../video-worker/entrevista.mjs';
 
 test('rechaza clips incompletos, no revisados o rechazados aunque tengan score alto', () => {
   const juicio = { veredicto: 'publicar', entiendeSolo: true, incompleto: false, mezcla: false, nota: 80 };
@@ -57,6 +57,16 @@ test('la corrección del clip se vuelve a juzgar y un fallo no se aprueba', asyn
 });
 
 // Integration test: actual FFmpeg pixels verify transparency, placement and timing.
+test('repara el final cortado con palabras originales y vuelve a revisar', async () => {
+ const original=globalThis.fetch;let calls=0;
+ const palabras=[{t:'Todas',de:0,a:1},{t:'tus',de:1,a:2},{t:'mancuernas',de:2,a:3},{t:'colocadas.',de:3,a:4}];
+ globalThis.fetch=async()=>{calls++;const r=calls===1?{nota:58,se_entiende_solo:false,incompleto:true,veredicto:'arreglar',problemas:['Falta el final']} : calls===2?{rangos:[[0,3]],titulo:'Orden en casa'}:{nota:78,se_entiende_solo:true,incompleto:false,mezcla_de_voces:false,veredicto:'publicar'};return {ok:true,json:async()=>({content:[{text:JSON.stringify(r)}]})};};
+ try{const clips=[{titulo:'Caso',tramos:[[0,2]]}];await juzgaClips(clips,palabras);assert.equal(calls,3);assert.deepEqual(clips[0].tramos,[[0,4]]);assert.equal(aceptaClip(clips[0]),true);assert.equal(clips[0].fin,4);}finally{globalThis.fetch=original;}
+ assert.throws(()=>tramosReparados([[0,4]],palabras,[[0,2]]));
+ assert.throws(()=>tramosReparados([[0,2],[2,3]],palabras,[[0,2]]));
+ assert.throws(()=>tramosReparados([[0,0]],[{t:'Ajeno',de:50,a:51}],[[0,2]]));
+});
+
 test('FFmpeg mantiene el fondo y muestra el recurso solo en su intervalo', {skip: !process.env.EDITOR_TEST_FFMPEG}, async () => {
   const {spawnSync}=await import('node:child_process');
   const {filtrosSuperposicion}=await import('../video-worker/editor-policy.mjs');
