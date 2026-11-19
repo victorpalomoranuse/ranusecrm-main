@@ -1,3 +1,4 @@
+import { espaciaSonidos } from './vocabulario.mjs';
 import { efectosPermitidos, admiteDestello, filtrosSuperposicion } from './editor-policy.mjs';
 // Edición de un vídeo en bruto hablando a cámara: quita pausas, repeticiones y errores; encuadra a la cara con zooms in/out que esconden los cortes;
 // subtítulos bajo la cara; gráficos animados (cifra + icono); música de fondo por debajo de la voz con los cambios de plano a pulso.
@@ -398,7 +399,7 @@ function sfx(tipo) {
 }
 const sfxEventos = [];
 if (VOL_SFX > 0) {
-  const MAPA = { impacto: [['subida', -0.55], ['boom', 0]], flash: [['pop', 0]], flashColor: [['pop', 0]], zoomFuerte: [['whoosh', -0.15]], temblor: [['boom', 0]], glitch: [['glitch', 0]], barrido: [['whoosh', -0.2]], apagon: [['boom', 0]] };
+  const MAPA = { zoom: [['whoosh', -0.15]], abierto: [['whoosh', -0.15]], empuje: [['whoosh', -0.15]], impacto: [['subida', -0.55], ['boom', 0]], flash: [['pop', 0]], flashColor: [['pop', 0]], zoomFuerte: [['whoosh', -0.15]], temblor: [['boom', 0]], glitch: [['glitch', 0]], barrido: [['whoosh', -0.2]], apagon: [['boom', 0]] };
   if (DIRECTOR) {
     piezas.forEach((p, i) => { if (i > 0) for (const [s, d] of (MAPA[p.efecto] || [])) sfxEventos.push({ s, t: Math.max(0, p.t0 + d) }); });
     efectos.filter(e => e.tipo === 'palabra').forEach(e => { const t0 = mapea(e.t); if (t0 !== null) sfxEventos.push({ s: 'pop', t: Math.max(0, t0 - 0.02) }); });
@@ -407,7 +408,7 @@ if (VOL_SFX > 0) {
 // una sola pista con todos los sonidos en su sitio (se mezcla luego por debajo de la voz)
 let SFX_TRACK = null;
 {
-  const ev = sfxEventos.filter(e => sfx(e.s)).slice(0, 40);
+  const ev = espaciaSonidos(sfxEventos).filter(e => sfx(e.s)).slice(0, 12);
   if (ev.length) {
     const ent = [], fl = [];
     ev.forEach((e, k) => { ent.push('-i', sfx(e.s)); fl.push('[' + k + ':a]adelay=' + Math.round(e.t * 1000) + ':all=1,volume=' + (VOL_SFX * (GANANCIA[e.s] || 1)).toFixed(3) + '[x' + k + ']'); });
