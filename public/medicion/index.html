@@ -1403,7 +1403,7 @@ function eqEtqUbica(px){
   var WG=ws.map(function(w){return {g:wg(w),t:w.t}});
   eqs.forEach(function(e){
     var tq=tipos.porId[e.id];if(!tq)return;
-    var r=QM[e.id],rr=Math.max(8,5.2+tq.cod.length*2.6)*px,ay=Math.min(7*px,(r.y1-r.y0)/2);
+    var r=QM[e.id],rr=Math.max(5,3.4+tq.cod.length*1.7)*px*tamK('etq'),ay=Math.min(7*px,(r.y1-r.y0)/2);
     var C=[
       {lx:r.x1+10*px,ly:r.y0+7*px,ax:r.x1,ay:r.y0+ay},{lx:r.x0-10*px,ly:r.y0+7*px,ax:r.x0,ay:r.y0+ay},
       {lx:r.x1+10*px,ly:r.y1-7*px,ax:r.x1,ay:r.y1-ay},{lx:r.x0-10*px,ly:r.y1-7*px,ax:r.x0,ay:r.y1-ay},
@@ -4338,11 +4338,11 @@ function scene0(C,k,view,o){
       var r=eqRect(e),col=(bad[e.id]||(e.s==='dem'&&!distr))?C.dem:(C.blk||C.ink),tq=tiposEq.porId[e.id];
       Leq+='<g transform="translate('+f2(r.cx)+' '+f2(r.cy)+') rotate('+(e.rot||0)+') scale('+(e.fx?-1:1)+' '+(e.fy?-1:1)+') translate('+f2(-e.w/2)+' '+f2(-e.d/2)+')"><rect width="'+e.w+'" height="'+e.d+'" style="fill:none"/>'+eqSym(e.ty,e.w,e.d,col,px,e.cid)+'</g>';
       if(!o.nonum&&tq&&distr){
-        var pl=etqPl[e.id]||{lx:r.x1+10*px,ly:r.y0+7*px,ax:r.x1,ay:r.y0+Math.min(7*px,(r.y1-r.y0)/2),rr:Math.max(8,5.2+tq.cod.length*2.6)*px},lx=pl.lx,ly=pl.ly,rr=pl.rr;
+        var pl=etqPl[e.id]||{lx:r.x1+10*px,ly:r.y0+7*px,ax:r.x1,ay:r.y0+Math.min(7*px,(r.y1-r.y0)/2),rr:Math.max(5,3.4+tq.cod.length*1.7)*px*tamK('etq')},lx=pl.lx,ly=pl.ly,rr=pl.rr;
         var dl=Math.hypot(pl.ax-lx,pl.ay-ly)||1;
         etqEq+=ln(pl.ax,pl.ay,lx+(pl.ax-lx)/dl*rr,ly+(pl.ay-ly)/dl*rr,tq.col,0.8*px,'butt');
         etqEq+='<circle cx="'+f2(lx)+'" cy="'+f2(ly)+'" r="'+f2(rr)+'" style="fill:'+tq.col+'"/>';
-        etqEq+='<text x="'+f2(lx)+'" y="'+f2(ly+3.4*px)+'" text-anchor="middle" style="fill:#ffffff;font-size:'+f2(9.5*px*TXTK*tamK('etq'))+'px;font-weight:700">'+esc(tq.cod)+'</text>';
+        etqEq+='<text x="'+f2(lx)+'" y="'+f2(ly+2.5*px*tamK('etq'))+'" text-anchor="middle" style="fill:#ffffff;font-size:'+f2(7*px*TXTK*tamK('etq'))+'px;font-weight:700">'+esc(tq.cod)+'</text>';
       }
     });
     var CAPA={mm:Lmm,eq:Leq,pil:capaVis('pil')?pintaPil():'',dr:drItemsSvg(C,px,view,sel)}; /* las capas, en el orden elegido (de abajo a arriba) */
