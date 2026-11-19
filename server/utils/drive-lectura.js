@@ -47,3 +47,22 @@ export async function miniatura(id) {
   const r = await fetch(m.thumbnailLink.replace(/=s\d+$/, '=s480'), { headers: { Authorization: 'Bearer ' + await accesoToken() } }); if (!r.ok) return null;
   return { tipo: r.headers.get('content-type') || 'image/jpeg', datos: Buffer.from(await r.arrayBuffer()) };
 }
+
+// Enlace privado temporal para vídeos largos; nunca expone el token OAuth.
+export async function enlaceResultadoGcs(nombre, descargar = false) {
+  if (!/^youtube\/[a-f0-9-]+\.mp4$/.test(nombre)) throw new Error('Resultado no válido');
+  const c = await clave(), expira = Math.floor(Date.now() / 1000) + 3600;
+  const recurso = '/ranuse-video-cache/' + nombre;
+  const disposicion = descargar ? 'attachment; filename="ranuse-youtube.mp4"' : '';
+  const canon = recurso;
+  const firma = crypto.createSign('RSA-SHA256').update('GET\n\n\n' + expira + '\n' + canon).sign(c.private_key, 'base64');
+  const q = new URLSearchParams({ GoogleAccessId: c.client_email, Expires: String(expira), Signature: firma });
+  if (descargar) q.set('response-content-disposition', disposicion);
+  return 'https://storage.googleapis.com' + recurso + '?' + q;
+}
+
+export async function borraResultadoGcs(nombre) {
+  if (!/^youtube\/[a-f0-9-]+\.mp4$/.test(nombre)) throw new Error('Resultado no válido');
+  const r = await fetch('https://storage.googleapis.com/storage/v1/b/ranuse-video-cache/o/' + encodeURIComponent(nombre), { method: 'DELETE', headers: { Authorization: 'Bearer ' + await accesoToken() } });
+  if (!r.ok && r.status !== 404) throw new Error('No se pudo borrar el vídeo de YouTube');
+}

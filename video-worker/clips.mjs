@@ -34,9 +34,9 @@ export async function transcribeLargo(entrada, dir, avisa = () => {}) {
     avisa(Math.min(1, o / dur));
     const wav = path.join(dir, 'c' + o + '.wav'), base = path.join(dir, 'pal_' + o);
     run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-ss', String(o), '-t', String(TROZO), '-i', entrada, '-vn', '-ac', '1', '-ar', '16000', wav]);
-    if (!fs.existsSync(wav)) continue;
+    if (!fs.existsSync(wav)) throw new Error('No se pudo extraer un bloque de audio');
     await transcribe(wav, base);
-    if (!fs.existsSync(base + '.json')) continue;
+    if (!fs.existsSync(base + '.json')) throw new Error('Falta un bloque de transcripción');
     for (const s of JSON.parse(fs.readFileSync(base + '.json', 'utf8').replace(/^\uFEFF/, '')).transcription) {
       const t = s.text.trim(); if (!t || /^\[.*\]$/.test(t)) continue;
       palabras.push({ t, de: o + s.offsets.from / 1000, a: o + s.offsets.to / 1000, ...(s.spk !== undefined ? { spk: s.spk } : {}) });

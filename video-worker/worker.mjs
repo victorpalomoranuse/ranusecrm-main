@@ -1,6 +1,7 @@
 // Trabajador de vídeo: vigila la cola del CRM ("Estudio de vídeo") y edita lo que llegue.
 // Uso: node worker.mjs "<indice.json>"      (se deja abierto; Ctrl+C para parar)
 import fs from 'fs';
+import { preparaYoutube } from './youtube.mjs';
 import crypto from 'crypto';
 import { hfDisponible, componeHF } from './hf.mjs';
 import { analizaReferencia } from './referencia.mjs';
@@ -18,7 +19,7 @@ import { ENV } from './entorno.mjs';
 
 // ffmpeg siempre disponible, arranque el trabajador desde donde arranque
 const FFMPEG_DIR = process.env.FFMPEG_BIN || 'C:/Users/cashc/AppData/Local/Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-9.0.2-full_build/bin';
-if (fs.existsSync(FFMPEG_DIR)) process.env.PATH = FFMPEG_DIR + ';' + (process.env.PATH || '');
+if (fs.existsSync(FFMPEG_DIR)) process.env.PATH = FFMPEG_DIR + path.delimiter + (process.env.PATH || '');
 const require = createRequire(new URL('../server/package.json', import.meta.url));
 const { createClient } = require('@supabase/supabase-js');
 const INDICE = path.resolve(process.argv[2] || new URL('./datos/piloto/indice.json', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
@@ -214,6 +215,33 @@ async function procesaMuestra(t, dir) {
 
 async function procesa(t) {
   const dir = path.join(BASE, t.id); fs.mkdirSync(dir, { recursive: true });
+  if (t.tipo === 'youtube') {
+    if (!Array.isArray(t.fuentes) || !t.fuentes.length || t.fuentes.length > 8) throw new Error('Elige entre 1 y 8 vídeos');
+    await paso(t, 'Preparando las fuentes de YouTube', { estado: 'procesando', empezado: new Date().toISOString(), pct: 2 });
+    const archivos = [];
+    for (const [i, f] of t.fuentes.entries()) {
+      const archivo = path.join(dir, 'fuente_' + i + '.mp4');
+      await paso(t, 'Descargando vídeo ' + (i + 1) + ' de ' + t.fuentes.length, { pct: 2 + i });
+      if (f.base) {
+        const { url, cabeceras } = await drive.urlDescarga(f.base.id);
+        const r = await fetch(url, { headers: cabeceras });
+        if (!r.ok) await drive.bajaEnTrozos(f.base.id, archivo);
+        else await pipeline(Readable.fromWeb(r.body), fs.createWriteStream(archivo));
+      } else if (!(await drive.cacheBaja(f.archivo, archivo).catch(() => false))) {
+        const u = await st.createSignedUrl(f.archivo, 3600);
+        if (!u.data?.signedUrl) throw new Error('No encuentro la fuente ' + (i + 1));
+        const r = await fetch(u.data.signedUrl); if (!r.ok) throw new Error('No se pudo descargar la fuente ' + (i + 1));
+        await pipeline(Readable.fromWeb(r.body), fs.createWriteStream(archivo));
+      }
+      archivos.push({ archivo, nombre: f.nombre });
+      if (archivos.reduce((n, f) => n + fs.statSync(f.archivo).size, 0) > 12e9) throw new Error('Los vídeos juntos superan 12 GB; usa archivos más ligeros');
+    }
+    const { plan, salida } = await preparaYoutube(archivos, dir, { objetivo: t.objetivo_segundos, tema: [t.guion, t.indicaciones].filter(Boolean).join('\n') }, (pct, texto) => paso(t, texto, { pct }));
+    await paso(t, 'Guardando YouTube en calidad 1080p', { pct: 96, plan });
+    const destino = 'youtube/' + t.id + '.mp4'; await drive.cacheSube(destino, salida);
+    await paso(t, 'YouTube listo', { estado: 'listo', pct: 100, resultado_gcs: destino, terminado: new Date().toISOString(), error: null });
+    return;
+  }
   if (t.tipo === 'muestra') { await procesaMuestra(t, dir); return; }
   if (t.tipo === 'analisis_redes') {
     await paso(t, 'Preparando el análisis de vídeos…', { estado: 'procesando', empezado: new Date().toISOString(), pct: 2 });

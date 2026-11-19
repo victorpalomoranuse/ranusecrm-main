@@ -192,7 +192,7 @@ function SelectorEstilo({ estilos, formato, valor, onCambio, etiqueta = 'Estilo 
   );
 }
 function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
-  const [estilos] = useEstilos(); const [estilo, setEstilo] = useState('');
+  const [estilos] = useEstilos(); const [estilo, setEstilo] = useState(''); const [minYoutube, setMinYoutube] = useState(10);
   const [origen, setOrigen] = useState('dispositivo'), [base, setBase] = useState([]), [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [numClips, setNumClips] = useState(0), [durClip, setDurClip] = useState('auto'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [guion, setGuion] = useState(''), [files, setFiles] = useState([]), [soloTr, setSoloTr] = useState(false), [soloAudio, setSoloAudio] = useState(false), [asig, setAsig] = useState({}), [prog, setProg] = useState(null), [error, setError] = useState('');
   const inp = useRef(null);
   useEffect(() => { if (!fmt && formatos[0]) setFmt(formatos[0].id); }, [formatos, fmt]);
@@ -201,13 +201,21 @@ function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
   const enviar = async () => {
     const extra = tipo === 'clips' ? { num_clips: numClips, ...(durClip === 'auto' ? { dur_auto: true } : { dur_min: Number(durClip.split('-')[0]), dur_max: Number(durClip.split('-')[1]) }) } : {};
     const dDrive = tipo === 'base' || origen === 'drive'; if (tipo === 'clips' && soloTr) extra.fase = 'transcribir'; if (tipo === 'voz' && soloAudio) extra.fase = 'audio';
-    if ((dDrive ? !base.length : !(files.length || file)) || !fmt) return; setError(''); setProg(0);
+    if ((dDrive ? !base.length : !(files.length || file)) || (tipo !== 'youtube' && !fmt)) return; setError(''); setProg(0);
     try {
+      if (tipo === 'youtube') {
+        const seleccion = dDrive ? base : (files.length ? files : [file]);
+        if (seleccion.length > 8) throw new Error('Elige hasta 8 vídeos por montaje');
+        const fuentes = [];
+        for (const f of seleccion) fuentes.push(dDrive ? { base: f, nombre: f.nombre } : { archivo: await subirArchivo(f, setProg), nombre: f.name });
+        await api.post('/estudio-video/trabajos', { tipo, fuentes, objetivo_segundos: minYoutube * 60, indicaciones: notas, guion, nombre_archivo: 'YouTube · ' + fuentes.map(f => f.nombre).join(', ') });
+      } else {
       const partesG = partesDeGuion(guion); const reparto = tipo !== 'clips' ? partesG.map((texto, i) => ({ texto, clips: (asig[i] || []).map(x => ({ id: x.id, nombre: x.nombre, tipo: x.tipo, ruta: x.ruta })) })).filter(p => p.clips.length) : [];
       if (reparto.length) { const ya = new Set(recursos.map(r => r.id)); for (const p of reparto) for (const c of p.clips) if (!ya.has(c.id)) { ya.add(c.id); recursos.push(c); } extra.reparto = reparto; }
       // varias entrevistas a la vez: un trabajo por cada una, todos con el mismo guion (cada uno saca los clips que aparecen en su vídeo)
       if (dDrive) { for (const b of (tipo === 'clips' ? base : base.slice(0, 1))) await api.post('/estudio-video/trabajos', { tipo, formato: fmt, estilo: estilo || undefined, base: b, nombre_archivo: b.nombre, indicaciones: notas, guion, musica: mus, recursos, ...extra }); }
       else { for (const fl of (tipo === 'clips' && files.length ? files : [file])) { const ruta = await subirArchivo(fl, setProg); await api.post('/estudio-video/trabajos', { tipo, formato: fmt, estilo: estilo || undefined, archivo: ruta, nombre_archivo: fl.name, indicaciones: notas, guion, musica: mus, recursos, ...extra }); } }
+      }
       setFile(null); setFiles([]); setBase([]); setNotas(''); setGuion(''); setAsig({}); setSoloAudio(false); setProg(null); if (inp.current) inp.current.value = ''; onCreado();
     } catch (e) { setError(e?.response?.data?.error || e.message || 'No se pudo enviar'); setProg(null); }
   };
@@ -223,6 +231,7 @@ function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
         {opcion('voz', Mic, 'Tengo la voz en off', 'Audio o vídeo hablando. La IA monta las escenas encima.')}
         {opcion('bruto', Video, 'Subo el bruto', 'Vídeo grabado hablando a cámara: corta pausas y pone subtítulos.')}
         {opcion('clips', Scissors, 'Entrevista larga → varios clips', 'Subes una entrevista o charla larga y la IA saca los mejores momentos como clips cortos con contexto y sentido completo.')}
+        {opcion('youtube', Film, 'YouTube · vídeo largo', 'Une hasta 8 vídeos en una historia con apertura, desarrollo y cierre. Horizontal 1080p, con las voces originales.')}
         {opcion('base', Film, 'Vídeo de Drive como base', 'Eliges un vídeo de Drive y la IA superpone clips e imágenes del resto en los momentos clave.')}
       </div>
       {tipo !== 'base' && (<>
@@ -230,18 +239,20 @@ function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
         <button type="button" className={origen === 'dispositivo' ? 'on' : ''} onClick={() => setOrigen('dispositivo')}><Upload size={14} /> Desde el dispositivo</button>
         <button type="button" className={origen === 'drive' ? 'on' : ''} onClick={() => setOrigen('drive')}><Folder size={14} /> Desde Drive</button>
       </div>
-      {origen === 'drive' && <Explorador seleccion={base} onCambio={setBase} max={tipo === 'clips' ? 6 : 1} titulo={tipo === 'voz' ? 'Audio o vídeo con la voz (de Drive)' : tipo === 'clips' ? 'Entrevistas (de Drive; puedes elegir varias)' : 'Vídeo en bruto (de Drive)'} vacio="Elegir archivo de Drive" />}
+      {origen === 'drive' && <Explorador seleccion={base} onCambio={setBase} max={tipo === 'youtube' ? 8 : tipo === 'clips' ? 6 : 1} titulo={tipo === 'youtube' ? 'Vídeos para un único montaje de YouTube (hasta 8)' : tipo === 'voz' ? 'Audio o vídeo con la voz (de Drive)' : tipo === 'clips' ? 'Entrevistas (de Drive; puedes elegir varias)' : 'Vídeo en bruto (de Drive)'} vacio="Elegir archivo de Drive" />}
       {origen !== 'drive' && (<>
       <label className="rd-drop">
         <Upload size={26} />
         <b>{files.length > 1 ? files.length + ' archivos: ' + files.map(x => x.name).join(', ') : file ? file.name : 'Elige el archivo o arrástralo aquí'}</b>
-        <span style={mut}>{tipo === 'voz' ? 'Audio o vídeo con la voz' : tipo === 'clips' ? 'Entrevistas o charlas largas (puedes elegir varias)' : 'Vídeo en bruto'} · aguanta vídeos pesados y reanuda si se corta</span>
-        <input ref={inp} type="file" accept={tipo === 'voz' ? 'audio/*,video/*' : 'video/*'} multiple={tipo === 'clips'} onChange={e => { setFile(e.target.files?.[0] || null); setFiles(Array.from(e.target.files || [])); }} style={{ display: 'none' }} />
+        <span style={mut}>{tipo === 'youtube' ? 'De 1 a 8 vídeos para un único montaje' : tipo === 'voz' ? 'Audio o vídeo con la voz' : tipo === 'clips' ? 'Entrevistas o charlas largas (puedes elegir varias)' : 'Vídeo en bruto'} · aguanta vídeos pesados y reanuda si se corta</span>
+        <input ref={inp} type="file" accept={tipo === 'voz' ? 'audio/*,video/*' : 'video/*'} multiple={tipo === 'clips' || tipo === 'youtube'} onChange={e => { setFile(e.target.files?.[0] || null); setFiles(Array.from(e.target.files || [])); }} style={{ display: 'none' }} />
       </label>
       </>)}
       </>)}
       {tipo === 'voz' && <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, fontSize: '0.9rem' }}><input type="checkbox" checked={soloAudio} onChange={e => setSoloAudio(e.target.checked)} /> Por pasos: primero solo preparo el audio (lo ajusto con el guion) y después elijo los clips</label>}
       {tipo === 'clips' && <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, fontSize: '0.9rem' }}><input type="checkbox" checked={soloTr} onChange={e => setSoloTr(e.target.checked)} /> Primero solo transcribir: yo elijo en el texto los tramos de cada clip</label>}
+      {tipo === 'youtube' && <div style={{ marginBottom: 12 }}><label>Duración orientativa <select className="ap-field-input" value={minYoutube} onChange={e => setMinYoutube(Number(e.target.value))}>{[5, 10, 15, 20].map(n => <option key={n} value={n}>{n} minutos</option>)}</select></label><p style={mut}>Montaje limpio, sin flashes y con audio original. La duración se adapta al material: conserva ideas completas. Indica abajo el tema o la historia que quieres contar.</p></div>}
+      {tipo !== 'youtube' && <>
       <div className="rd-form2" style={{ marginBottom: 6 }}>
         <label style={{ ...mut, display: 'block' }}>Formato (qué tipo de vídeo)
           <select className="ap-field-input" style={{ width: '100%', marginTop: 5 }} value={fmt} onChange={e => setFmt(e.target.value)}>{formatos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}</select>
@@ -250,6 +261,7 @@ function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
       </div>
       {formatos.find(f => f.id === fmt)?.descripcion && <div style={{ ...mut, marginBottom: 12 }}>{formatos.find(f => f.id === fmt).descripcion}</div>}
       <EjemploFormato fmt={fmt} onCambio={onCreado} />
+      </>}
       {tipo === 'clips' && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
           <label style={{ ...mut, flex: '1 1 160px' }}>Cuántos clips<select className="ap-field-input" style={{ width: '100%', marginTop: 4 }} value={numClips} onChange={e => setNumClips(Number(e.target.value))}><option value={0}>Los que merezcan la pena</option>{[1, 2, 3, 4, 5, 6, 8, 10].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
@@ -257,6 +269,7 @@ function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
         </div>
       )}
       {tipo === 'base' && <Explorador seleccion={base} onCambio={setBase} max={1} titulo="Vídeo base (el que se ve de fondo, con su voz)" vacio="Elegir el vídeo base" />}
+      {tipo !== 'youtube' && <>
       <details className="rd-more"><summary>🎞 Escenas y recursos (opcional)</summary>
       <Explorador seleccion={recursos} onCambio={setRecursos} titulo={tipo === 'voz' ? 'Recursos (de dónde salen las escenas)' : 'Recursos para superponer en momentos clave (opcional)'} vacio={tipo === 'voz' ? 'Todo Drive indexado' : 'Todo Drive indexado / elegir recursos'} />
       <SubirRecursos onSubidos={(n) => setRecursos(r => [...r, ...n])} />
@@ -264,15 +277,16 @@ function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
       </details>
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Música de fondo</label>
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={mus} onChange={e => setMus(e.target.value)}><option value="auto">Automática (la IA elige la que mejor encaje)</option><option value="ninguna">Sin música</option>{musica.map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}{p.bpm ? ' · ' + Math.round(p.bpm) + ' bpm' : ''}</option>)}</select>
-      <details className="rd-more" open={!!(guion || notas)}><summary>📝 Guion e indicaciones (opcional)</summary>
-      <div style={{ ...mut, marginBottom: 4 }}>Guion del vídeo (opcional): pégalo aquí. En una entrevista, pon las preguntas o temas que quieres sacar; en una voz en off o un bruto, el texto que quieres que se diga.</div>
+      </>}
+      <details className="rd-more" open={tipo === 'youtube' || !!(guion || notas)}><summary>📝 Guion e indicaciones (opcional)</summary>
+      <div style={{ ...mut, marginBottom: 4 }}>{tipo === 'youtube' ? 'Tema e hilo narrativo: explica qué quieres contar, para quién y qué partes quieres conservar. Se usarán únicamente las voces grabadas.' : 'Guion del vídeo (opcional): pégalo aquí. En una entrevista, pon las preguntas o temas que quieres sacar; en una voz en off o un bruto, el texto que quieres que se diga.'}</div>
       <textarea className="ap-field-input" style={{ width: '100%', minHeight: 90, marginBottom: 10 }} value={guion} onChange={e => setGuion(e.target.value)} placeholder="Pega aquí el guion (da igual si al grabar cambiaste alguna palabra: la IA lo encuentra igualmente)…" />
-      {tipo !== 'clips' && !(tipo === 'voz' && soloAudio) && <Desglose guion={guion} asig={asig} setAsig={setAsig} />}
+      {tipo !== 'youtube' && tipo !== 'clips' && !(tipo === 'voz' && soloAudio) && <Desglose guion={guion} asig={asig} setAsig={setAsig} />}
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Indicaciones (opcional)</label>
       <textarea className="ap-field-input" style={{ width: '100%', minHeight: 60, marginBottom: 10 }} value={notas} onChange={e => setNotas(e.target.value)} placeholder="Ej.: enseña el proyecto de Rivas, tono directo, que empiece con un plano de obra…" />
       </details>
       {error && <div className="ap-error" style={{ marginBottom: 8 }}>{error}</div>}
-      <button className="ap-btn ap-btn-primary" disabled={((tipo === 'base' || origen === 'drive') ? !base.length : !file) || !fmt || prog !== null} onClick={enviar}>{prog !== null ? <><Loader2 size={14} /> Subiendo {prog}%</> : <><Wand2 size={14} /> Editar vídeo</>}</button>
+      <button className="ap-btn ap-btn-primary" disabled={((tipo === 'base' || origen === 'drive') ? !base.length : !file) || (tipo !== 'youtube' && !fmt) || prog !== null} onClick={enviar}>{prog !== null ? <><Loader2 size={14} /> Subiendo {prog}%</> : <><Wand2 size={14} /> Editar vídeo</>}</button>
     </div>
   );
 }
@@ -560,7 +574,7 @@ function TrabajoNormal({ t, formatos, onCambio, musica = [], trabajosTodos = [] 
         <Film size={15} /><div style={{ fontWeight: 600, flex: 1, minWidth: 140, wordBreak: 'break-word' }}>{t.plan?.titulo || t.nombre_archivo || 'Vídeo'}{t.version > 1 ? ' · v' + t.version : ''}</div>
         <span style={{ fontSize: '0.72rem', color, border: '1px solid ' + color, borderRadius: 20, padding: '1px 9px' }}>{txt}</span>
       </div>
-      <div style={{ ...mut, marginTop: 4 }}>{t.formato_nombre} · {t.tipo === 'voz' ? 'voz en off' : t.tipo === 'base' ? 'base de Drive' : t.tipo === 'clips' ? 'entrevista → clips' : t.padre ? 'clip de una entrevista' : 'bruto'} · {fmtFecha(t.creado)}{t.por ? ' · ' + t.por : ''}</div>
+      <div style={{ ...mut, marginTop: 4 }}>{t.formato_nombre} · {t.tipo === 'youtube' ? 'YouTube · horizontal' : t.tipo === 'voz' ? 'voz en off' : t.tipo === 'base' ? 'base de Drive' : t.tipo === 'clips' ? 'entrevista → clips' : t.padre ? 'clip de una entrevista' : 'bruto'} · {fmtFecha(t.creado)}{t.por ? ' · ' + t.por : ''}</div>
       {t.estado !== 'listo' && t.estado !== 'error' && (
         <div style={{ marginTop: 8 }}>
           <div style={{ height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}><div style={{ height: '100%', width: Math.max(t.estado === 'procesando' ? 3 : 0, Math.min(100, t.pct || 0)) + '%', background: '#CDBBA7', borderRadius: 4, transition: 'width 0.8s ease' }} /></div>
@@ -603,11 +617,12 @@ function TrabajoNormal({ t, formatos, onCambio, musica = [], trabajosTodos = [] 
       {constructor && <PantallaCompleta titulo={'Elegir clips · ' + (t.nombre_archivo || 'entrevista')} onCerrar={() => setConstructor(false)}><ConstructorClips t={t} onCambio={() => { setConstructor(false); onCambio(); }} /></PantallaCompleta>}
       {t.estado === 'listo' && t.url && (
         <div style={{ marginTop: 10 }}>
-          <video ref={vref} src={t.url_movil || t.url} controls playsInline style={{ width: '100%', maxWidth: 300, borderRadius: 10, background: '#000', display: 'block' }} />
-          <PaqueteRedes t={t} />
+          <video ref={vref} src={t.url_movil || t.url} controls playsInline style={{ width: '100%', maxWidth: t.tipo === 'youtube' ? 720 : 300, borderRadius: 10, background: '#000', display: 'block' }} />
+          {t.tipo !== 'youtube' && <PaqueteRedes t={t} />}
+          {t.tipo === 'youtube' && t.plan?.segmentos && <details style={{ marginTop: 10 }}><summary>Capítulos y origen del montaje</summary><p>{t.plan.resumen}</p>{t.plan.segmentos.map((s, i) => <div key={i} style={mut}>{fmtDur(s.inicio)} · {s.capitulo} · {t.fuentes?.[Number(s.fuente.slice(1))]?.nombre || s.fuente} ({fmtDur(s.de)}–{fmtDur(s.a)})</div>)}</details>}
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             <a className="ap-btn ap-btn-sm" href={t.url_descarga || t.url} download rel="noreferrer"><Download size={13} /> Descargar</a>
-            <button className="ap-btn ap-btn-sm" title="Elige qué recursos usar y vuelve a montarlo" onClick={() => setPanelReg(!panelReg)}><Wand2 size={13} /> Regenerar</button>
+            {t.tipo !== 'youtube' && <button className="ap-btn ap-btn-sm" title="Elige qué recursos usar y vuelve a montarlo" onClick={() => setPanelReg(!panelReg)}><Wand2 size={13} /> Regenerar</button>}
             <button className="ap-btn ap-btn-sm" onClick={() => setAbierto(!abierto)}><RefreshCw size={13} /> Pedir cambios</button>
             {(t.cortes || []).length > 0 && <button className="ap-btn ap-btn-sm" title="Cambiar clips o moverlos a mano" onClick={() => setEditando(!editando)}><Scissors size={13} /> Editar cortes</button>}
             {(t.transcripcion || []).length > 0 && <button className="ap-btn ap-btn-sm" title="Quitar palabras o frases leyendo el texto" onClick={() => setEditTexto(!editTexto)}><Scissors size={13} /> Editar texto</button>}
@@ -695,13 +710,13 @@ function TrabajoNormal({ t, formatos, onCambio, musica = [], trabajosTodos = [] 
       {abierto && (
         <div style={{ marginTop: 10 }}>
           <textarea className="ap-field-input" style={{ width: '100%', minHeight: 60, marginBottom: 8 }} value={cambios} onChange={e => setCambios(e.target.value)} placeholder="Qué cambiar: más rápido, otra escena en el segundo 10, título más corto, subtítulos más pequeños…" />
-          <select className="ap-field-input" style={{ width: '100%', marginBottom: 8 }} value={fmt} onChange={e => setFmt(e.target.value)}>{formatos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}</select>
-          <SelectorEstilo estilos={estilosR} formato={formatos.find(f => f.id === fmt)} valor={estiloR} onCambio={setEstiloR} />
+          {t.tipo !== 'youtube' && <select className="ap-field-input" style={{ width: '100%', marginBottom: 8 }} value={fmt} onChange={e => setFmt(e.target.value)}>{formatos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}</select>}
+          {t.tipo !== 'youtube' && <SelectorEstilo estilos={estilosR} formato={formatos.find(f => f.id === fmt)} valor={estiloR} onCambio={setEstiloR} />}
           <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={!cambios.trim()} onClick={rehacer}><Wand2 size={13} /> Rehacer con estos cambios</button>
         </div>
       )}
       {err && <div className="ap-error" style={{ marginTop: 8 }}>{err}</div>}
-      <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>{t.estado === 'error' && <button className="ap-btn ap-btn-sm" title="Elige qué recursos usar y vuelve a intentarlo" onClick={() => setPanelReg(!panelReg)}><Wand2 size={13} /> Regenerar</button>}<button className="ap-btn ap-btn-sm" onClick={borrar}><Trash2 size={13} /></button></div>
+      <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>{t.estado === 'error' && t.tipo === 'youtube' && <button className="ap-btn ap-btn-sm" onClick={() => setAbierto(!abierto)}>Revisar indicaciones y reintentar</button>}{t.estado === 'error' && t.tipo !== 'youtube' && <button className="ap-btn ap-btn-sm" title="Elige qué recursos usar y vuelve a intentarlo" onClick={() => setPanelReg(!panelReg)}><Wand2 size={13} /> Regenerar</button>}<button className="ap-btn ap-btn-sm" onClick={borrar}><Trash2 size={13} /></button></div>
     </div>
   );
 }
