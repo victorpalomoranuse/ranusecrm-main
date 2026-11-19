@@ -26,7 +26,7 @@ const R = { acento: '#CDBBA7', titulo: true, pausa: 0.4, subs: { palabrasPorBloq
 if (process.env.INSERCIONES === '1') R.inserciones = true;
 if (process.env.RECETA_JSON) {
   const o = JSON.parse(fs.readFileSync(process.env.RECETA_JSON, 'utf8'));
-  for (const k of ['acento', 'titulo', 'zoomFinal', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'encuadreZoom', 'subsBajoCara', 'graficos', 'pausa', 'limpiar', 'fuente', 'whoosh', 'flash', 'cambioCada', 'director', 'cambiosEnFrases', 'intensidad', 'ilustraciones', 'estiloSubs', 'preguntaSoloEscrita', 'superposicion', 'cortesAutomaticos']) if (o[k] !== undefined) R[k] = o[k];
+  for (const k of ['acento', 'titulo', 'zoomFinal', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'encuadreZoom', 'subsBajoCara', 'graficos', 'pausa', 'limpiar', 'fuente', 'whoosh', 'flash', 'cambioCada', 'director', 'cambiosEnFrases', 'intensidad', 'ilustraciones', 'estiloSubs', 'preguntaSoloEscrita', 'superposicion', 'cortesAutomaticos', 'ilustracionesFijas']) if (o[k] !== undefined) R[k] = o[k];
   if (o.subs) R.subs = { ...R.subs, ...o.subs }; if (o.musica && typeof o.musica === 'object') R.musica = { ...R.musica, ...o.musica };
 }
 if (!/^#[0-9a-f]{6}$/i.test(R.acento)) R.acento = '#CDBBA7';
@@ -363,6 +363,12 @@ if (catalogo.length) {
   for (const x of ins) if (x.v.drive_id && !dr[x.v.id]) { try { dr[x.v.id] = await drive.urlDescarga(x.v.drive_id); } catch (e) { console.log('Sin acceso a Drive:', e.message); } }
   console.log('Superpuestas:', ins.map(i => i.a.toFixed(1) + 's ' + String(i.v.nombre).slice(0, 24)).join(' | ') || 'ninguna');
 }
+if (QUIERE_IMG && Array.isArray(R.ilustracionesFijas)) {
+  ilustraciones = R.ilustracionesFijas.slice(0, 3).map(g => {
+    const w = conservadas.find(w => w.de >= (g.desde || 0) && w.t.toLowerCase().replace(/[^a-záéíóúñ]/g, '') === g.palabra);
+    return w ? { i: w.i, t: w.de, tf: tiempoFinal.get(w.i), dur: 3, prompt: g.prompt, motivo: g.palabra } : null;
+  }).filter(Boolean);
+}
 // ---- gráficos animados ----
 const graf = [];
 if (R.graficos) {
@@ -462,7 +468,7 @@ graf.forEach((g, k) => {
 // ilustraciones generadas con IA: se superponen a pantalla completa mientras la voz sigue (los subtítulos quedan por encima)
 if (ilustraciones.length) {
   const gen = async (g, f) => {
-    const r = await fetch('https://api.openai.com/v1/images/generations', { method: 'POST', headers: { Authorization: 'Bearer ' + ENV.OPENAI_API_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: ENV.OPENAI_IMAGE_MODEL || 'gpt-image-1', prompt: ESTILO_IMG + g.prompt, size: '1024x1536', quality: 'medium', n: 1 }), signal: AbortSignal.timeout(120000) });
+    const r = await fetch('https://api.openai.com/v1/images/generations', { method: 'POST', headers: { Authorization: 'Bearer ' + ENV.OPENAI_API_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: ENV.OPENAI_IMAGE_MODEL || 'gpt-image-1', prompt: (R.superposicion === 'ventana' ? 'Fotografía de producto horizontal, estética moderna premium, fondo grafito uniforme, iluminación suave lateral, objeto completo y centrado. Sin texto, personas ni marcas. ' : ESTILO_IMG) + g.prompt, size: R.superposicion === 'ventana' ? '1536x1024' : '1024x1536', quality: 'medium', n: 1 }), signal: AbortSignal.timeout(120000) });
     const j = await r.json(); const b64 = j.data?.[0]?.b64_json; if (!r.ok || !b64) throw new Error('OpenAI ' + r.status + ' ' + (j.error?.message || '').slice(0, 100));
     fs.writeFileSync(f, Buffer.from(b64, 'base64'));
   };
@@ -478,6 +484,7 @@ if (ilustraciones.length) {
 imgs.forEach((g, k) => {
   const ix = entradas.filter(x => x === '-i').length, a = g.a.toFixed(3), b2 = (g.a + g.d).toFixed(3);
   entradas.push('-loop', '1', '-framerate', '30', '-t', (g.d + 0.1).toFixed(2), '-i', g.f);
+  if (R.superposicion === 'ventana') { filtros.push(...filtrosSuperposicion({ index: ix, prev, k: 'gen' + k, a: g.a, d: g.d, modo: 'ventana' })); prev = 'oigen' + k; return; }
   filtros.push('[' + ix + ':v]scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,fps=30,setsar=1,format=yuva420p,scale=w=\'1080*(1+0.06*min(t\\,' + g.d.toFixed(2) + ')/' + g.d.toFixed(2) + ')\':h=\'1920*(1+0.06*min(t\\,' + g.d.toFixed(2) + ')/' + g.d.toFixed(2) + ')\':eval=frame,crop=1080:1920,fade=t=in:st=0:d=0.16:alpha=1,fade=t=out:st=' + Math.max(0, g.d - 0.16).toFixed(2) + ':d=0.16:alpha=1,setpts=PTS+' + a + '/TB[im' + k + ']');
   filtros.push('[' + prev + '][im' + k + ']overlay=x=0:y=0:enable=\'between(t\\,' + a + '\\,' + b2 + ')\':eof_action=pass[oim' + k + ']'); prev = 'oim' + k;
 });
