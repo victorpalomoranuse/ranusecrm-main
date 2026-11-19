@@ -1,3 +1,4 @@
+import { aceptaClip } from './editor-policy.mjs';
 // Entrevista larga -> varios clips cortos: transcribe todo, la IA elige los mejores momentos y se recorta cada uno
 import fs from 'fs';
 import path from 'path';
@@ -5,12 +6,12 @@ import { spawnSync } from 'child_process';
 import { transcribe } from './transcribir.mjs';
 import { ENV } from './entorno.mjs';
 import { etiquetasHablantes } from './voz.mjs';
-import { claudeJSON, suavizaHablantes, asignaRoles, limpiaTramosPorVoz, juzgaClips } from './entrevista.mjs';
+import { claudeJSON, suavizaHablantes, asignaRoles, juzgaClips } from './entrevista.mjs';
 
 // Lo que hace que un vídeo corto funcione en redes (se usa al elegir los momentos y al montar)
 export const PLAYBOOK_REDES = `CONOCIMIENTO DE REDES SOCIALES (aplícalo siempre):
 - GANCHO (primeros 1-3 s): decide todo. Debe funcionar a la vez por TRES canales: lo que se ve, las primeras palabras y el texto en pantalla (y entenderse sin sonido). Se abre una pregunta que el espectador necesita cerrar; el contenido la responde. Empieza ya en plena energía: sin saludos, sin "hola", sin presentarte, sin logos. Nunca prometas algo que el vídeo no cumple (el remate debe corresponder al gancho).
-- ESTRUCTURA: Gancho -> desarrollo con bucles abiertos -> remate (payoff) -> cierre. Una sola idea por clip. El valor va por delante; cambio visual (zoom, plano, gráfico) cada 2-4 s; cero silencios, muletillas ni partes planas.
+- ESTRUCTURA: Gancho -> desarrollo con bucles abiertos -> remate (payoff) -> cierre. Una sola idea por clip. El valor va por delante; los cambios visuales siguen el contenido; conserva pausas expresivas y no impongas efectos periódicos.
 - DURACIÓN: lo que más alcance da es 15-35 s (unas 75 palabras cada 30 s). Para explicar un tutorial se puede llegar a ~90 s; más de eso solo si cada segundo aporta.
 - SIN SONIDO: el vídeo debe entenderse mudo: subtítulos grabados en el vídeo desde la primera palabra, palabra a palabra, de unas 2 líneas, con la palabra clave resaltada y revisados.
 - ZONA SEGURA: no pongas texto ni caras importantes en los ~250 px de arriba ni en los ~350 px de abajo (los tapan los botones de la app); el gancho, la cara y la llamada a la acción, en el centro.
@@ -56,16 +57,16 @@ export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, not
   cierra();
   const cuantos = n > 0 ? 'Arma EXACTAMENTE ' + n + ' clips' : 'Arma entre 3 y ' + Math.max(3, Math.min(10, Math.round(dur / 300))) + ' clips (solo los que de verdad merezcan ser un vídeo; mejor pocos y buenos)';
   const prompt = 'Eres el editor jefe de Ranuse Design (diseño de espacios deportivos y gimnasios) y preparas clips virales para Instagram Reels, TikTok y Shorts a partir de una entrevista larga.\n\n' + PLAYBOOK_REDES +
-    '\n\nCÓMO ARMAR CADA CLIP (como un editor profesional de Opus Clip): un clip NO es un trozo seguido de la entrevista: se compone de TRAMOS [ini,fin] que se reproducen EN ESTE ORDEN y que pueden ser de partes distintas.\n' +
+    '\n\nCÓMO ARMAR CADA CLIP (como un editor profesional de Opus Clip): Prioriza una intervención continua y completa. Solo une fragmentos si resulta necesario y conserva su sentido, condiciones y matices. Un clip se compone de TRAMOS [ini,fin] que se reproducen EN ESTE ORDEN y que pueden ser de partes distintas.\n' +
     '1) Estructura: gancho -> contexto o pregunta breve -> respuesta con valor -> remate. Puedes colocar al principio la frase más potente aunque venga después en la entrevista, si así engancha más, siempre que luego el relato se entienda.\n' +
-    '2) Si la entrevista es de preguntas y respuestas, incluye SIEMPRE la pregunta del entrevistador (su propio tramo) justo antes de la respuesta.\n' +
+    '2) Si la entrevista es de preguntas y respuestas, incluye la pregunta del entrevistador cuando sea necesaria para entender la respuesta (su propio tramo) justo antes de la respuesta.\n' +
     '3) De la respuesta usa SOLO la mejor toma: si la persona se equivoca, se corrige, se traba, repite o empieza de nuevo, SALTA esos tramos y quédate con la versión bien dicha, completa y fluida. Quita divagaciones, muletillas y charla fuera de tema (risas, comentarios a otras personas, "vale", "ya").\n' +
     '4) Cada tramo empieza al principio de una frase y acaba al final de otra, y los tramos de un mismo clip no se solapan entre sí.\n' +
     '5) El resultado total (suma de tramos) debe sonar fluido y natural, sin cortes bruscos de idea, y durar entre ' + min + ' y ' + max + ' segundos (si es pregunta con respuesta y hace falta, puede pasarse un poco).\n' +
     '6) Prefiere clips de 20-45 s y empieza cada uno con la frase más potente (gancho en los 3 primeros segundos, entendible sin sonido); excluye intros, saludos, patrocinios y charla fuera de tema. Cada clip trata una idea distinta; reparte por TODA la entrevista; los clips no deben repetir los mismos tramos.\n\n' +
-    (conVoces ? 'Cada línea empieza con P: (el entrevistador, que PREGUNTA) o R: (quien RESPONDE). Un clip de pregunta-respuesta incluye la pregunta P (su mejor formulación; si la repite o la corrige, la versión bien dicha) justo antes de la mejor toma de la respuesta R; descarta los "vale", "¿me repites?" y comentarios sueltos de P. ' : '') + 'Lee la transcripción (con el segundo de inicio de cada línea) y ' + cuantos + '. Ordénalos del mejor al peor.' + (guion ? ' GUION: la persona tiene estos guiones o preguntas, cada uno es un vídeo que quiere sacar de la entrevista: ' + guion.slice(0, 12000) + ' — Busca en la entrevista el momento de CADA guion o pregunta (aunque en la grabación se diga con otras palabras o varíe alguna) y haz un clip por cada uno, en el orden del guion; usa como pregunta del clip la formulación del guion si la grabada es peor; si alguno no aparece en la entrevista, no inventes un clip. ' : '') + (notas ? ' INDICACIONES DE LA PERSONA (obligatorias): ' + notas : '') +
+    (conVoces ? 'Cada línea empieza con P: (el entrevistador, que PREGUNTA) o R: (quien RESPONDE). Un clip de pregunta-respuesta incluye la pregunta P (su mejor formulación; si la repite o la corrige, la versión bien dicha) justo antes de la mejor toma de la respuesta R; descarta los "vale", "¿me repites?" y comentarios sueltos de P. ' : '') + 'Lee la transcripción (con el segundo de inicio de cada línea) y ' + cuantos + '. Ordénalos del mejor al peor.' + (guion ? ' GUION: la persona tiene estos guiones o preguntas, cada uno es un vídeo que quiere sacar de la entrevista: ' + guion.slice(0, 12000) + ' — Busca en la entrevista el momento de CADA guion o pregunta (aunque en la grabación se diga con otras palabras o varíe alguna) y haz un clip por cada uno, en el orden del guion; usa únicamente palabras realmente grabadas; no inventes una pregunta a partir del guion; si alguno no aparece en la entrevista, no inventes un clip. ' : '') + (notas ? ' INDICACIONES DE LA PERSONA (obligatorias): ' + notas : '') +
     (reglas ? '\n\nVOZ Y REGLAS DE MARCA DE RANUSE (obligatorias):\n' + reglas : '') +
-    (conVoces ? '\n\nREGLAS DE LAS VOCES (muy importantes): en estas grabaciones el entrevistador (P) a veces SUGIERE al experto cómo decir algo («díselo en tres bloques», «para mí depende del gimnasio…»), repite o completa lo que dice el experto, o dice «vale», «sigue», «otra vez»: son indicaciones de grabación, NO contenido. NUNCA metas en un clip palabras de P que no sean LA PREGUNTA que abre el clip, y no mezcles en la respuesta frases de P. Si el experto repite la respuesta varias veces (tomas), usa UNA sola toma completa y bien dicha, con sus propias palabras. El mensaje debe sonar como el experto hablando solo, de principio a fin, sin que se oiga a nadie sugerirle nada. Si una idea solo se entiende con lo que dijo P, ponla como pregunta inicial clara o no la uses. ' : '') + ' EL CLIP DEBE CONTAR UNA HISTORIA que se entienda sin contexto: arranca con una promesa o pregunta que engancha, desarrolla con un dato o ejemplo concreto y cierra con un remate o conclusión (nunca cortado a mitad de idea). Piensa en quién se lo reenviaría a quién y por qué. Si en toda la entrevista no hay material para el número de clips pedido, da menos: cada clip debe valer la pena.' +
+    (conVoces ? '\n\nREGLAS DE LAS VOCES (muy importantes): en estas grabaciones el entrevistador (P) a veces SUGIERE al experto cómo decir algo («díselo en tres bloques», «para mí depende del gimnasio…»), repite o completa lo que dice el experto, o dice «vale», «sigue», «otra vez»: son indicaciones de grabación, NO contenido. Conserva las preguntas de seguimiento necesarias para entender la respuesta. Descarta indicaciones de grabación y no atribuyas palabras de P al experto. Si el experto repite la respuesta varias veces (tomas), usa UNA sola toma completa y bien dicha, con sus propias palabras. El mensaje debe sonar como el experto hablando solo, de principio a fin, sin que se oiga a nadie sugerirle nada. Si una idea solo se entiende con lo que dijo P, ponla como pregunta inicial clara o no la uses. ' : '') + ' EL CLIP DEBE CONTAR UNA HISTORIA que se entienda sin contexto: arranca con una promesa o pregunta que engancha, desarrolla con un dato o ejemplo concreto y cierra con un remate o conclusión (nunca cortado a mitad de idea). Piensa en quién se lo reenviaría a quién y por qué. Si en toda la entrevista no hay material para el número de clips pedido, da menos: cada clip debe valer la pena.' +
     '\n\nResponde SOLO con JSON: {"clips":[{"tramos":[[ini,fin],[ini,fin]], "titulo": "título gancho en pantalla, que provoque curiosidad o prometa algo (máx 9 palabras, en español, sin comillas)", "pregunta": "si es de pregunta y respuesta, la pregunta resumida; si no, vacío", "gancho": "la frase de apertura", "score": 0-100 potencial viral (sé exigente y honesto: 90+ excepcional, la mayoría entre 55 y 85), "sub": {"gancho": 0-100, "flujo": 0-100, "valor": 0-100, "tendencia": 0-100}, "motivo": "en una frase, por qué funciona o qué le falta"}]}\n\nTRANSCRIPCIÓN:\n' + lineas.join('\n');
   let d = null;
   for (let intento = 0; intento < 2 && !d; intento++) {
@@ -84,11 +85,10 @@ export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, not
   const arma = (c, estricto) => {
     const crudos = (Array.isArray(c.tramos) && c.tramos.length ? c.tramos : (Number.isFinite(c.ini) ? [[c.ini, c.fin]] : [])).filter(t => Array.isArray(t) && Number(t[1]) > Number(t[0]));
     let tr = crudos.map(t => alinea(Number(t[0]), Number(t[1]))).filter(t => t && t[1] - t[0] >= 0.8);
-    if (conVoces) tr = limpiaTramosPorVoz(tr, palabras);
+    // No borrar preguntas de seguimiento por su posición: el revisor evalúa el diálogo completo.
     if (!tr.length) return null;
     let total = tr.reduce((x, t) => x + (t[1] - t[0]), 0); const tope = Math.max(max * 2.2, 90);
-    while (total > tope && tr.length > 1) { const u = tr.pop(); total -= u[1] - u[0]; }
-    if (total > tope) { tr[0][1] = tr[0][0] + tope; total = tope; }
+    if (total > tope) return null; // nunca truncar una conclusión para cumplir duración
     if (estricto && total < Math.min(10, min)) return null;
     return { ini: tr[0][0], fin: tr[tr.length - 1][1], tramos: tr, total, titulo: String(c.titulo || 'Clip').slice(0, 90), pregunta: String(c.pregunta || '').slice(0, 200), gancho: String(c.gancho || '').slice(0, 200), ...puntua(c) };
   };
@@ -100,9 +100,8 @@ export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, not
   if (hechos.length) {
     await juzgaClips(hechos, palabras, { reglas });
     console.log('Editor jefe:', hechos.map(c => (c.juicio ? c.juicio.nota + ' ' + c.juicio.veredicto + (c.juicio.problemas?.length ? ' (' + c.juicio.problemas.join('; ') + ')' : '') : '—')).join(' | '));
-    const buenos = hechos.filter(c => !c.juicio || !(c.juicio.veredicto === 'descartar' || (c.juicio.mezcla && (c.juicio.nota ?? 100) < 60) || (c.juicio.nota ?? 100) < 45));
-    const mejor = hechos.slice().sort((x, y) => (y.juicio?.nota ?? y.score ?? 0) - (x.juicio?.nota ?? x.score ?? 0))[0];
-    const final = buenos.length ? buenos : [mejor]; hechos.length = 0; hechos.push(...final);
+    const buenos = hechos.filter(aceptaClip);
+    hechos.length = 0; hechos.push(...buenos);
   }
   return hechos;
 }

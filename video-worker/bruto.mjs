@@ -1,3 +1,4 @@
+import { efectosPermitidos, admiteDestello, filtrosSuperposicion } from './editor-policy.mjs';
 // Edición de un vídeo en bruto hablando a cámara: quita pausas, repeticiones y errores; encuadra a la cara con zooms in/out que esconden los cortes;
 // subtítulos bajo la cara; gráficos animados (cifra + icono); música de fondo por debajo de la voz con los cambios de plano a pulso.
 // Uso: node bruto.mjs "<bruto.mp4>" "<salida.mp4>" ["indicaciones"]   (receta con RECETA_JSON; música con MUSICA_DIR y MUSICA_ELEGIDA)
@@ -24,7 +25,7 @@ const R = { acento: '#CDBBA7', titulo: true, pausa: 0.4, subs: { palabrasPorBloq
 if (process.env.INSERCIONES === '1') R.inserciones = true;
 if (process.env.RECETA_JSON) {
   const o = JSON.parse(fs.readFileSync(process.env.RECETA_JSON, 'utf8'));
-  for (const k of ['acento', 'titulo', 'zoomFinal', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'encuadreZoom', 'subsBajoCara', 'graficos', 'pausa', 'limpiar', 'fuente', 'whoosh', 'flash', 'cambioCada', 'director', 'cambiosEnFrases', 'intensidad', 'ilustraciones', 'estiloSubs', 'preguntaSoloEscrita']) if (o[k] !== undefined) R[k] = o[k];
+  for (const k of ['acento', 'titulo', 'zoomFinal', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'encuadreZoom', 'subsBajoCara', 'graficos', 'pausa', 'limpiar', 'fuente', 'whoosh', 'flash', 'cambioCada', 'director', 'cambiosEnFrases', 'intensidad', 'ilustraciones', 'estiloSubs', 'preguntaSoloEscrita', 'superposicion', 'cortesAutomaticos']) if (o[k] !== undefined) R[k] = o[k];
   if (o.subs) R.subs = { ...R.subs, ...o.subs }; if (o.musica && typeof o.musica === 'object') R.musica = { ...R.musica, ...o.musica };
 }
 if (!/^#[0-9a-f]{6}$/i.test(R.acento)) R.acento = '#CDBBA7';
@@ -75,17 +76,19 @@ if (!palabras.length) { console.log('FALLO: no se oye voz en el vídeo'); proces
 if (process.env.GUION) console.log('Palabras corregidas con el guion:', ajustaAlGuion(palabras, process.env.GUION));
 console.log('Números escritos con cifras:', numerosEnCifras(palabras));
 palabras.forEach((w, i) => { w.i = i; });
-const trabones = corrigeTrabones(palabras, wav); if (trabones) console.log('Tropiezos recortados:', trabones);
+const trabones = process.env.CLIP_VALIDADO === '1' ? 0 : corrigeTrabones(palabras, wav); if (trabones) console.log('Tropiezos recortados:', trabones);
 
 // ---- catálogo de escenas para superponer (B-roll del índice, filtrado por lo que se eligió en el CRM) ----
 let catalogo = [];
-if (R.inserciones && process.env.INDICE_JSON) {
+if (R.inserciones && (process.env.INDICE_JSON || process.env.INDICE_EXTRA)) {
   try {
     let sel = {}; try { sel = JSON.parse(process.env.RECURSOS_SEL || '{}'); } catch { /* todo */ }
     const carps = sel.carpetas || [], vids = sel.videos || [];
-    let todos = JSON.parse(fs.readFileSync(process.env.INDICE_JSON, 'utf8')).videos.filter(v => v.duracion >= 2 && (!process.env.BASE_DRIVE_ID || v.drive_id !== process.env.BASE_DRIVE_ID));
-    if (carps.length || vids.length) { const f = todos.filter(v => { const abs = v.ruta_abs ?? v.carpeta ?? ''; return carps.some(c => abs === c || abs.startsWith(c + '/')) || vids.some(z => z.id === v.drive_id || (z.ruta ? z.ruta + '/' : '') + z.nombre === (abs ? abs + '/' : '') + v.nombre); }); if (f.length) todos = f; }
+    let indice = []; try { indice = JSON.parse(fs.readFileSync(process.env.INDICE_JSON, 'utf8')).videos || []; } catch { /* recursos subidos sin biblioteca */ }
+    let todos = indice.filter(v => v.duracion >= 2 && (!process.env.BASE_DRIVE_ID || v.drive_id !== process.env.BASE_DRIVE_ID));
+    if (carps.length || vids.length) { const f = todos.filter(v => { const abs = v.ruta_abs ?? v.carpeta ?? ''; return carps.some(c => abs === c || abs.startsWith(c + '/')) || vids.some(z => z.id === v.drive_id || (z.ruta ? z.ruta + '/' : '') + z.nombre === (abs ? abs + '/' : '') + v.nombre); }); todos = f; }
     else todos = todos.filter(v => !v.hablando_a_camara && v.tipo !== 'bruto_hablando');
+    if (process.env.INDICE_EXTRA) todos.push(...JSON.parse(fs.readFileSync(process.env.INDICE_EXTRA, 'utf8')));
     todos.sort((a, b) => (b.calidad === 'alta') - (a.calidad === 'alta')); catalogo = todos.slice(0, 150);
     console.log('Catálogo para superponer:', catalogo.length, 'vídeos');
   } catch (e) { console.log('Sin catálogo para superponer:', e.message); }
@@ -98,18 +101,18 @@ try {
   plan = { ...plan, ...(await claude('Vídeo vertical de Ranuse Design (diseño de gimnasios y espacios deportivos), alguien hablando a cámara. Transcripción (índice:palabra): ' + guion.slice(0, 12000) + '\n' + (NOTAS ? 'Indicaciones del equipo: ' + NOTAS + '\n' : '') +
     'Responde SOLO JSON con: "kicker" (categoría de 2-4 palabras), "titulo" (gancho serio, máx. 8 palabras, sin exclamaciones), "enfasis" (ÍNDICES de palabras clave: cifras, términos técnicos, la idea fuerte; ~1 de cada 6 palabras)' +
     (R.limpiar !== false ? ', "quitar": lista de rangos [desde, hasta] de ÍNDICES (inclusivos) que hay que ELIMINAR para que la comunicación sea fluida y ágil: frases o preguntas dichas dos veces (quédate con la mejor toma, normalmente la última y completa), empezar una frase y rehacerla, errores, muletillas largas (eh, mmm, o sea repetido), comentarios al aire que no son parte del vídeo (órdenes al que graba, "vale", "otra vez"). No quites contenido útil; sé conservador ante la duda' : '') +
-    (catalogo.length ? ', "inserciones": lista de 3 a 8 momentos en los que conviene SUPERPONER una escena del catálogo sobre la persona (su voz sigue sonando) porque dice algo que se puede ilustrar: un proyecto, máquinas, materiales, medidas, un lugar. Cada una: {"de": índice de la palabra donde entra (que NO esté en "quitar"), "video": id del catálogo, "desde": segundo del vídeo (usa los de sus planos), "dur": segundos 1.6-3.5}. Separadas al menos 5 s, ni en los primeros 2 s ni en la idea emocional o la llamada a la acción final. CATÁLOGO: ' + JSON.stringify(catalogo.map(v => ({ id: v.id, dur: v.duracion, resumen: v.resumen, planos: (v.planos || []).slice(0, 6).map(p => p.t + 's: ' + String(p.descripcion).slice(0, 90)) }))) : '') + (R.graficos ? ', "graficos": lista de 3 a 6 momentos donde aparece una cifra, medida o concepto que merece una animación en pantalla. Cada uno: {"de": índice de la palabra donde entra (que NO esté en "quitar"), "valor": "140" (solo la cifra, o ""), "unidad": "kg" (o ""), "texto": "texto corto si no hay cifra (máx. 3 palabras)", "icono": uno de [' + NOMBRES_ICONOS.join(', ') + '] o "", "dur": segundos visible (1.6-2.6)}. No satures, separados al menos 4 segundos' : '') + '.', 2200)) };
+    (catalogo.length ? ', "inserciones": lista de 0 a 8 momentos justificados por la frase concreta, sin obligación de rellenar, en los que conviene SUPERPONER una escena del catálogo sobre la persona (su voz sigue sonando) porque dice algo que se puede ilustrar: un proyecto, máquinas, materiales, medidas, un lugar. Cada una: {"de": índice de la palabra donde entra (que NO esté en "quitar"), "video": id del catálogo, "desde": segundo del vídeo (usa los de sus planos), "dur": segundos 1.6-3.5}. Separadas al menos 5 s, ni en los primeros 2 s ni en la idea emocional o la llamada a la acción final. CATÁLOGO: ' + JSON.stringify(catalogo.map(v => ({ id: v.id, dur: v.duracion, resumen: v.resumen, planos: (v.planos || []).slice(0, 6).map(p => p.t + 's: ' + String(p.descripcion).slice(0, 90)) }))) : '') + (R.graficos ? ', "graficos": lista de 3 a 6 momentos donde aparece una cifra, medida o concepto que merece una animación en pantalla. Cada uno: {"de": índice de la palabra donde entra (que NO esté en "quitar"), "valor": "140" (solo la cifra, o ""), "unidad": "kg" (o ""), "texto": "texto corto si no hay cifra (máx. 3 palabras)", "icono": uno de [' + NOMBRES_ICONOS.join(', ') + '] o "", "dur": segundos visible (1.6-2.6)}. No satures, separados al menos 4 segundos' : '') + '.', 2200)) };
 } catch (e) { console.log('Sin IA para limpieza/título/gráficos:', e.message); }
 fs.writeFileSync(path.join(work, 'plan.json'), JSON.stringify(plan, null, 1));
-const fuera = new Set(); for (const r of (plan.quitar || [])) if (Array.isArray(r) && Number.isInteger(r[0])) for (let i = r[0]; i <= (Number.isInteger(r[1]) ? r[1] : r[0]); i++) fuera.add(i);
+const fuera = new Set(); for (const r of (process.env.CLIP_VALIDADO === '1' ? [] : (plan.quitar || []))) if (Array.isArray(r) && Number.isInteger(r[0])) for (let i = r[0]; i <= (Number.isInteger(r[1]) ? r[1] : r[0]); i++) fuera.add(i);
 if (fuera.size) console.log('Se quitan', fuera.size, 'palabras (repeticiones/errores):', [...fuera].slice(0, 40).map(i => palabras[i]?.t).join(' '));
-{ const limpio = R.limpiar !== false ? await guionLimpio(palabras, ENV.ANTHROPIC_API_KEY, NOTAS, !!process.env.TITULO_PANTALLA) : null;
+{ const limpio = R.limpiar !== false && process.env.CLIP_VALIDADO !== '1' ? await guionLimpio(palabras, ENV.ANTHROPIC_API_KEY, NOTAS, !!process.env.TITULO_PANTALLA) : null;
   if (limpio) { fuera.clear(); for (const i of limpio) fuera.add(i); console.log('Discurso final elegido por la IA:', palabras.length - limpio.size, 'de', palabras.length, 'palabras'); } }
-for (const i of repetidasInmediatas(palabras.filter(w => !fuera.has(w.i)))) fuera.add(i);
+if (process.env.CLIP_VALIDADO !== '1') for (const i of repetidasInmediatas(palabras.filter(w => !fuera.has(w.i)))) fuera.add(i);
 // Edición por texto: si la persona ha elegido a mano qué palabras quitar, manda ella (se ignora la propuesta de la IA)
 if (process.env.FUERA_JSON) { try { const man = JSON.parse(fs.readFileSync(process.env.FUERA_JSON, 'utf8')); fuera.clear(); for (const i of man) if (Number.isInteger(i)) fuera.add(i); console.log('Texto editado a mano:', fuera.size, 'palabras quitadas'); } catch (e) { console.log('No se pudo leer la edición de texto:', e.message); } }
 // Si el formato lo pide, la pregunta solo aparece escrita (no se oye al entrevistador): se quitan sus palabras
-if (R.preguntaSoloEscrita) { const et = etiquetasHablantes(palabras); let n = 0; palabras.forEach((w, i) => { if (et[i] === 'P' && !fuera.has(w.i)) { fuera.add(w.i); n++; } }); if (n) console.log('La pregunta solo sale escrita: se quitan', n, 'palabras del entrevistador'); }
+if (R.preguntaSoloEscrita && process.env.CLIP_VALIDADO !== '1') { const et = etiquetasHablantes(palabras); let n = 0; palabras.forEach((w, i) => { if (et[i] === 'P' && !fuera.has(w.i)) { fuera.add(w.i); n++; } }); if (n) console.log('La pregunta solo sale escrita: se quitan', n, 'palabras del entrevistador'); }
 // se guarda la transcripción y lo que se quita para que la persona pueda revisarlo y corregirlo
 try { fs.writeFileSync(path.join(work, 'edicion_texto.json'), JSON.stringify({ palabras: palabras.map(w => [w.t, Math.round(w.de * 100) / 100, Math.round(w.a * 100) / 100]), fuera: [...fuera] })); } catch { /* sin edición de texto */ }
 const enfasis = new Set((plan.enfasis || []).filter(n => Number.isInteger(n)));
@@ -163,6 +166,9 @@ let subTop = null;
 if (ANCHO) subTop = 1290;
 else if (R.subsBajoCara && cara) { const v = ventana(1.05), chin = (cara.cy + cara.alto * 0.4) * H; subTop = clamp(Math.round((chin - v.y0) / v.hc * 1920 + 70), 520, 1500); console.log('Subtítulos a y =', subTop); }
 
+// Reserva la zona inferior para los recursos y sitúa los subtítulos encima.
+if (R.superposicion === 'ventana') subTop = Math.min(subTop ?? 1000, 1000);
+
 // ---- trozos de voz continuos: se quitan pausas, repeticiones y errores ----
 const trozos = []; let ult = -2;
 for (const w of palabras) { if (fuera.has(w.i)) continue; const u = trozos[trozos.length - 1]; if (u && w.i === ult + 1 && w.de - u.fin < R.pausa) { u.fin = w.a; } else trozos.push({ ini: w.de, fin: w.a }); ult = w.i; }
@@ -187,10 +193,10 @@ const piezas = []; let acum = 0;
 // La IA lee el texto final y decide DÓNDE va cada efecto y de qué tipo; el motor los coloca. Si no hay IA, quedan cortes limpios en las pausas y un movimiento muy suave.
 const FLASH_OK = R.flash === true || R.flash === 'si';
 const conservadas = palabras.filter(w => !fuera.has(w.i));
-const INTENSIDAD = ['sobria', 'media', 'alta'].includes(R.intensidad) ? R.intensidad : 'media';
-const TIPOS_EFECTO = ['zoom', 'zoomFuerte', 'abierto', 'empuje', 'temblor', 'glitch', 'blancoNegro', 'vineta', 'apagon', 'barrido', 'calido', 'palabra', ...(FLASH_OK ? ['flash', 'flashColor', 'impacto'] : [])];
+const INTENSIDAD = ['sobria', 'media', 'alta'].includes(R.intensidad) ? R.intensidad : 'sobria';
+const TIPOS_EFECTO = efectosPermitidos(R);
 const ESTILO_IMG = 'Imagen vertical 9:16 para superponer en un vídeo de Instagram de Ranuse Design (diseño de gimnasios). Estilo: fotografía/render realista y elegante, iluminación cinematográfica, paleta oscura (negros, grises, marrones cálidos) con un acento arena. SIN texto, SIN logotipos, SIN marcas y SIN personas reconocibles. Escena: ';
-const QUIERE_IMG = R.ilustraciones !== false && !!ENV.OPENAI_API_KEY;
+const QUIERE_IMG = R.ilustraciones === true && !!ENV.OPENAI_API_KEY;
 let efectos = []; /* { i, t (tiempo original), tipo, texto, motivo } */
 let ilustraciones = []; /* { i, t, dur, prompt, motivo } */
 let analisis = null;
@@ -203,7 +209,7 @@ if (R.director !== false && conservadas.length > 12) {
     const r = await claudeMejor('Eres un editor de vídeo profesional y un guionista especializado en redes sociales (Reels, TikTok, Shorts) y diseño, con ojo para lo que se hace viral. Trabajas para Ranuse Design (diseño de gimnasios y espacios deportivos). Este es un vídeo vertical de alguien hablando a cámara; abajo tienes el texto FINAL ya limpio (índice:palabra; entre corchetes, los segundos aproximados en el vídeo al acabar una frase). Dura unos ' + durFinalEstimada().toFixed(0) + ' s.\n\n' + texto.slice(0, 14000) + '\n\n' +
       'TU TRABAJO TIENE TRES PARTES:\n' +
       '1) ANÁLISIS DE LA HISTORIA como lo haría un editor jefe: de qué va, cómo es el gancho actual (¿para el scroll?), el arco (gancho → planteamiento → nudo/giro → remate → cierre) señalando en qué palabra (índice) arranca cada momento, qué puntos son FUERTES, cuáles FLOJOS o donde se cae la retención, un potencial viral de 0 a 100 con el porqué y qué mejorarías (en el texto, el ritmo o lo visual).\n' +
-      '2) EFECTOS dirigidos con criterio, uno por razón narrativa (nunca por rutina). Repertorio:\n' +
+      '2) EFECTOS opcionales: ninguno si no aporta. SOLO puedes elegir: ' + TIPOS_EFECTO.join(', ') + '. Ignora las descripciones siguientes de tipos que no estén permitidos.\n' +
       '- "zoom": acercamiento suave sobre una idea clave o un dato.   - "zoomFuerte": golpe de zoom en el gancho, un remate o una frase contundente.\n' +
       '- "abierto": plano más abierto para respirar tras algo intenso o al cambiar de tema.   - "empuje": acercamiento LENTO y continuo durante todo el plano (tensión creciente, explicación importante de 4 s o más).\n' +
       '- "temblor": sacudida breve de cámara para un golpe (cifra enorme, un "boom").   - "glitch": fallo digital breve (error, caos, "ojo", cambio brusco).\n' +
@@ -217,13 +223,15 @@ if (R.director !== false && conservadas.length > 12) {
       'Responde SOLO JSON: {"analisis":{"tema":"","gancho":"","arco":[{"momento":"gancho|planteamiento|nudo|giro|remate|cierre","de":0,"resumen":""}],"puntos_fuertes":[""],"puntos_flojos":[""],"potencial":0,"por_que":"","mejoras":[""]},"efectos":[{"de":0,"tipo":"","texto":"","motivo":"4-8 palabras"}],"ilustraciones":[{"de":0,"dur":2,"prompt":"","motivo":""}],"idea_de_ritmo":"una frase"}', 6000);
     analisis = r.analisis || null;
     const tipos = new Set(TIPOS_EFECTO), porIdx = new Map(conservadas.map(w => [w.i, w]));
-    let ult = -9, ultP = -9, nImp = 0; const ocupado = [];
+    let ult = -9, ultP = -9, nImp = 0, ultimoFlash = -Infinity; const ocupado = [];
     for (const e of (r.efectos || []).slice().sort((x, y) => (x.de || 0) - (y.de || 0))) {
       const w = porIdx.get(e.de); if (!w || !tipos.has(e.tipo)) continue;
       const tfin = tiempoFinal.get(w.i); if (tfin === undefined || tfin > durFinalEstimada() - 1.2) continue;
       if (e.tipo === 'palabra') { const txt = String(e.texto || '').replace(/[{}\\]/g, '').trim().toUpperCase().split(/\s+/).slice(0, 3).join(' '); if (!txt || tfin < ultP + 3 || ocupado.some(o => Math.abs(o - tfin) < 1.5)) continue; efectos.push({ i: w.i, t: w.de, tipo: 'palabra', texto: txt, motivo: String(e.motivo || '').slice(0, 60) }); ultP = tfin; continue; }
+      if (!admiteDestello(e.tipo, tfin, ultimoFlash)) continue;
       if (e.tipo === 'impacto' && ++nImp > 2) continue;
-      if (tfin < ult + 2.8) continue;
+      if (tfin < ult + (INTENSIDAD === 'sobria' ? 8 : 2.8)) continue;
+      if (['flash', 'flashColor', 'impacto'].includes(e.tipo)) ultimoFlash = tfin;
       efectos.push({ i: w.i, t: w.de, tipo: e.tipo, motivo: String(e.motivo || '').slice(0, 60) }); ult = tfin; ocupado.push(tfin);
     }
     for (const g of (QUIERE_IMG ? (r.ilustraciones || []) : []).slice(0, INTENSIDAD === 'alta' ? 4 : 3)) {
@@ -259,7 +267,7 @@ for (const t of trozos) {
   const primero = efCortes.find(e => e.t >= ini - 0.05 && e.t <= ini + 0.35); if (primero) efCorte.set('ini', primero.tipo);
   for (const e of mios) { const tc = Math.max(ini + 0.3, e.t - 0.04); cortes.push(tc); efCorte.set(tc, e.tipo); }
   // 2) entre efectos, cortes limpios donde el habla respira (solo si hace falta romper un plano muy largo)
-  if (porFrases) {
+  if (R.cortesAutomaticos !== false && porFrases) {
     const maxPlano = DIRECTOR ? nominal * 1.6 : nominal;
     const cand = puntosNaturales(ini, fin); let ult = ini;
     const fijos = cortes.slice().sort((x, y) => x - y);
@@ -272,7 +280,7 @@ for (const t of trozos) {
       const mejor = ventana.reduce((m, c) => { const pm = m.fuerza * 1.2 - Math.abs(m.t - (ult + maxPlano)) / maxPlano, pc = c.fuerza * 1.2 - Math.abs(c.t - (ult + maxPlano)) / maxPlano; return pc > pm ? c : m; });
       cortes.push(mejor.t); fijos.push(mejor.t); fijos.sort((x, y) => x - y); ult = mejor.t;
     }
-  } else if (!DIRECTOR) {
+  } else if (R.cortesAutomaticos !== false && !DIRECTOR) {
     const n = Math.max(1, Math.round(largo / nominal));
     for (let k = 1; k < n; k++) { let fk = ini + largo * k / n; if (pista) { const sal = alPulso(acum + (fk - ini), pista.beats, 0.3), aj = ini + (sal - acum); if (aj > (cortes[cortes.length - 1] ?? ini) + 1.2 && aj < fin - 1.2) fk = aj; } cortes.push(fk); }
   }
@@ -294,6 +302,8 @@ for (const t of trozos) {
   piezas.forEach((p, i) => { if (p.efecto === 'barrido' && i > 0) piezas[i - 1].blurFin = true; });
 }
 let acum2 = 0; piezas.forEach(p => { p.t0 = acum2; acum2 += p.fin - p.ini; }); const durFinal = acum2;
+let ultimoFlashReal = -Infinity;
+for (const p of piezas) if (['flash', 'flashColor', 'impacto'].includes(p.efecto)) { if (!admiteDestello(p.efecto, p.t0, ultimoFlashReal)) { p.efecto = undefined; p.z = 1; } else ultimoFlashReal = p.t0; }
 const mapea = (t) => { for (const p of piezas) if (t >= p.ini && t <= p.fin) return p.t0 + (t - p.ini); return null; };
 console.log('Duración final:', durFinal.toFixed(1), 's (', piezas.length, 'trozos de', dur.toFixed(0), 's )');
 
@@ -310,7 +320,7 @@ bl.forEach((g, k) => {
       const tx = g.map((x, q) => { const s0 = limpiaT(x.t).replace(/[.,;:]+$/, '').replace(/[¿¡]/g, ''), sx = R.mayusculas === true ? s0.toUpperCase() : s0.toLowerCase(); return q === j ? '{\\c' + ACENTO + '\\fscx112\\fscy112}' + sx + '{\\c&HFFFFFF&\\fscx100\\fscy100}' : sx; }).join(' ');
       if (t1 > t0) ev.push('Dialogue: 1,' + tAss(t0) + ',' + tAss(Math.min(t1, durFinal)) + ',Sub,,0,0,0,,{' + posSub + '\\fad(' + (j === 0 ? 30 : 0) + ',0)}' + tx);
     });
-  } else ev.push('Dialogue: 1,' + tAss(ini) + ',' + tAss(Math.min(fin, durFinal)) + ',' + (R.estiloSubs === 'caja' ? 'SubCaja' : 'Sub') + ',,0,0,0,,{' + posSub + (R.estiloSubs === 'palabra' ? '\\fscx55\\fscy55\\t(0,150,\\fscx100\\fscy100)\\fad(30,0)' : '\\fscx90\\fscy90\\t(0,100,\\fscx100\\fscy100)\\fad(30,0)') + '}' + txt);
+  } else ev.push('Dialogue: 1,' + tAss(ini) + ',' + tAss(Math.min(fin, durFinal)) + ',' + (R.estiloSubs === 'caja' ? 'SubCaja' : 'Sub') + ',,0,0,0,,{' + posSub + (R.estiloSubs === 'palabra' ? '\\fscx55\\fscy55\\t(0,150,\\fscx100\\fscy100)\\fad(30,0)' : '\\fad(50,0)') + '}' + txt);
 });
 const tf = Math.min(durFinal, 3.2);
 if (R.titulo !== false && plan.titulo) {
@@ -318,7 +328,7 @@ if (R.titulo !== false && plan.titulo) {
   ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Titulo,,0,0,0,,{\\fad(250,350)}' + limpiaT(plan.titulo).toLowerCase());
 }
 // Texto de apertura: en vídeos de pregunta-respuesta, la pregunta en una caja limpia arriba; si no, el título gancho. Los primeros segundos, en la zona alta libre de botones.
-if (process.env.TITULO_PANTALLA || process.env.PREGUNTA_PANTALLA) {
+if (R.titulo !== false && (process.env.TITULO_PANTALLA || process.env.PREGUNTA_PANTALLA)) {
   const parte = (txt, max) => { const pal = String(txt).replace(/[{}\\]/g, '').trim().split(/\s+/); const lin = []; let cur = ''; for (const w of pal) { if ((cur + ' ' + w).trim().length > max && cur) { lin.push(cur); cur = w; } else cur = (cur + ' ' + w).trim(); } if (cur) lin.push(cur); return lin.join('\\N'); };
   if (process.env.PREGUNTA_PANTALLA) ev.push('Dialogue: 6,' + tAss(0) + ',' + tAss(Math.min(durFinal, 5.5)) + ',Pregunta,,0,0,0,,{\\an8\\fad(150,300)}' + parte(process.env.PREGUNTA_PANTALLA.replace(/^[¿?]+|[?]+$/g, '').trim() + '?', 26));
   else ev.push('Dialogue: 6,' + tAss(0) + ',' + tAss(Math.min(durFinal, 4.2)) + ',Titulo,,0,0,0,,{\\an8\\pos(540,290)\\bord0\\shad4\\fs64\\fad(150,300)}' + parte(process.env.TITULO_PANTALLA, 22));
@@ -347,7 +357,7 @@ if (catalogo.length) {
   for (const g of (plan.inserciones || []).slice(0, 10)) {
     const w = palabras[g.de]; if (!w || fuera.has(g.de)) continue; const a = mapea(w.de); if (a === null || a < 2 || a < ult + 4 || a > durFinal - 2) continue;
     const v = catalogo.find(x => x.id === g.video); if (!v) continue;
-    const d = Math.min(clamp(Number(g.dur) || 2.2, 1.4, 4), durFinal - a - 0.5), desde = Math.max(0, Math.min(Number(g.desde) || 0, v.duracion - d - 0.1)); ins.push({ v, a, d, desde }); ult = a + d;
+    const d = Math.min(v.duracion, clamp(Number(g.dur) || 2.2, 1.4, 4), durFinal - a - 0.5), desde = Math.max(0, Math.min(Number(g.desde) || 0, v.duracion - d - 0.1)); ins.push({ v, a, d, desde: v.es_imagen ? 0 : desde }); ult = a + d;
   }
   for (const x of ins) if (x.v.drive_id && !dr[x.v.id]) { try { dr[x.v.id] = await drive.urlDescarga(x.v.drive_id); } catch (e) { console.log('Sin acceso a Drive:', e.message); } }
   console.log('Superpuestas:', ins.map(i => i.a.toFixed(1) + 's ' + String(i.v.nombre).slice(0, 24)).join(' | ') || 'ninguna');
@@ -437,9 +447,9 @@ const filtros = [...partes, ...pa, cat, '[vc]eq=contrast=1.07:saturation=0.95:ga
 const entradas = ['-i', path.resolve(ENTRADA)]; let prev = 'vb0';
 ins.forEach((x, k) => {
   const src = dr[x.v.id], ix = k + 1;
+  if (x.v.es_imagen) entradas.push('-loop', '1', '-framerate', '30');
   entradas.push(...(src ? ['-headers', 'Authorization: ' + src.cabeceras.Authorization + '\r\n'] : []), '-ss', x.desde.toFixed(2), '-t', (x.d + 0.1).toFixed(2), '-i', src ? src.url : x.v.ruta);
-  filtros.push('[' + ix + ':v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,setsar=1,format=yuva420p,fade=t=in:st=0:d=0.18:alpha=1,fade=t=out:st=' + (x.d - 0.18).toFixed(2) + ':d=0.18:alpha=1,setpts=PTS+' + x.a.toFixed(3) + '/TB[i' + k + ']');
-  filtros.push('[' + prev + '][i' + k + ']overlay=x=0:y=0:enable=\'between(t\\,' + x.a.toFixed(3) + '\\,' + (x.a + x.d).toFixed(3) + ')\':eof_action=pass[oi' + k + ']'); prev = 'oi' + k;
+  filtros.push(...filtrosSuperposicion({ index: ix, prev, k, a: x.a, d: x.d, modo: R.superposicion })); prev = 'oi' + k;
 });
 graf.forEach((g, k) => {
   entradas.push('-loop', '1', '-framerate', '30', '-t', (g.d + 0.1).toFixed(2), '-i', g.f);

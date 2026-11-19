@@ -90,16 +90,16 @@ export function textoDeTramos(tramos, palabras) {
 }
 
 // Editor jefe: lee cada clip ya montado como lo haría un espectador y dice si se puede publicar, si hay que quitar algo o si hay que tirarlo.
-export async function juzgaClips(clips, palabras, { reglas = '' } = {}) {
+export async function juzgaClips(clips, palabras, { reglas = '', intento = 0 } = {}) {
   await Promise.all(clips.map(async (c) => {
     try {
-      const r = await claudeJSON('Eres el editor jefe de Ranuse Design (diseño de espacios deportivos) y vas a publicar este clip en Instagram Reels / TikTok TAL CUAL. Cada línea es un tramo que se oirá en este orden (P = entrevistador que pregunta, R = el experto que responde). Imagínalo como un espectador que NO conoce el contexto.\n\nTÍTULO EN PANTALLA: ' + c.titulo + '\nPRIMERA FRASE: ' + (c.gancho || '') + '\n\nCLIP:\n' + textoDeTramos(c.tramos, palabras) + '\n\n' +
+      const r = await claudeJSON('Eres el editor jefe de Ranuse Design (diseño de espacios deportivos) y vas a publicar este clip en Instagram Reels / TikTok TAL CUAL. Cada línea es un tramo que se oirá en este orden (P = entrevistador que pregunta, R = el experto que responde). Imagínalo como un espectador que NO conoce el contexto.\n\nTÍTULO EN PANTALLA: ' + c.titulo + '\nPRIMERA FRASE: ' + (c.gancho || '') + '\n\nCONTEXTO ORIGINAL (no se reproduce):\n' + textoDeTramos(c.tramos.map(([a,b]) => [Math.max(0,a-20),b+20]), palabras) + '\n\nCLIP FINAL (comprueba que conserva el sentido original y las condiciones):\n' + textoDeTramos(c.tramos, palabras) + '\n\n' +
         'IMPORTANTE: los tartamudeos, muletillas, palabras repetidas y tomas falsas pequeñas se limpian después automáticamente: NO los penalices salvo que cambien el sentido. Juzga la HISTORIA y lo que no se arregla solo. Juzga con rigor: ¿se entiende solo (sin referencias a cosas que no se han dicho)? ¿la primera frase engancha en 3 segundos? ¿hay mezcla de voces (frases del entrevistador que suenan a respuesta, sugerencias de grabación, el mismo mensaje dicho por los dos)? ¿la idea está completa y termina con remate, o queda cortada? ¿hay frases repetidas o tomas falsas? ¿aporta algo que se comparta o se guarde?' + (reglas ? '\n\nREGLAS DE MARCA: ' + reglas.slice(0, 1200) : '') +
         '\n\nResponde SOLO JSON: {"nota": 0-100, "se_entiende_solo": true|false, "mezcla_de_voces": true|false, "incompleto": true|false, "gancho": "fuerte|normal|flojo", "problemas": ["frase corta"], "quitar_tramos": [números de línea que sobran y se pueden quitar sin romper la idea], "veredicto": "publicar|arreglar|descartar"}', { max: 900 });
-      c.juicio = { nota: Number(r.nota) || null, entiendeSolo: r.se_entiende_solo !== false, mezcla: !!r.mezcla_de_voces, incompleto: !!r.incompleto, gancho: String(r.gancho || ''), problemas: (r.problemas || []).slice(0, 4).map(x => String(x).slice(0, 140)), veredicto: String(r.veredicto || 'publicar') };
+      c.juicio = { nota: typeof r.nota === 'number' && Number.isFinite(r.nota) ? r.nota : null, entiendeSolo: r.se_entiende_solo === true, mezcla: !!r.mezcla_de_voces, incompleto: !!r.incompleto, gancho: String(r.gancho || ''), problemas: (r.problemas || []).slice(0, 4).map(x => String(x).slice(0, 140)), veredicto: String(r.veredicto || 'revisar') };
       const sob = new Set((r.quitar_tramos || []).map(Number).filter(n => n >= 2 && n <= c.tramos.length)); // la primera línea (el comienzo) no se toca
-      if (sob.size && c.juicio.veredicto === 'arreglar') { c.tramos = c.tramos.filter((_, k) => !sob.has(k + 1)); c.total = c.tramos.reduce((s, t) => s + (t[1] - t[0]), 0); c.juicio.arreglado = [...sob]; }
-    } catch (e) { console.log('Sin juicio del editor jefe para un clip:', e.message); }
+      if (sob.size && c.juicio.veredicto === 'arreglar') { c.tramos = c.tramos.filter((_, k) => !sob.has(k + 1)); c.total = c.tramos.reduce((s, t) => s + (t[1] - t[0]), 0); c.juicio.arreglado = [...sob]; if (intento === 0) await juzgaClips([c], palabras, { reglas, intento: 1 }); }
+    } catch (e) { c.juicio = { veredicto: 'revisar', nota: null, entiendeSolo: false, problemas: ['No se pudo verificar el clip'] }; console.log('Sin juicio del editor jefe para un clip:', e.message); }
   }));
   return clips;
 }
