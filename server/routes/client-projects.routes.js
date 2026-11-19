@@ -2129,19 +2129,24 @@ router.get('/:id/pdf-presupuesto', authenticateToken, requireProyectos, async (r
     doc.font('Helvetica-Bold').fontSize(18).fillColor('#111').text('Solicitud de presupuesto', M, M);
     doc.font('Helvetica').fontSize(10).fillColor('#555').text(norm(project.listados_title || project.project_name || '') + (project.client_name ? '  ·  ' + norm(project.client_name) : '') + '  ·  ' + new Date().toLocaleDateString('es-ES'), M, doc.y + 2);
     doc.moveDown(0.6).fontSize(9).fillColor('#333').text('Rogamos nos remitan su oferta con precio unitario, plazo de entrega, condiciones de pago y garantía para los siguientes artículos. Si algún artículo no está disponible, indiquen la alternativa equivalente.', M, doc.y, { width: ancho });
-    let y = doc.y + 12; const H = 104;
+    let y = doc.y + 12;
     items.forEach((it, i) => {
+      const tw0 = ancho - 108 - 118;
+      doc.font('Helvetica-Bold').fontSize(11);
+      const nameH = doc.heightOfString(norm(it.name), { width: tw0 });
+      const notesH = it.notes ? Math.min(60, doc.font('Helvetica').fontSize(8.5).heightOfString(norm(it.notes), { width: tw0 })) : 0;
+      const H = Math.max(104, Math.ceil(9 + nameH + 14 + 14 + (notesH ? notesH + 3 : 0) + 22));
       if (y + H > doc.page.height - 50) { doc.addPage(); y = M; }
       doc.roundedRect(M, y, ancho, H, 6).lineWidth(0.7).strokeColor('#c9c9c9').stroke();
       const f = fotos[i], fx = M + 8;
       if (f) { try { doc.image(f, fx, y + 8, { fit: [88, 88], align: 'center', valign: 'center' }); } catch { /* imagen no válida */ } }
       else { doc.rect(fx, y + 8, 88, 88).fillColor('#f1f1f1').fill(); doc.fontSize(7).fillColor('#aaa').text('sin foto', fx, y + 48, { width: 88, align: 'center' }); }
       const tx = M + 108, tw = ancho - 108 - 118;
-      doc.font('Helvetica-Bold').fontSize(11).fillColor('#111').text(norm(it.name), tx, y + 9, { width: tw, height: 28, ellipsis: true });
+      doc.font('Helvetica-Bold').fontSize(11).fillColor('#111').text(norm(it.name), tx, y + 9, { width: tw });
       doc.font('Helvetica').fontSize(8.5).fillColor('#666').text([it.brand, it.category, it.code && '#' + it.code].filter(Boolean).map(norm).join('  ·  '), tx, doc.y + 1, { width: tw, height: 11, ellipsis: true });
       const specs = [it.color && 'Color/acabado: ' + norm(it.color), it.lumens && it.lumens + ' lm', it.watts && it.watts + ' W', it.color_temperature && norm(it.color_temperature), it.location && 'Ubicación: ' + norm(it.location)].filter(Boolean).join('   ');
       if (specs) doc.fontSize(8.5).fillColor('#333').text(specs, tx, doc.y + 3, { width: tw, height: 11, ellipsis: true });
-      if (it.notes) doc.fontSize(8.5).fillColor('#333').text(norm(it.notes), tx, doc.y + 3, { width: tw, height: 24, ellipsis: true });
+      if (it.notes) doc.fontSize(8.5).fillColor('#333').text(norm(it.notes), tx, doc.y + 3, { width: tw, height: 60, ellipsis: true });
       const link = /^https?:\/\//i.test(it.purchase_link || '') ? it.purchase_link : (/^https?:\/\//i.test(it.datasheet_url || '') ? it.datasheet_url : '');
       if (link) doc.fontSize(7.5).fillColor('#1a56db').text(norm(link).slice(0, 70) + (link.length > 70 ? '…' : ''), tx, y + H - 15, { width: tw, link, underline: true, lineBreak: false });
       const rx = M + ancho - 110;
