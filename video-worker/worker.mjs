@@ -238,7 +238,7 @@ async function procesa(t) {
     }
     const { plan, salida } = await preparaYoutube(archivos, dir, { objetivo: t.objetivo_segundos, tema: [t.guion, t.indicaciones].filter(Boolean).join('\n') }, (pct, texto) => paso(t, texto, { pct }));
     await paso(t, 'Guardando YouTube en calidad 1080p', { pct: 96, plan });
-    const destino = 'youtube/' + t.id + '.mp4'; await drive.cacheSube(destino, salida);
+    const destino = 'youtube/' + t.id + '.mp4'; await drive.cacheSube(destino, salida, 'ranuse-video-exports');
     await paso(t, 'YouTube listo', { estado: 'listo', pct: 100, resultado_gcs: destino, terminado: new Date().toISOString(), error: null });
     return;
   }

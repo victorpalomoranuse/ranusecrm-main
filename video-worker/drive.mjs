@@ -72,7 +72,7 @@ export async function cacheBaja(nombre, destino) {
   const { pipeline } = await import('stream/promises'); const { Readable } = await import('stream');
   await pipeline(Readable.fromWeb(r.body), fs.createWriteStream(destino)); return true;
 }
-export async function cacheSube(nombre, origen) {
-  const r = await fetch('https://storage.googleapis.com/upload/storage/v1/b/' + CUBO + '/o?uploadType=media&name=' + encodeURIComponent(nombre), { method: 'POST', duplex: 'half', headers: { Authorization: 'Bearer ' + await accesoToken(), 'Content-Type': 'video/mp4', 'Content-Length': String(fs.statSync(origen).size) }, body: fs.createReadStream(origen) });
+export async function cacheSube(nombre, origen, cubo = CUBO) {
+  const r = await fetch('https://storage.googleapis.com/upload/storage/v1/b/' + cubo + '/o?uploadType=media&name=' + encodeURIComponent(nombre), { method: 'POST', duplex: 'half', headers: { Authorization: 'Bearer ' + await accesoToken(), 'Content-Type': 'video/mp4', 'Content-Length': String(fs.statSync(origen).size) }, body: fs.createReadStream(origen) });
   if (!r.ok) throw new Error('Cache ' + r.status + ' ' + (await r.text()).slice(0, 100)); return true;
 }
