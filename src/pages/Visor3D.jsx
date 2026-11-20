@@ -4805,15 +4805,15 @@ export default function Visor3D({ cliente = false }) {
         const emisP = tx && tx.pbr && tx.pbr.emis > 0 ? tx.pbr : null, kEmis = emisP ? Math.max(0.2, emisP.emis) : 1;
         const led = esLed(val) || !!emisP, colL = emisP ? color(emisP.emisHex || tx.color || '#ffd9a0', '#ffd9a0') : color(val, '#ffd9a0');
         // cara emisiva: se ve como una tira LED (sin tonemapping, muy clara) y alumbra; los LED reales se ven casi blancos en el centro
-        const matCara = led ? new THREE.MeshBasicMaterial({ color: colL.clone().lerp(new THREE.Color(0xffffff), 0.12), toneMapped: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : mt;
+        const matCara = led ? new THREE.MeshBasicMaterial({ color: colL.clone().lerp(new THREE.Color(0xffffff), 0.3), toneMapped: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : mt;
         const me = new THREE.Mesh(geometriaExtr(o), matCara); me.castShadow = me.receiveShadow = !led; ge.add(me);
         if (selIdsRef.current.has(o.id)) ge.add(new THREE.LineSegments(new THREE.EdgesGeometry(me.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6, depthTest: false })));
         if (led && mostrarLuz) { // la cara es luz: alumbra igual que una tira LED de la herramienta LED (800 lm por metro, repartida en una franja 3 veces más ancha que la cara)
           const nn = new THREE.Vector3(...o.o3.n), uu = new THREE.Vector3(...o.o3.u), vv = new THREE.Vector3(...o.o3.v), us = o.pl.map(p => p[0]), vs = o.pl.map(p => p[1]);
           const cu = (Math.min(...us) + Math.max(...us)) / 2, cv = (Math.min(...vs) + Math.max(...vs)) / 2, wU = (Math.max(...us) - Math.min(...us)) * CM, hV = (Math.max(...vs) - Math.min(...vs)) * CM;
-          const pos = new THREE.Vector3(0, ((o.o3.y || 0) + (o.z0 || 0)) * CM, 0).addScaledVector(uu, cu * CM).addScaledVector(vv, cv * CM).addScaledVector(nn, 0.006);
+          const pos = new THREE.Vector3(0, ((o.o3.y || 0) + (o.z0 || 0)) * CM, 0).addScaledVector(uu, cu * CM).addScaledVector(vv, cv * CM).addScaledVector(nn, 0.03); // separada 3 cm de la cara para que la luz lave la pared de al lado (rasante), como una tira fresada
           const largo = Math.max(wU, hV), lw = wU < hV ? Math.max(0.03, wU * 3) : wU, lh = hV < wU ? Math.max(0.03, hV * 3) : hV;
-          luzArea(ge, pos, nn, Math.max(0.02, lw), Math.max(0.02, lh), colL, luminanciaArea(800 * largo, Math.max(0.02, lw), Math.max(0.02, lh)) * kEmis, presup, uu);
+          luzArea(ge, pos, nn, Math.max(0.02, lw), Math.max(0.02, lh), colL, luminanciaArea(800 * largo, Math.max(0.02, lw), Math.max(0.02, lh)) * kEmis * 2.5, { n: 0 }, uu); // sin el tope de luces: las caras emisivas siempre alumbran
         }
         ge.position.set(o.cx * CM, 0, o.cy * CM); ge.rotation.y = -(o.rot || 0) * Math.PI / 180;
         ge.userData.oid = o.id; ge.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
