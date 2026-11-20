@@ -64,6 +64,10 @@ Si pide cambios, parte de la imagen anterior y cambia solo lo pedido. No invente
 
 // Cuando se pide «solo la imagen»: se obliga a generar un diseño nuevo, plano y a toda la imagen, sin habitación ni pared (si no, tiende a repetir la foto de la sala)
 const PIDE_SOLO = /solo (la )?imagen|sin (la )?(pared|habitaci|entorno|fondo)|para imprimir|solo (el|la) (mural|dise|ilustra|arte)|aislad/i;
+// Cuando se pide poner objetos reales en el render (una nevera, toallas, kettlebells, plantas…): se edita el render y NO se hace un cartel ni un diseño gráfico de marca
+const PIDE_OBJETOS = /(pon|ponme|poner|pones|a[ñn]ade|a[ñn]adir|coloca|colocar|decora|decorar|mete|meter|incluye|rellena)[sS]*(nevera|frigor[ií]fic|smeg|toalla|kettlebell|pesa|mancuerna|bal[oó]n|esterilla|planta|flor|sof[aá]|sill[oó]n|silla|taburete|mesa|estanter|bal(da|dos)|botella|vaso|cuadro|l[aá]mpara|alfombra|espejo|mueble|banco|cesta|caja|libro|accesorio|objeto|cosas)/i;
+const EXTRA_OBJETOS = `
+IMPORTANTE (modo «añadir objetos al render»): el usuario quiere OBJETOS FÍSICOS REALES dentro de su render (muebles, electrodomésticos, toallas, pesas, plantas…). EDITA la imagen del render y coloca esos objetos donde dice, con luz, sombras, escala y materiales fotorrealistas y coherentes con la escena. PROHIBIDO crear un cartel, póster, anuncio, mural, ilustración, tipografía, texto, logo o composición gráfica de marca. No cambies el encuadre ni nada de lo que no pida.`;
 const FORMATOS = { vertical: '1024x1536', horizontal: '1536x1024', cuadrado: '1024x1024' };
 const EXTRA_SOLO = `
 IMPORTANTE (modo «solo el diseño»): crea una IMAGEN NUEVA que contenga ÚNICAMENTE la obra de arte del mural, vista de frente y plana (sin perspectiva), ocupando toda la imagen de borde a borde. NO incluyas ninguna pared, habitación, suelo, techo, ventana, caja, mueble, marco, sombra ni borde. No uses la foto de la sala como base: úsala solo como referencia del diseño elegido. Conserva el diseño, los colores y el texto de la idea anterior.`;
@@ -407,9 +411,10 @@ router.post('/chat', async (req, res) => {
     const contenido = [{ type: 'input_text', text: texto || 'Mira esta imagen.' }, ...imagenes.map(u => ({ type: 'input_image', image_url: u }))];
     const contexto = String(req.body?.contexto || '').trim().slice(0, 6000);
     const solo = req.body?.soloDiseno === true || PIDE_SOLO.test(texto);
-    const preguntar = req.body?.fase === 'preguntar' && !solo;
-    const modo = solo ? 'solo' : (req.body?.modo === 'libre' ? 'libre' : req.body?.modo === 'sorprende' ? 'sorprende' : 'respetar');
-    const marcaId = String(req.body?.marcaId || '');
+    const objetos = !solo && PIDE_OBJETOS.test(texto) && (imagenes.length > 0 || !!previo);
+    const preguntar = req.body?.fase === 'preguntar' && !solo && !objetos;
+    const modo = solo ? 'solo' : objetos ? 'respetar' : (req.body?.modo === 'libre' ? 'libre' : req.body?.modo === 'sorprende' ? 'sorprende' : 'respetar');
+    const marcaId = objetos ? '' : String(req.body?.marcaId || ''); // al poner objetos en el render no se aplica la marca (si no, hacía carteles)
     let ficha = '', logoUrl = null, marcaNombre = ''; if (marcaId) { const m = (await leerMarcas()).find(x => x.id === marcaId); if (m) { marcaNombre = m.nombre; if (!preguntar) logoUrl = await logoDe(m).catch(() => null); ficha = '\n\nMARCA DEL CLIENTE (obligatoria: toda idea debe ser reconocible como de esta marca, con su paleta, su tono y sus materiales; nunca uses colores o estilos que la marca desaconseje). Marca «' + m.nombre + '»:\n' + m.ficha + (m.logo ? '\n\nEl logo oficial de la marca está guardado y se usará tal cual.' : '\n\nNo hay logo oficial guardado: no inventes uno ni dibujes uno «parecido»; si la idea lo necesita, deja el hueco o pide que lo adjunten.'); } }
     if (logoUrl) { contenido[0].text += '\n\n(Última imagen adjunta = LOGO OFICIAL de ' + (marcaNombre || 'la marca') + '. Si el diseño lleva logo, colócalo EXACTAMENTE así: misma forma, proporciones, letras y colores. Prohibido redibujarlo, deformarlo o inventar otro.)'; contenido.push({ type: 'input_image', image_url: logoUrl }); }
     const hayBase = imagenes.length > 0 || !!previo; // hay un render/imagen sobre el que trabajar
@@ -421,6 +426,7 @@ router.post('/chat', async (req, res) => {
     const base = { ...minima, quality: process.env.OPENAI_IMAGE_QUALITY || 'high', ...(hayBase && modo !== 'libre' ? { input_fidelity: 'high' } : {}) };
     const transp = solo && req.body?.transparente === true;
     const herramienta = solo ? { ...base, action: 'generate', ...(tam ? { size: tam } : {}), ...(transp ? { background: 'transparent', output_format: 'png' } : {}) } : (hayBase ? { ...base, action: 'edit' } : base);
+    if (objetos) contenido[0].text += EXTRA_OBJETOS;
     if (solo) contenido[0].text += EXTRA_SOLO + (transp ? ' Sin fondo: el fondo debe ser totalmente transparente (solo el dibujo, recortado).' : '');
 
     const llama = async (modelo, extra = '', simple = false, textoUsuario = null) => {
