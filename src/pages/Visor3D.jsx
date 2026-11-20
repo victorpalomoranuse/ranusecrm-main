@@ -1276,6 +1276,12 @@ function luzLedObjeto(g, o, presup, amb) {
   luzArea(g, new THREE.Vector3(...cfg[0]), new THREE.Vector3(...cfg[1]), cfg[2], cfg[3], col, 8 * amb, presup);
 }
 // Tira LED: cinta luminosa que sigue un recorrido y alumbra de verdad hacia donde se le indique
+// Baja una imagen (por ejemplo el render de la nube) y la devuelve como JPEG en data-URL, de hasta 2400 px de ancho, lista para guardarla en la galería
+async function urlAJpegDataUrl(url, ancho = 2400) {
+  const bl = await (await fetch(url)).blob(), bm = await createImageBitmap(bl), k = Math.min(1, ancho / bm.width), cv = document.createElement('canvas');
+  cv.width = Math.round(bm.width * k); cv.height = Math.round(bm.height * k); cv.getContext('2d').drawImage(bm, 0, 0, cv.width, cv.height);
+  return cv.toDataURL('image/jpeg', 0.9);
+}
 function construirLed(o, presup, amb, seleccionado, iluminado, emis) {
   const g = new THREE.Group(), pts = o.pts || [], L = o.led || { ancho: 1.2, k: 3000, lm: 800, dir: 'abajo' }; if (pts.length < 2) return g;
   const n = pts.length, m = L.cerrado ? n : n - 1, y = (o.z0 ?? 250) * CM, ancho = Math.max(0.3, L.ancho) * CM, hex = /^#[0-9a-fA-F]{6}$/.test(o.color || '') ? o.color : kelvinHex(L.k), col = new THREE.Color(hex); // si la tira tiene un color elegido, manda sobre la temperatura
@@ -2508,6 +2514,7 @@ export default function Visor3D({ cliente = false }) {
       { const m = marcoRender(); if (m && info.camara) { info.camara.aspect = m.r; info.camara.fov = 2 * Math.atan(Math.tan((info.camara.fov * Math.PI) / 360) * (m.bh / m.H)) * 180 / Math.PI; } } // el render sale con el encuadre elegido
       const url = await enviarARenderNube({ glb: new Blob([buf], { type: 'model/gltf-binary' }), info, calidad, exposicion: 3, alAvanzar: t => setNube({ estado: 'trabajando', texto: t }) });
       setNube({ estado: 'listo', url });
+      urlAJpegDataUrl(url).then(d => guardarRender('hd', d, metaActual(), 'Render realista')).catch(() => { /* si no se puede guardar solo, queda el botón de descargar */ }); // se guarda solo en la galería
     } catch (e) { setNube({ estado: 'error', texto: e.message || 'No se pudo hacer el render' }); }
   };
   const [guardado, setGuardado] = useState('');
