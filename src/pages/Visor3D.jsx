@@ -328,7 +328,7 @@ function aplicaEspejos(scene, renderActivo) {
             m.customProgramCacheKey = () => 'ajcolor2';
           }
         }
-        if (P.emis > 0) { m.emissive.set(P.emisHex || P.tinte || 0xffffff); m.emissiveIntensity = renderActivo ? Math.min(3000, P.emis * 4 / Math.max(1e-4, EXPO_R.v)) : 0; m.userData.emisPbr = true; m.userData.emisK = P.emis; }
+        if (P.emis > 0) { m.emissive.set(P.emisHex || P.tinte || 0xffffff); m.emissiveIntensity = renderActivo ? Math.min(3000, P.emis * 4 * kLumEm(m.emissive) / Math.max(1e-4, EXPO_R.v)) : 0; m.userData.emisPbr = true; m.userData.emisK = P.emis; }
         else if (m.userData.emisPbr) { m.emissive.setHex(0x000000); m.emissiveIntensity = 1; m.userData.emisPbr = false; }
         // mapas PBR: se vuelven a crear solo si cambia el tiling, el giro o los archivos
         const B = m.map, alt = B.userData.mapsAlt || {}, clave = JSON.stringify(mp || {}) + '|' + B.repeat.x + ',' + B.repeat.y + '|' + B.rotation + '|' + B.offset.x + ',' + B.offset.y;
@@ -1176,6 +1176,8 @@ const KGLOBAL = { luces: null };
 const LED_HDR = { k: 1 };
 // Exposición actual del renderer (en Render es diminuta, ≈0,007): la emisión de un material debe compensarla para verse
 const EXPO_R = { v: 1 };
+// Factor de emisión que no depende de lo oscuro que sea el color: todos los materiales emisivos llegan al mismo brillo y por eso todos hacen bloom por igual
+const kLumEm = c => 1 / Math.max(0.3, 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b);
 function kelvinColor(K) {
   const t = Math.max(1000, Math.min(12000, K)) / 100, cl = v => Math.max(0, Math.min(255, v));
   const r = t <= 66 ? 255 : cl(329.698727446 * Math.pow(t - 60, -0.1332047592)), g = t <= 66 ? cl(99.4708025861 * Math.log(t) - 161.1195681661) : cl(288.1221695283 * Math.pow(t - 60, -0.0755148492)), b = t >= 66 ? 255 : (t <= 19 ? 0 : cl(138.5177312231 * Math.log(t - 10) - 305.0447927307));
@@ -4099,7 +4101,7 @@ export default function Visor3D({ cliente = false }) {
     a.renderer.toneMappingExposure = modelando ? 1 : ambiente.exposicion / (1.2 * Math.pow(2, ambiente.ev ?? 7));
     if (a.bloom) a.bloom.threshold = 2 / Math.max(0.0001, a.renderer.toneMappingExposure);
     EXPO_R.v = a.renderer.toneMappingExposure;
-    a.scene.traverse(o => { const mm = o.material; if (mm && !Array.isArray(mm) && mm.userData && mm.userData.emisPbr && mm.userData.emisK > 0) mm.emissiveIntensity = modelando ? 0 : Math.min(3000, mm.userData.emisK * 4 / Math.max(1e-4, a.renderer.toneMappingExposure)); }); // la emisión de los materiales del panel se reescala con la exposición
+    a.scene.traverse(o => { const mm = o.material; if (mm && !Array.isArray(mm) && mm.userData && mm.userData.emisPbr && mm.userData.emisK > 0) mm.emissiveIntensity = modelando ? 0 : Math.min(3000, mm.userData.emisK * 4 * kLumEm(mm.emissive) / Math.max(1e-4, a.renderer.toneMappingExposure)); }); // la emisión de los materiales del panel se reescala con la exposición
     a.esc?.traverse(o => { const m = o.material; if (m && m.userData && m.userData.ledFaceBase) m.color.copy(m.userData.ledFaceBase).multiplyScalar(modelando ? 1 : Math.min(2000, 0.7 / Math.max(1e-5, a.renderer.toneMappingExposure))); });
     // Cielo y suelo del Render: el cielo cambia con la hora (azul de día, naranja al atardecer, oscuro de noche) y el suelo exterior es de tierra, no blanco
     {
