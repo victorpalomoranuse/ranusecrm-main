@@ -9286,7 +9286,27 @@ export default function Visor3D({ cliente = false }) {
             <button style={{ ...btn, padding: '4px 8px' }} onClick={() => { const hay = objs.some(o => !o.bloqueado); setObjs(prev => prev.map(o => ({ ...o, bloqueado: hay ? true : undefined }))); setAviso(hay ? 'Todos los objetos bloqueados 🔒: ya no se mueven por accidente.' : 'Todos los objetos desbloqueados.'); }} title="Bloquea o desbloquea todos los objetos del plano de una vez">{objs.some(o => !o.bloqueado) ? '🔒 Bloquear todos' : '🔓 Desbloquear todos'}</button>
           </div>
           {!['zona', 'falsotecho', 'barrido', 'carril', 'led', 'logo', 'imagen', 'extr'].includes(objSel.tipo) && botonProp()}
-          {objSel.tipo === 'extr' && Array.isArray(objSel.pl) && objSel.o3 && (() => { const m = dimsExtr(objSel); return <div style={{ margin: '4px 0 8px', padding: '6px 8px', background: '#2a2724', borderRadius: 6 }}><div style={{ opacity: 0.6, fontSize: 11 }}>Medidas reales (X × Z × alto)</div><div style={{ fontWeight: 700 }}>{m.w} × {m.d} × {m.alto} cm</div><div style={{ opacity: 0.5, fontSize: 10, marginTop: 2 }}>Para cambiarlas usa Empujar/Tirar en Modelar (o escribe la medida y Enter).</div></div>; })()}
+          {objSel.tipo === 'extr' && Array.isArray(objSel.pl) && objSel.o3 && (() => { const m = dimsExtr(objSel); return <div style={{ margin: '4px 0 8px', padding: '6px 8px', background: '#2a2724', borderRadius: 6 }}><div style={{ opacity: 0.6, fontSize: 11 }}>Medidas reales (X × Z × alto)</div><div style={{ fontWeight: 700 }}>{m.w} × {m.d} × {m.alto} cm</div><div style={{ opacity: 0.5, fontSize: 10, marginTop: 2 }}>Cambia el tamaño aquí abajo (sin empujar) o da volumen con Empujar/Tirar.</div></div>; })()}
+          {objSel.tipo === 'extr' && Array.isArray(objSel.pl) && objSel.o3 && (() => {
+            const vert = Math.abs(objSel.o3.n[1]) < 0.5, nom = vert ? ['Ancho', 'Alto'] : ['Largo (X)', 'Fondo (Z)'];
+            const ext = eje => { const v = objSel.pl.map(p => p[eje]); return Math.max(...v) - Math.min(...v); };
+            const aplica = (eje, nuevo) => {
+              if (!(nuevo > 0)) return; const mn = Math.min(...objSel.pl.map(p => p[eje])), e0 = ext(eje); if (e0 <= 0) return; const k = nuevo / e0;
+              const pl2 = objSel.pl.map(p => { const q = [...p]; q[eje] = mn + (p[eje] - mn) * k; return q; }), dm = dimsExtr({ ...objSel, pl: pl2 });
+              cambiar(objSel.id, { pl: pl2, w: dm.w, d: dm.d, alto: dm.alto });
+            };
+            return (<div style={{ marginBottom: 8 }}>
+              {[0, 1].map(eje => (
+                <label key={eje + '-' + Math.round(ext(eje) * 10)} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <span style={{ width: 70, opacity: 0.7 }}>{nom[eje]}</span>
+                  <input type="number" step="0.5" min="0.1" disabled={!modelado} title={modelado ? 'Escribe la medida en cm y pulsa Enter' : 'Para cambiarla entra en el espacio Modelar'} defaultValue={Math.round(ext(eje) * 10) / 10} style={{ ...btn, width: 90, opacity: modelado ? 1 : 0.5 }}
+                    onBlur={e => aplica(eje, parseFloat(e.target.value))} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
+                  <span style={{ opacity: 0.5, fontSize: 11 }}>cm</span>
+                </label>
+              ))}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 70, opacity: 0.7 }}>Grosor</span><input key={'g' + (objSel.dist || 0)} type="number" step="0.5" disabled={!modelado} defaultValue={Math.round((objSel.dist || 0) * 10) / 10} style={{ ...btn, width: 90, opacity: modelado ? 1 : 0.5 }} onBlur={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) { const dm = dimsExtr({ ...objSel, dist: v }); cambiar(objSel.id, { dist: v, w: dm.w, d: dm.d, alto: dm.alto }); } }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} /><span style={{ opacity: 0.5, fontSize: 11 }}>cm (0 = cara plana)</span></label>
+            </div>);
+          })()}
           {[['cx', 'Posición X'], ['cy', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Altura desde suelo'], ['rot', 'Giro °']].filter(([k]) => {
             const t = objSel.tipo;
             if (t === 'extr') return k === 'cx' || k === 'cy' || k === 'z0';
