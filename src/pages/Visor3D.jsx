@@ -2273,7 +2273,7 @@ export default function Visor3D({ cliente = false }) {
   // el modo Realista nunca arranca solo (es lo más pesado del visor): se enciende a mano cuando se quiere mirar o renderizar
   const [espacio, setEspacio] = useState('modelar');
   const modoRender = espacio === 'render' && !cliente;
-  LED_HDR.k = modoRender ? 3.5 : 1;
+  LED_HDR.k = 1;
   const modelado = espacio === 'modelado' && !cliente; // espacio «Modelar»: dibujar, extruir y mover como en SketchUp; lo que se hace aquí queda bloqueado en 3D y en Render
   const espacioRef = useRef(espacio); espacioRef.current = modelado ? 'modelado' : espacio;
   const puedeMoverObj = o => !!o && o.modelado === true && espacioRef.current === 'modelado'; // solo se mueven y deforman las formas modeladas, y solo en el espacio Modelar
@@ -4803,7 +4803,7 @@ export default function Visor3D({ cliente = false }) {
         ledEm(mt, val);
         const led = esLed(val), colL = color(val, '#ffd9a0');
         // cara emisiva: se ve como una tira LED (sin tonemapping, muy clara) y alumbra; los LED reales se ven casi blancos en el centro
-        const matCara = led ? new THREE.MeshBasicMaterial({ color: colL.clone().lerp(new THREE.Color(0xffffff), 0.45).multiplyScalar(LED_HDR.k), toneMapped: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : mt;
+        const matCara = led ? new THREE.MeshBasicMaterial({ color: colL.clone().lerp(new THREE.Color(0xffffff), 0.08), toneMapped: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : mt;
         const me = new THREE.Mesh(geometriaExtr(o), matCara); me.castShadow = me.receiveShadow = !led; ge.add(me);
         if (selIdsRef.current.has(o.id)) ge.add(new THREE.LineSegments(new THREE.EdgesGeometry(me.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6, depthTest: false })));
         if (led && Math.abs(o.dist || 0) < 0.05) { // cara plana emisiva: luz real hacia donde mira y un brillo suave alrededor, como las tiras LED
