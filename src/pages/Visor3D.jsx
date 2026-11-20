@@ -4096,6 +4096,7 @@ export default function Visor3D({ cliente = false }) {
     }
     a.renderer.toneMappingExposure = modelando ? 1 : ambiente.exposicion / (1.2 * Math.pow(2, ambiente.ev ?? 7));
     if (a.bloom) a.bloom.threshold = 2 / Math.max(0.0001, a.renderer.toneMappingExposure);
+    a.esc?.traverse(o => { const m = o.material; if (m && m.userData && m.userData.ledFaceBase) m.color.copy(m.userData.ledFaceBase).multiplyScalar(modelando ? 1 : Math.min(2000, 0.7 / Math.max(1e-5, a.renderer.toneMappingExposure))); });
     // Cielo y suelo del Render: el cielo cambia con la hora (azul de día, naranja al atardecer, oscuro de noche) y el suelo exterior es de tierra, no blanco
     {
       const sc = a.scene, ud = sc.userData, tt = Math.max(0, Math.min(1, (hora - 6) / 15)), el = modelando ? 1 : ((hora <= 6 || hora >= 21) ? 0 : Math.sin(Math.PI * tt));
@@ -4806,7 +4807,9 @@ export default function Visor3D({ cliente = false }) {
         const emisP = tx && tx.pbr && tx.pbr.emis > 0 ? tx.pbr : null, kEmis = emisP ? Math.max(0.2, emisP.emis) : 1;
         const led = esLed(val) || !!emisP, colL = emisP ? color(emisP.emisHex || tx.color || '#ffd9a0', '#ffd9a0') : color(val, '#ffd9a0');
         // cara emisiva: se ve como una tira LED (sin tonemapping, muy clara) y alumbra; los LED reales se ven casi blancos en el centro
-        const matCara = led ? new THREE.MeshBasicMaterial({ color: colL.clone().lerp(new THREE.Color(0xffffff), 0.3), toneMapped: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : mt;
+        const baseCara = colL.clone().lerp(new THREE.Color(0xffffff), 0.3), kExp = modoRender ? Math.min(2000, 0.7 / Math.max(1e-5, ambiente.exposicion / (1.2 * Math.pow(2, ambiente.ev ?? 7)))) : 1;
+        const matCara = led ? new THREE.MeshBasicMaterial({ color: baseCara.clone().multiplyScalar(kExp), toneMapped: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : mt;
+        if (led) matCara.userData.ledFaceBase = baseCara;
         const me = new THREE.Mesh(geometriaExtr(o), matCara); me.castShadow = me.receiveShadow = !led; ge.add(me);
         if (selIdsRef.current.has(o.id)) ge.add(new THREE.LineSegments(new THREE.EdgesGeometry(me.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6, depthTest: false })));
         if (led && mostrarLuz) { // la cara es luz: alumbra igual que una tira LED de la herramienta LED (800 lm por metro, repartida en una franja 3 veces más ancha que la cara)
