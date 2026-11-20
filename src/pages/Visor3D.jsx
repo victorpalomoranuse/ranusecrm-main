@@ -328,7 +328,7 @@ function aplicaEspejos(scene, renderActivo) {
             m.customProgramCacheKey = () => 'ajcolor2';
           }
         }
-        if (P.emis > 0) { m.emissive.set(P.emisHex || P.tinte || 0xffffff); m.emissiveIntensity = renderActivo ? Math.min(3000, P.emis / Math.max(1e-4, EXPO_R.v)) : 0; m.userData.emisPbr = true; m.userData.emisK = P.emis; }
+        if (P.emis > 0) { m.emissive.set(P.emisHex || P.tinte || 0xffffff); m.emissiveIntensity = renderActivo ? Math.min(3000, P.emis * 4 / Math.max(1e-4, EXPO_R.v)) : 0; m.userData.emisPbr = true; m.userData.emisK = P.emis; }
         else if (m.userData.emisPbr) { m.emissive.setHex(0x000000); m.emissiveIntensity = 1; m.userData.emisPbr = false; }
         // mapas PBR: se vuelven a crear solo si cambia el tiling, el giro o los archivos
         const B = m.map, alt = B.userData.mapsAlt || {}, clave = JSON.stringify(mp || {}) + '|' + B.repeat.x + ',' + B.repeat.y + '|' + B.rotation + '|' + B.offset.x + ',' + B.offset.y;
@@ -2404,7 +2404,7 @@ export default function Visor3D({ cliente = false }) {
   const fxActivo = (fx.bloom || 0) > 0 || fx.contraste !== 1 || fx.saturacion !== 1 || fx.calidez !== 0 || fx.vineta > 0 || fx.exp !== 0 || fx.realce !== 0 || fx.sombra !== 0 || fx.bb !== 6500 || fx.tinte !== 0;
   useEffect(() => { try { localStorage.setItem('visor3dFx', JSON.stringify(fx)); localStorage.setItem('visor3dRes', String(resRender)); } catch { /* sin almacenamiento */ } }, [fx, resRender]);
   useEffect(() => {
-    const a = api3d.current; if (a.bloom) a.bloom.strength = Math.min(2, Math.max(0, fx.bloom || 0)); if (a.gradeU) { const u = a.gradeU; u.contraste.value = fx.contraste; u.saturacion.value = fx.saturacion; u.calidez.value = fx.calidez; u.vineta.value = fx.vineta; u.exposure.value = fx.exp; u.highlights.value = fx.realce; u.shadows.value = fx.sombra; u.wb.value = wbVec(fx.bb, fx.tinte); }
+    const a = api3d.current; if (a.bloom) a.bloom.strength = Math.min(2, Math.max(0.3, fx.bloom || 0)); if (a.gradeU) { const u = a.gradeU; u.contraste.value = fx.contraste; u.saturacion.value = fx.saturacion; u.calidez.value = fx.calidez; u.vineta.value = fx.vineta; u.exposure.value = fx.exp; u.highlights.value = fx.realce; u.shadows.value = fx.sombra; u.wb.value = wbVec(fx.bb, fx.tinte); }
     a.despertar?.();
   }, [fx, realista, estado]);
   // Óptica: ángulo de visión vertical de la cámara (como el objetivo de una cámara). Menos grados = más zoom y menos deformación; más grados = gran angular
@@ -4099,7 +4099,7 @@ export default function Visor3D({ cliente = false }) {
     a.renderer.toneMappingExposure = modelando ? 1 : ambiente.exposicion / (1.2 * Math.pow(2, ambiente.ev ?? 7));
     if (a.bloom) a.bloom.threshold = 2 / Math.max(0.0001, a.renderer.toneMappingExposure);
     EXPO_R.v = a.renderer.toneMappingExposure;
-    a.scene.traverse(o => { const mm = o.material; if (mm && !Array.isArray(mm) && mm.userData && mm.userData.emisPbr && mm.userData.emisK > 0) mm.emissiveIntensity = modelando ? 0 : Math.min(3000, mm.userData.emisK / Math.max(1e-4, a.renderer.toneMappingExposure)); }); // la emisión de los materiales del panel se reescala con la exposición
+    a.scene.traverse(o => { const mm = o.material; if (mm && !Array.isArray(mm) && mm.userData && mm.userData.emisPbr && mm.userData.emisK > 0) mm.emissiveIntensity = modelando ? 0 : Math.min(3000, mm.userData.emisK * 4 / Math.max(1e-4, a.renderer.toneMappingExposure)); }); // la emisión de los materiales del panel se reescala con la exposición
     a.esc?.traverse(o => { const m = o.material; if (m && m.userData && m.userData.ledFaceBase) m.color.copy(m.userData.ledFaceBase).multiplyScalar(modelando ? 1 : Math.min(2000, 0.7 / Math.max(1e-5, a.renderer.toneMappingExposure))); });
     // Cielo y suelo del Render: el cielo cambia con la hora (azul de día, naranja al atardecer, oscuro de noche) y el suelo exterior es de tierra, no blanco
     {
@@ -4226,7 +4226,7 @@ export default function Visor3D({ cliente = false }) {
       }
       if (modoRender && !GL_SOFTWARE && calidad !== 'baja') {
         // Extrae las altas luces antes de comprimir el rango de color para la pantalla.
-        a.bloom = new UnrealBloomPass(sz, Math.min(2, Math.max(0, fx.bloom || 0)), 0.1, 2 / Math.max(0.0001, a.renderer.toneMappingExposure));
+        a.bloom = new UnrealBloomPass(sz, Math.min(2, Math.max(0.3, fx.bloom || 0)), 0.3, 2 / Math.max(0.0001, a.renderer.toneMappingExposure));
         comp.addPass(a.bloom);
       }
       comp.addPass(new OutputPass());
