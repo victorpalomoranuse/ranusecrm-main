@@ -38,6 +38,7 @@ import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import apiReal from '../services/api';
+import { crearModelador, geometriaExtr } from '../components/modelar3d';
 // En modo cliente (enlace público del recorrido) el visor solo lee: el plano sale del enlace firmado y cualquier escritura se rechaza
 let api = apiReal;
 const crearApiCliente = (id, firma) => {
@@ -2303,7 +2304,8 @@ export default function Visor3D({ cliente = false }) {
   const selExtraKey = selExtra.join(',');
   const ocultarRef = useRef(null);
   useEffect(() => { api3d.current.despertar?.(); }); // cualquier cambio en la pantalla (estado de React) vuelve a dibujar un momento
-  const [herr, setHerr] = useState('sel');         // 'sel' | 'caja'
+  const [herr, setHerr] = useState('sel');
+  useEffect(() => { const m = api3d.current.modelador; if (!m) return; if (herr === 'dibCara') m.herramientaElegida(); else m.salir(); }, [herr]);         // 'sel' | 'caja'
   const herrRef = useRef('sel');
   const entrarAlzadoRef = useRef(null);
   const [bibAbierta, setBibAbierta] = useState(false);
@@ -3174,6 +3176,8 @@ export default function Visor3D({ cliente = false }) {
       return o && o.visible ? o : null;
     };
     let arrastre = null, trazo = null, previa = null;
+    const modelador = crearModelador({ scene, cam, dom, rayo, raiz, esc, ctrl, snap, setObjs, setSelObj, setMedida: setMedidaMuro, setAviso, getObjs: () => objsRef.current, getHerr: () => herrRef.current, setHerr, getForma: () => formaRef.current, puntosForma, impactoVisible });
+    api3d.current.modelador = modelador;
     let poli = [], poliLinea = null, poliAbajo = null, poliIniDown = false, empuje = null, escrito = '', ultCur = null;
     // Mayús = recto (sigue el eje más cercano al último punto), salvo en rectángulos y círculos
     // Flechas (como SketchUp): → bloquea al eje rojo (X), ← al verde (Y), ↓ lo libera. Volver a pulsar la misma flecha también lo libera.
@@ -3281,6 +3285,7 @@ export default function Visor3D({ cliente = false }) {
     };
     const onTecla = e => {
       if (cliente) return;
+      if (!enCampo(e) && api3d.current.modelador?.key(e)) return;
       if (herrRef.current === 'focoC' && (e.key === 'Escape' || e.key === 'Enter')) { setHerr('sel'); return; }
       if (herrRef.current === 'muro' && (e.key === 'Escape' || e.key === 'Enter')) { terminarMuros(); return; }
       if (herrRef.current === 'luz' && e.key === 'Escape') { setHerr('sel'); return; }
@@ -3390,6 +3395,7 @@ export default function Visor3D({ cliente = false }) {
     };
     const onDownD = e => {
       if (e.button !== 0) return;
+      if (api3d.current.modelador?.down(e)) { e.stopPropagation(); return; }
       if (herrRef.current === 'pincel' || herrRef.current === 'gotero') return;
       if (esPoli(herrRef.current)) {
         poliAbajo = [e.clientX, e.clientY]; poliIniDown = false;
@@ -3481,6 +3487,7 @@ export default function Visor3D({ cliente = false }) {
       e.stopPropagation();
     };
     const onMoveD = e => {
+      if (api3d.current.modelador?.move(e)) return;
       if (vertDrag) {
         const ob = vertDrag.ob, esf = vertDrag.esfera, r = dom.getBoundingClientRect();
         p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -3565,6 +3572,7 @@ export default function Visor3D({ cliente = false }) {
       }
     };
     const onUpD = e => {
+      if (api3d.current.modelador?.up(e)) return;
       if (vertDrag) { const vd = vertDrag; vertDrag = null; ctrl.enabled = true; if (vd.p) setObjs(prev => prev.map(x => (x.id === vd.id ? { ...x, pts: x.pts.map((q, i) => (i === vd.idx ? vd.p : q)) } : x))); return; }
       if (focoAbajo) {
         const d0 = Math.hypot(e.clientX - focoAbajo[0], e.clientY - focoAbajo[1]); focoAbajo = null;
@@ -4775,6 +4783,23 @@ export default function Visor3D({ cliente = false }) {
         a.esc.add(gm);
         return;
       }
+      if (o.tipo === 'extr' && Array.isArray(o.pl) && o.pl.length >= 3 && o.o3) {
+        const ge = new THREE.Group(), val = o.color, mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#9aa3ad'), roughness: 0.55, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, emissive: selIdsRef.current.has(o.id) ? 0x335577 : 0x000000 });
+        const tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
+        if (tx) { const mp = texturaDe(tx, true).clone(); mp.needsUpdate = true; mp.repeat.set(1 / Math.max(10, tx.tam), 1 / Math.max(10, tx.tamH || tx.tam)); mt.map = mp; mt.color.setHex(0xffffff); }
+        ledEm(mt, val);
+        const me = new THREE.Mesh(geometriaExtr(o), mt); me.castShadow = me.receiveShadow = !esLed(val); ge.add(me);
+        if (selIdsRef.current.has(o.id)) ge.add(new THREE.LineSegments(new THREE.EdgesGeometry(me.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6, depthTest: false })));
+        if (mostrarLuz && esLed(val) && Math.abs(o.dist || 0) < 0.05) { // cara emisiva (tira LED dibujada): alumbra de verdad hacia donde mira
+          const nn = new THREE.Vector3(...o.o3.n), uu = new THREE.Vector3(...o.o3.u), cu = (Math.min(...o.pl.map(p => p[0])) + Math.max(...o.pl.map(p => p[0]))) / 2, cv = (Math.min(...o.pl.map(p => p[1])) + Math.max(...o.pl.map(p => p[1]))) / 2;
+          const pos = new THREE.Vector3(0, ((o.o3.y || 0) + (o.z0 || 0)) * CM, 0).addScaledVector(uu, cu * CM).addScaledVector(new THREE.Vector3(...o.o3.v), cv * CM).addScaledVector(nn, 0.004);
+          luzArea(ge, pos, nn, Math.max(0.02, o.w * CM), Math.max(0.02, o.d * CM), color(val, '#ffffff'), 8, presup, uu);
+        }
+        ge.position.set(o.cx * CM, 0, o.cy * CM); ge.rotation.y = -(o.rot || 0) * Math.PI / 180;
+        ge.userData.oid = o.id; ge.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
+        a.esc.add(ge);
+        return;
+      }
       const w = o.w * CM, d = o.d * CM, h = o.alto * CM;
       const g = new THREE.Group();
       const mod = modeloDe(o);
@@ -5452,6 +5477,9 @@ export default function Visor3D({ cliente = false }) {
     { g: 'Herramientas', n: 'Círculo', k: 'C', t: 'c', f: () => { setFormaDib('oval'); setHerr('poli'); } },
     { g: 'Herramientas', n: 'Polígono', k: 'G', t: 'g', f: () => { setFormaDib('poli'); setHerr('poli'); } },
     { g: 'Herramientas', n: 'Arco (3 clics: inicio, final y por dónde curva)', k: '', f: () => { setFormaDib('arco'); setHerr('poli'); } },
+    { g: 'Herramientas', n: 'Rectángulo sobre una cara', k: 'E', t: 'e', f: () => { setFormaDib('rect'); setHerr('dibCara'); } },
+    { g: 'Herramientas', n: 'Círculo sobre una cara', k: '', f: () => { setFormaDib('oval'); setHerr('dibCara'); } },
+    { g: 'Herramientas', n: 'Polígono sobre una cara', k: '', f: () => { setFormaDib('poli'); setHerr('dibCara'); } },
     { g: 'Herramientas', n: 'Empujar / Tirar', k: 'P', t: 'p', f: () => setHerr('empujar') },
     { g: 'Herramientas', n: 'Muro', k: 'M', t: 'm', f: () => setHerr('muro') },
     { g: 'Herramientas', n: 'Zona en el suelo', k: 'Z', t: 'z', f: () => setHerr('zonaS') },
@@ -6606,7 +6634,7 @@ export default function Visor3D({ cliente = false }) {
   };
   const menuRail = (abierto, setAbierto, boton, contenido, ancho) => <MenuRail key={'m' + (boton.key || '')} abierto={abierto} ancho={ancho} boton={boton}>{contenido}</MenuRail>;
   const AYUDA_HERR = {
-    sel: null, caja: ['Caja', 'Arrastra sobre el suelo para dibujar el rectángulo · Para girar la vista: pulsa la rueda y muévelo'], poli: ['Dibujar forma', 'Rectángulo y círculo: arrastra · Polígono: clic a clic, Enter cierra · después tira hacia arriba para darle altura'], empujar: ['Empujar/Tirar', 'Arrastra la cara de arriba de la forma para darle altura'],
+    sel: null, caja: ['Caja', 'Arrastra sobre el suelo para dibujar el rectángulo · Para girar la vista: pulsa la rueda y muévelo'], poli: ['Dibujar forma', 'Rectángulo y círculo: arrastra · Polígono: clic a clic, Enter cierra · después tira hacia arriba para darle altura'], dibCara: ['Dibujar sobre una cara', 'Toca una cara (suelo, techo, pared, objeto) y dibuja ahí · Flechas antes del primer clic: ↑ plano horizontal · → vertical rojo · ← vertical verde · ↓ libre · Puedes escribir medidas (ancho;alto) y Enter'], empujar: ['Empujar/Tirar', 'Arrastra la cara de arriba de la forma para darle altura · En formas dibujadas sobre una cara: tira en su propia dirección y escribe la medida + Enter'],
     muro: ['Muro', 'Clic para empezar y cada punto; Mayús = recto; Enter termina'], zonaS: ['Zona en suelo', 'Clic punto a punto; Enter cierra'], zonaT: ['Zona en techo', 'Clic punto a punto; Enter cierra'], zonaP: ['Zona en pared', 'Clic punto a punto sobre una pared; Enter cierra'],
     vistaM: ['Alzado de un muro', 'Pulsa el muro del que quieres ver el alzado (vista de frente) para dibujar y colocar materiales'], vistaS: ['Planta de un suelo', 'Pulsa el suelo del que quieres ver la planta (vista desde arriba)'], vistaT: ['Planta de un techo', 'Pulsa el suelo de la sala de la que quieres ver el techo desde abajo'],
     revest: ['Revestimiento', 'Pulsa el muro donde lo quieres (Mayús = seguir poniéndolo en más muros). Después ajustas las medidas en la ficha'],
@@ -6984,7 +7012,7 @@ export default function Visor3D({ cliente = false }) {
           ))}
         </div>
       )}
-      <div ref={caja} data-vista="1" style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
+      <div ref={caja} data-vista="1" style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'dibCara', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
       {!cliente && limitadasN > 0 && limiteTri < 1e9 && (
         <div style={{ position: 'absolute', left: '50%', bottom: 14, transform: 'translateX(-50%)', zIndex: 6, display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(22,20,18,0.92)', color: '#fff', borderRadius: 12, padding: '8px 14px', fontSize: 12.5, boxShadow: '0 4px 16px rgba(0,0,0,0.4)', maxWidth: '92%' }}>
           <span>⚡ {limitadasN} máquina{limitadasN > 1 ? 's' : ''} se han dejado como caja para que la página vaya fluida (demasiados detalles a la vez). Seleccionar una máquina carga su modelo.</span>
@@ -7158,6 +7186,8 @@ export default function Visor3D({ cliente = false }) {
           railBtn(herr === 'poli' && formaDib === 'rect', 'rect', 'Rectángulo', 'Dibuja un rectángulo sobre el suelo (y tira hacia arriba para darle altura) o sobre una pared: haz el primer clic en la pared', () => { setFormaDib('rect'); setHerr('poli'); }),
           railBtn(herr === 'poli' && formaDib === 'oval', 'circ', 'Círculo', 'Dibuja un círculo o elipse sobre el suelo (y tira hacia arriba) o sobre una pared: haz el primer clic en la pared', () => { setFormaDib('oval'); setHerr('poli'); }),
           railBtn(herr === 'poli' && formaDib === 'poli', 'poli', 'Polígono', 'Clic punto a punto; cierra con Enter. Luego tira hacia arriba para darle altura', () => { setFormaDib('poli'); setHerr('poli'); }),
+          railBtn(herr === 'dibCara' && formaDib === 'rect', 'rect', 'Rect. en cara', 'Rectángulo sobre CUALQUIER cara (techo, pared, objeto…) como en SketchUp. Antes del primer clic: ↑ plano horizontal · → vertical rojo · ← vertical verde. Escribe ancho;alto y Enter', () => { setFormaDib('rect'); setHerr('dibCara'); }),
+          railBtn(herr === 'dibCara' && formaDib === 'poli', 'poli', 'Forma en cara', 'Polígono sobre cualquier cara: clic punto a punto, Enter cierra. Flechas: bloquean el plano y la dirección', () => { setFormaDib('poli'); setHerr('dibCara'); }),
           railBtn(herr === 'empujar', 'empujar', 'Empujar', 'Arrastra la cara de arriba de una forma para darle o cambiarle la altura', () => setHerr('empujar')),
           menuRail(sigueMenu, setSigueMenu, railBtn(herr === 'sigue' || sigueMenu, 'sigue', 'Sígueme', 'Un perfil recorre un camino: rodapiés, molduras, tubos, bandejas…', () => setSigueMenu(v => !v)), (<>
             <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Elige el perfil y dibuja el camino en el suelo (Enter termina; volver al primer punto cierra en lazo)</div>
@@ -9322,6 +9352,18 @@ export default function Visor3D({ cliente = false }) {
                 {!Lk.empotrado && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Alumbra hacia</span><select value={Lk.dir || 'abajo'} onChange={e => set({ dir: e.target.value })} style={btn}><option value="abajo">Abajo</option><option value="arriba">Arriba (techo)</option><option value="izq">Lado izquierdo</option><option value="der">Lado derecho</option></select></label>}
                 {!Lk.empotrado && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}><input type="checkbox" checked={!!Lk.cerrado} onChange={e => set({ cerrado: e.target.checked })} /> Cerrar en lazo</label>}
                 <div style={{ opacity: 0.5, fontSize: 11 }}>La «Altura desde suelo» de arriba es dónde va la tira. Sale en el despiece con su fuente de alimentación. Si alumbra poco o demasiado, ajusta «Intensidad luces» en ☀ Ambiente.</div>
+              </div>
+            );
+          })()}
+          {objSel.tipo === 'extr' && (() => {
+            const hex = String(objSel.color || '#9aa3ad').slice(0, 7), led = esLed(objSel.color), hexOk = /^#[0-9a-fA-F]{6}$/.test(hex);
+            return (
+              <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Forma sobre una cara</div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Color</span><input type="color" value={hexOk ? hex : '#9aa3ad'} onChange={e => cambiar(objSel.id, { color: e.target.value + (led ? '!' : '') })} /><input key={hex} defaultValue={hex} style={{ ...btn, width: 84 }} onBlur={e => { const v = e.target.value.trim(); if (/^#[0-9a-fA-F]{6}$/.test(v)) cambiar(objSel.id, { color: v + (led ? '!' : '') }); }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }} title="Como darle emisivo en SketchUp: se ve como una tira LED y en el render alumbra"><input type="checkbox" checked={led} onChange={e => cambiar(objSel.id, { color: (hexOk ? hex : '#ffd9a0') + (e.target.checked ? '!' : '') })} /> Emisiva (luz LED)</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Grosor (cm)</span><input type="number" step="1" value={Math.round((objSel.dist || 0) * 10) / 10} style={{ ...btn, width: 80 }} onChange={e => { const v = Number(e.target.value); if (Number.isFinite(v)) cambiar(objSel.id, { dist: v, alto: Math.abs(v) }); }} /></label>
+                <div style={{ opacity: 0.5, fontSize: 11 }}>Con Empujar/Tirar (P) arrastra la cara para darle volumen, o escribe la medida y Enter. 0 = solo una cara plana (como una tira LED pintada).</div>
               </div>
             );
           })()}
