@@ -20,6 +20,7 @@ const Visor3D = lazy(() => import('./pages/Visor3D')); // el visor 3D es lo más
 const SubirFotos = lazy(() => import('./pages/SubirFotos').then(m => ({ default: m.SubirFotos })));
 const Rapido = lazy(() => import('./pages/Rapido').then(m => ({ default: m.Rapido })));
 const TourPublico = lazy(() => import('./pages/TourPublico').then(m => ({ default: m.TourPublico })));
+const HomeGym = lazy(() => import('./pages/HomeGym').then(m => ({ default: m.HomeGym })));
 import './App.css';
 
 function AdminGuard({ children }) {
@@ -72,6 +73,7 @@ function App() {
               <Route path="/" element={<Home />} />
               <Route path="/proyectos" element={<Proyectos />} />
               <Route path="/privacidad" element={<Privacidad />} />
+              <Route path="/homegym" element={<HomeGym />} />
               <Route path="/proyecto/:projectId" element={<ProjectGallery />} />
 
               {/* Subir fotos del estado actual desde el móvil (sin entrar al CRM) */}
