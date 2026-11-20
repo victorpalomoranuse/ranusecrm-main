@@ -118,6 +118,7 @@ router.put('/mios/:id', async (req, res) => {
     if (num(req.body?.w)) m.w = num(req.body.w); if (num(req.body?.d)) m.d = num(req.body.d); if (num(req.body?.alto)) m.alto = num(req.body.alto);
     if (typeof req.body?.nombre === 'string' && req.body.nombre.trim()) m.nombre = req.body.nombre.trim().slice(0, 80);
     if (typeof req.body?.categoria === 'string' && req.body.categoria.trim()) m.categoria = req.body.categoria.trim().slice(0, 40);
+    for (const k of ['autor', 'licencia', 'fuente']) if (typeof req.body?.[k] === 'string' && req.body[k].trim()) m[k] = req.body[k].trim().slice(0, 200);
     const { error } = await guardarLibres(lista); if (error) throw error;
     res.json({ modelo: m });
   } catch (err) { res.status(500).json({ error: 'No se pudo cambiar el modelo' }); }
@@ -265,6 +266,43 @@ router.delete('/mis-texturas/:id', async (req, res) => {
     await supabase.storage.from(BUCKET).remove(['biblioteca3d/mis-texturas/' + t.id + '.jpg']).catch(() => {});
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'No se pudo quitar' }); }
+});
+
+// ── Sketchfab: buscar modelos descargables con licencia que permite usarlos (CC0 y CC-BY) y traerlos a «Mis modelos» ──
+// La búsqueda es pública; para descargar hace falta la clave personal de Sketchfab en la variable SKETCHFAB_TOKEN del servidor.
+const SF = 'https://api.sketchfab.com/v3';
+router.get('/sketchfab/estado', (req, res) => res.json({ configurado: !!process.env.SKETCHFAB_TOKEN }));
+router.get('/sketchfab/buscar', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim().slice(0, 80); if (!q) return res.json({ resultados: [], siguiente: null });
+    const p = new URLSearchParams({ type: 'models', q, downloadable: 'true', license: String(req.query.licencia) === 'cc0' ? 'cc0' : 'by', sort_by: '-likeCount', count: '24', max_face_count: '150000' });
+    if (req.query.categoria) p.set('categories', String(req.query.categoria).slice(0, 40));
+    if (req.query.cursor) p.set('cursor', String(req.query.cursor).slice(0, 200));
+    const r = await fetch(SF + '/search?' + p.toString(), { headers: process.env.SKETCHFAB_TOKEN ? { Authorization: 'Token ' + process.env.SKETCHFAB_TOKEN } : {} });
+    if (!r.ok) return res.status(502).json({ error: 'Sketchfab no responde ahora (' + r.status + ')' });
+    const j = await r.json();
+    const resultados = (j.results || []).map(m => {
+      const im = (m.thumbnails?.images || []).slice().sort((a, b) => Math.abs(a.width - 200) - Math.abs(b.width - 200))[0];
+      return { uid: m.uid, nombre: m.name, autor: m.user?.displayName || m.user?.username || '', licencia: m.license?.label || m.license?.slug || '', caras: m.faceCount || 0, miniatura: im?.url || '', url: m.viewerUrl || ('https://sketchfab.com/3d-models/' + m.uid) };
+    });
+    res.json({ resultados, siguiente: j.cursors?.next || null });
+  } catch (e) { console.error('sketchfab buscar:', e); res.status(500).json({ error: 'No se pudo buscar en Sketchfab' }); }
+});
+// Descarga el modelo (zip glTF con sus texturas) y lo entrega para que el visor lo guarde y lo mida como cualquier modelo subido
+router.get('/sketchfab/descargar/:uid', async (req, res) => {
+  try {
+    const token = process.env.SKETCHFAB_TOKEN; if (!token) return res.status(400).json({ error: 'Falta la clave de Sketchfab en el servidor (variable SKETCHFAB_TOKEN)' });
+    const uid = String(req.params.uid).replace(/[^a-z0-9]/gi, ''); if (!uid) return res.status(400).json({ error: 'Modelo no válido' });
+    const r = await fetch(SF + '/models/' + uid + '/download', { headers: { Authorization: 'Token ' + token } });
+    if (r.status === 401 || r.status === 403) return res.status(400).json({ error: 'La clave de Sketchfab no es válida o ese modelo no se puede descargar' });
+    if (!r.ok) return res.status(502).json({ error: 'Sketchfab no ha dado la descarga (' + r.status + ')' });
+    const j = await r.json(), arch = j.glb || j.gltf; if (!arch?.url) return res.status(400).json({ error: 'Ese modelo no tiene descarga glTF' });
+    if (arch.size && arch.size > 55 * 1048576) return res.status(400).json({ error: 'Pesa demasiado (' + Math.round(arch.size / 1048576) + ' MB; el máximo son 55 MB). Elige otro.' });
+    const d = await fetch(arch.url); if (!d.ok) return res.status(502).json({ error: 'No se pudo bajar el archivo' });
+    const buf = Buffer.from(await d.arrayBuffer());
+    res.setHeader('Content-Type', j.glb ? 'model/gltf-binary' : 'application/zip'); res.setHeader('X-Modelo-Tipo', j.glb ? 'glb' : 'zip');
+    res.send(buf);
+  } catch (e) { console.error('sketchfab descargar:', e); res.status(500).json({ error: 'No se pudo traer el modelo de Sketchfab' }); }
 });
 
 router.get('/', async (req, res) => {

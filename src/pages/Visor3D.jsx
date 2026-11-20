@@ -4935,22 +4935,45 @@ export default function Visor3D({ cliente = false }) {
     for (let i = 0; i < lista.length; i++) { if (await subirMio1(lista[i], categoria, lista.length > 1 ? (i + 1) + '/' + lista.length + ' · ' : '')) ok++; }
     if (lista.length > 1) setSubiendoMio(ok + ' de ' + lista.length + ' modelos añadidos ✓' + (ok < lista.length ? ' (los demás fallaron)' : ''));
   };
-  const subirMio1 = async (file, categoria, pref = '') => {
+  const subirMio1 = async (file, categoria, pref = '', extra = null) => {
     if (/\.skp$/i.test(file.name)) { try { file = await skpAGlb(file, t => setSubiendoMio(pref + t)); } catch (e) { setSubiendoMio(pref + '«' + file.name + '»: ' + (e.message || 'no se pudo convertir')); return false; } }
     setSubiendoMio(pref + 'Subiendo «' + file.name + '»…');
     try {
-      const fd = new FormData(); fd.append('file', file); fd.append('categoria', categoria || 'Mis modelos');
+      const fd = new FormData(); fd.append('file', file); fd.append('categoria', categoria || 'Mis modelos'); if (extra?.nombre) fd.append('nombre', extra.nombre);
       const r = await api.post('/biblioteca3d/mios', fd); let m = r.data.modelo; const avisoTex = r.data.aviso || '';
       setSubiendoMio(pref + 'Midiendo el modelo…');
       try {
         const dims = await medirModelo(m);
-        const r2 = await api.put('/biblioteca3d/mios/' + m.id, dims); m = r2.data.modelo;
+        const r2 = await api.put('/biblioteca3d/mios/' + m.id, { ...dims, ...(extra?.meta || {}) }); m = r2.data.modelo;
       } catch { /* sin medir: se medirá al colocarlo */ }
       setB3d(b => ({ ...(b || {}), vacia: false, mios: [...(b?.mios || []), m] })); setB3dTab('mios'); setB3dCat('');
       setSubiendoMio(pref + '«' + m.nombre + '» añadido ✓ (' + m.w + '×' + m.d + '×' + m.alto + ' cm). Haz clic en él para colocarlo.' + (avisoTex ? ' ' + avisoTex : ''));
       if (avisoTex) setAviso(avisoTex);
       return true;
     } catch (e) { setSubiendoMio(pref + '«' + file.name + '»: ' + (e.response?.data?.error || 'No se pudo subir el modelo')); return false; }
+  };
+  // Buscador de Sketchfab (modelos gratis con licencia CC0 / CC-BY): el servidor busca y descarga; aquí se guarda y se mide como cualquier modelo
+  const [sf, setSf] = useState({ q: '', lic: 'by', soloMuebles: true, res: [], sig: null, estado: '', cargando: false, token: null });
+  useEffect(() => { if (!b3dAbierta || sf.token !== null) return; api.get('/biblioteca3d/sketchfab/estado').then(r => setSf(s => ({ ...s, token: !!r.data?.configurado }))).catch(() => setSf(s => ({ ...s, token: false }))); }, [b3dAbierta]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sfBuscar = async (mas = false) => {
+    const q = sf.q.trim(); if (!q) return;
+    setSf(s => ({ ...s, cargando: true, estado: '' }));
+    try {
+      const r = await api.get('/biblioteca3d/sketchfab/buscar', { params: { q, licencia: sf.lic, categoria: sf.soloMuebles ? 'furniture-home' : undefined, cursor: mas ? sf.sig : undefined } });
+      setSf(s => ({ ...s, res: mas ? [...s.res, ...(r.data.resultados || [])] : (r.data.resultados || []), sig: r.data.siguiente || null, cargando: false, estado: (r.data.resultados || []).length || mas ? '' : 'No hay resultados: prueba otra palabra (en inglés suele haber más: sofa, armchair, table…)' }));
+    } catch (e) { setSf(s => ({ ...s, cargando: false, estado: e.response?.data?.error || 'No se pudo buscar' })); }
+  };
+  const sfAnadir = async (m) => {
+    setSf(s => ({ ...s, estado: 'Descargando «' + m.nombre + '»…' }));
+    try {
+      const r = await api.get('/biblioteca3d/sketchfab/descargar/' + m.uid, { responseType: 'blob' });
+      const tipo = r.headers['x-modelo-tipo'] === 'glb' ? 'glb' : 'zip', archivo = new File([r.data], 'sketchfab-' + m.uid + '.' + tipo);
+      const ok = await subirMio1(archivo, b3dCat || 'Mis modelos', '', { nombre: m.nombre, meta: { autor: m.autor, licencia: m.licencia, fuente: m.url } });
+      setSf(s => ({ ...s, estado: ok ? '«' + m.nombre + '» añadido a Mis modelos ✓ (autor: ' + m.autor + ', ' + m.licencia + ')' : 'No se pudo guardar «' + m.nombre + '»' }));
+    } catch (e) {
+      let msg = 'No se pudo traer el modelo'; try { const j = JSON.parse(await e.response?.data?.text?.()); msg = j.error || msg; } catch { /* sin detalle */ }
+      setSf(s => ({ ...s, estado: msg }));
+    }
   };
   // «Crear con ChatGPT»: foto del producto → modelo 3D (.glb) que se guarda en Mis modelos
   const [foto3d, setFoto3d] = useState({ nombre: '', medidas: '' });
@@ -9010,6 +9033,34 @@ export default function Visor3D({ cliente = false }) {
               {!b3d && <p style={{ opacity: 0.6 }}>Cargando…</p>}
               {b3d?.vacia && <p style={{ opacity: 0.7 }}>La biblioteca todavía no está cargada.</p>}
               {b3dTab === 'mios' && (
+                <div style={{ marginBottom: 8, border: '1px solid #4a4540', borderRadius: 6, padding: 6 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>🔎 Buscar en Sketchfab (gratis)</div>
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                    <input value={sf.q} onChange={e => setSf(s => ({ ...s, q: e.target.value }))} onKeyDown={e => { if (e.key === 'Enter') sfBuscar(false); }} placeholder="sofa, armchair, dining table…" style={{ ...btn, flex: 1, minWidth: 0 }} />
+                    <button style={btn} onClick={() => sfBuscar(false)} disabled={sf.cargando}>{sf.cargando ? '…' : 'Buscar'}</button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11, flexWrap: 'wrap' }}>
+                    <select value={sf.lic} onChange={e => setSf(s => ({ ...s, lic: e.target.value }))} style={{ ...btn, fontSize: 11, padding: '1px 3px' }}><option value="by">CC-BY (se cita al autor)</option><option value="cc0">CC0 (sin condiciones)</option></select>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}><input type="checkbox" checked={sf.soloMuebles} onChange={e => setSf(s => ({ ...s, soloMuebles: e.target.checked }))} /> Solo muebles y hogar</label>
+                  </div>
+                  {sf.token === false && <div style={{ fontSize: 11, marginTop: 4, color: '#e8b04b' }}>Para poder añadir modelos falta la clave de Sketchfab en el servidor (variable SKETCHFAB_TOKEN). Buscar ya funciona.</div>}
+                  {sf.estado && <div style={{ fontSize: 11, marginTop: 4, color: '#d4c9bb' }}>{sf.estado}</div>}
+                  {sf.res.map(m => (
+                    <div key={m.uid} style={{ display: 'flex', gap: 6, alignItems: 'center', borderTop: '1px solid #333', padding: '5px 0', marginTop: 4 }}>
+                      {m.miniatura ? <img src={m.miniatura} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 4, background: '#222' }} /> : <div style={{ width: 56, height: 56, background: '#222', borderRadius: 4 }} />}
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 12, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.nombre}>{m.nombre}</div>
+                        <div style={{ opacity: 0.55, fontSize: 10 }}>{m.autor} · {m.licencia}{m.caras ? ' · ' + Math.round(m.caras / 1000) + 'k caras' : ''}</div>
+                        <a href={m.url} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: '#9ab' }}>ver en Sketchfab</a>
+                      </div>
+                      <button style={{ ...btn, fontSize: 11, padding: '2px 6px', background: '#6b6159' }} disabled={sf.token === false} onClick={() => sfAnadir(m)} title="Lo trae a Mis modelos y mide su tamaño">Añadir</button>
+                    </div>
+                  ))}
+                  {sf.sig && <button style={{ ...btn, width: '100%', marginTop: 4, fontSize: 11 }} onClick={() => sfBuscar(true)} disabled={sf.cargando}>Más resultados</button>}
+                  <div style={{ opacity: 0.5, fontSize: 10, marginTop: 4 }}>Los CC-BY guardan su autor y licencia para citarlos. Revisa el tamaño tras añadirlos: hay modelos con medidas raras.</div>
+                </div>
+              )}
+              {b3dTab === 'mios' && (
                 <div style={{ marginBottom: 8 }}>
                   <label style={{ ...btn, display: 'block', textAlign: 'center', background: '#6b6159', cursor: 'pointer' }}>⬆ Subir modelos (planta, mueble…)
                     <input type="file" multiple accept=".glb,.gltf,.obj,.dae,.zip,.skp" style={{ display: 'none' }} onChange={e => { subirMio(e.target.files, b3dCat || 'Mis modelos'); e.target.value = ''; }} />
@@ -9037,7 +9088,7 @@ export default function Visor3D({ cliente = false }) {
               {(b3dTab === 'modelos' || b3dTab === 'mios') && lista.map(m => (
                 <div key={m.id} onClick={() => anadirModelo3d(m)} style={{ padding: '6px 4px', borderTop: '1px solid #333', cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'center' }} title="Clic para colocarlo en el centro de la vista">
                   <Miniatura mod={{ url: m.url, tipo: m.tipo || 'gltf' }} size={64} />
-                  <div style={{ minWidth: 0, flex: 1 }}><div>{m.nombre}</div><div style={{ opacity: 0.55, fontSize: 11 }}>{m.categoria} · {m.w}×{m.d}×{m.alto} cm</div></div>
+                  <div style={{ minWidth: 0, flex: 1 }}><div>{m.nombre}</div><div style={{ opacity: 0.55, fontSize: 11 }}>{m.categoria} · {m.w}×{m.d}×{m.alto} cm</div>{m.autor && <div style={{ opacity: 0.45, fontSize: 10 }}>{m.autor}{m.licencia ? ' · ' + m.licencia : ''}</div>}</div>
                   {m.mio && <select value={m.categoria} title="Mover a otra categoría" onClick={e => e.stopPropagation()} onChange={async e => {
                     const c = e.target.value; try { const r = await api.put('/biblioteca3d/mios/' + m.id, { categoria: c }); setB3d(b => ({ ...b, mios: (b.mios || []).map(x => (x.id === m.id ? r.data.modelo : x)) })); } catch { setAviso('No se pudo mover el modelo'); }
                   }} style={{ ...btn, padding: '1px 2px', fontSize: 11, maxWidth: 70 }}>{[...new Set([m.categoria, 'Mis modelos', ...(b3d?.catsMios || [])])].sort().map(c => <option key={c} value={c}>{c}</option>)}</select>}
