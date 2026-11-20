@@ -4817,8 +4817,9 @@ export default function Visor3D({ cliente = false }) {
           const nn2 = new THREE.Vector3(...o.o3.n), uu2 = new THREE.Vector3(...o.o3.u), vv2 = new THREE.Vector3(...o.o3.v);
           const p2h = new THREE.Vector3(0, ((o.o3.y || 0) + (o.z0 || 0)) * CM, 0).addScaledVector(uu2, cu2 * CM).addScaledVector(vv2, cv2 * CM).addScaledVector(nn2, 0.004);
           const cvh = document.createElement('canvas'); cvh.width = cvh.height = 64; const cxh = cvh.getContext('2d'), grh = cxh.createRadialGradient(32, 32, 0, 32, 32, 32);
-          grh.addColorStop(0, 'rgba(255,255,255,1)'); grh.addColorStop(0.4, 'rgba(255,255,255,0.35)'); grh.addColorStop(1, 'rgba(255,255,255,0)'); cxh.fillStyle = grh; cxh.fillRect(0, 0, 64, 64);
-          const halo = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(0.12, wU2 + 0.22), Math.max(0.12, hV2 + 0.22)), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cvh), color: colL, transparent: true, opacity: Math.min(0.5, 0.18 * kEmis), blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+          grh.addColorStop(0, 'rgba(255,255,255,1)'); grh.addColorStop(0.22, 'rgba(255,255,255,0.75)'); grh.addColorStop(0.5, 'rgba(255,255,255,0.28)'); grh.addColorStop(1, 'rgba(255,255,255,0)'); cxh.fillStyle = grh; cxh.fillRect(0, 0, 64, 64);
+          const halo = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(0.2, wU2 + 0.2), Math.max(0.2, hV2 + 0.2)), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cvh), color: colL.clone().multiplyScalar(kExp), transparent: true, opacity: Math.min(0.9, 0.55 * kEmis), blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+          halo.material.userData.ledFaceBase = colL.clone(); // en Render se reescala con la exposición, igual que la cara
           halo.applyMatrix4(new THREE.Matrix4().makeBasis(uu2, vv2, nn2).setPosition(p2h));
           halo.userData.ledPerim = true; halo.raycast = () => {}; ge.add(halo);
         }
