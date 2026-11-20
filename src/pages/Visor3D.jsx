@@ -2271,6 +2271,8 @@ export default function Visor3D({ cliente = false }) {
   // el modo Realista nunca arranca solo (es lo más pesado del visor): se enciende a mano cuando se quiere mirar o renderizar
   const [espacio, setEspacio] = useState('modelar');
   const modoRender = espacio === 'render' && !cliente;
+  const modelado = espacio === 'modelado' && !cliente; // espacio «Modelar»: dibujar, extruir y mover como en SketchUp; lo que se hace aquí queda bloqueado en 3D y en Render
+  const espacioRef = useRef(espacio); espacioRef.current = modelado ? 'modelado' : espacio;
   const modelando = !cliente && !modoRender;
   const [realistaEdicion, setRealistaEdicion] = useState(false);
   const [realistaSalida, setRealistaSalida] = useState(true);
@@ -2305,6 +2307,7 @@ export default function Visor3D({ cliente = false }) {
   const ocultarRef = useRef(null);
   useEffect(() => { api3d.current.despertar?.(); }); // cualquier cambio en la pantalla (estado de React) vuelve a dibujar un momento
   const [herr, setHerr] = useState('sel');
+  const irEspacio = k => { const antes = espacioRef.current; setLuzSel(null); setEspacio(k); setRenderAbierto(k === 'render'); if (k === 'render' && antes !== 'render') setPestanaRender('ambiente'); if (k === 'modelado') { setFormaDib('rect'); setHerr('dibCara'); } else if (antes === 'modelado') setHerr('sel'); };
   useEffect(() => { const m = api3d.current.modelador; if (!m) return; if (herr === 'dibCara') m.herramientaElegida(); else m.salir(); }, [herr]);         // 'sel' | 'caja'
   const herrRef = useRef('sel');
   const entrarAlzadoRef = useRef(null);
@@ -3176,7 +3179,7 @@ export default function Visor3D({ cliente = false }) {
       return o && o.visible ? o : null;
     };
     let arrastre = null, trazo = null, previa = null;
-    const modelador = crearModelador({ scene, cam, dom, rayo, raiz, esc, ctrl, snap, setObjs, setSelObj, setMedida: setMedidaMuro, setAviso, getObjs: () => objsRef.current, getHerr: () => herrRef.current, setHerr, getForma: () => formaRef.current, puntosForma, impactoVisible, getSel: () => [selObjRef.current, ...selExtraRef.current].filter(Boolean), seleccionar: ids => { setSelObj(ids[0] || null); setMulti({ base: ids[0] || null, ids: ids.slice(1) }); } });
+    const modelador = crearModelador({ scene, cam, dom, rayo, raiz, esc, ctrl, snap, setObjs, setSelObj, setMedida: setMedidaMuro, setAviso, getObjs: () => objsRef.current, getHerr: () => herrRef.current, setHerr, getForma: () => formaRef.current, puntosForma, impactoVisible, puedeModelar: () => espacioRef.current === 'modelado', getSel: () => [selObjRef.current, ...selExtraRef.current].filter(Boolean), seleccionar: ids => { setSelObj(ids[0] || null); setMulti({ base: ids[0] || null, ids: ids.slice(1) }); } });
     api3d.current.modelador = modelador;
     let poli = [], poliLinea = null, poliAbajo = null, poliIniDown = false, empuje = null, escrito = '', ultCur = null;
     // Mayús = recto (sigue el eje más cercano al último punto), salvo en rectángulos y círculos
@@ -5464,6 +5467,7 @@ export default function Visor3D({ cliente = false }) {
   };
   const moverSel = c => setObjs(prev => prev.map(o => { if (!idsSel.includes(o.id) || o.bloqueado) return o; const r = {}; for (const k of Object.keys(c)) r[k] = k === 'z0' ? Math.max(0, (o.z0 || 0) + c[k]) : (o[k] || 0) + c[k]; return { ...o, ...r }; }));
   const objSel = objs.find(o => o.id === selObj) || null;
+  useEffect(() => { const bloq = espacio !== 'modelado'; if (objs.some(o => o.modelado && !!o.bloqueado !== bloq)) { saltoRef.current = true; setObjs(prev => prev.map(o => (o.modelado && !!o.bloqueado !== bloq ? { ...o, bloqueado: bloq } : o))); } }, [espacio, objs]); // eslint-disable-line react-hooks/exhaustive-deps
   const aplicarSnap = s => { saltoRef.current = true; setObjs(s.objs); setAcab(s.acab); setRodapie(s.rodapie); setGuias(s.guias); };
   const deshacer = () => {
     const h = histRef.current; if (!h.past.length) { setGuardado('Nada que deshacer'); return; }
@@ -5523,14 +5527,13 @@ export default function Visor3D({ cliente = false }) {
   // Comandos: cada uno tiene su letra (t) y se pueden buscar con Ctrl+K o /. Las mismas letras salen en la ayuda (?)
   const comandos = () => [
     { g: 'Herramientas', n: 'Seleccionar', k: 'V / Espacio', t: 'v', f: () => setHerr('sel') },
-    { g: 'Herramientas', n: 'Rectángulo', k: 'R', t: 'r', f: () => { setFormaDib('rect'); setHerr('poli'); } },
-    { g: 'Herramientas', n: 'Círculo', k: 'C', t: 'c', f: () => { setFormaDib('oval'); setHerr('poli'); } },
-    { g: 'Herramientas', n: 'Polígono', k: 'G', t: 'g', f: () => { setFormaDib('poli'); setHerr('poli'); } },
+    { g: 'Herramientas', n: 'Rectángulo', k: 'R', t: 'r', f: () => { setFormaDib('rect'); setHerr(espacioRef.current === 'modelado' ? 'dibCara' : 'poli'); } },
+    { g: 'Herramientas', n: 'Círculo', k: 'C', t: 'c', f: () => { setFormaDib('oval'); setHerr(espacioRef.current === 'modelado' ? 'dibCara' : 'poli'); } },
+    { g: 'Herramientas', n: 'Polígono', k: 'G', t: 'g', f: () => { setFormaDib('poli'); setHerr(espacioRef.current === 'modelado' ? 'dibCara' : 'poli'); } },
     { g: 'Herramientas', n: 'Arco (3 clics: inicio, final y por dónde curva)', k: '', f: () => { setFormaDib('arco'); setHerr('poli'); } },
     { g: 'Herramientas', n: 'Mover (con ejes e imanes)', k: 'Q', t: 'q', f: () => setHerr('mover') },
-    { g: 'Herramientas', n: 'Rectángulo sobre una cara', k: 'E', t: 'e', f: () => { setFormaDib('rect'); setHerr('dibCara'); } },
-    { g: 'Herramientas', n: 'Círculo sobre una cara', k: '', f: () => { setFormaDib('oval'); setHerr('dibCara'); } },
-    { g: 'Herramientas', n: 'Polígono sobre una cara', k: '', f: () => { setFormaDib('poli'); setHerr('dibCara'); } },
+    { g: 'Espacios', n: 'Espacio Modelar (dibujar y extruir en cualquier cara)', k: 'E', t: 'e', f: () => irEspacio('modelado') },
+    { g: 'Espacios', n: 'Espacio 3D', k: '', f: () => irEspacio('modelar') },
     { g: 'Herramientas', n: 'Empujar / Tirar', k: 'P', t: 'p', f: () => setHerr('empujar') },
     { g: 'Herramientas', n: 'Muro', k: 'M', t: 'm', f: () => setHerr('muro') },
     { g: 'Herramientas', n: 'Zona en el suelo', k: 'Z', t: 'z', f: () => setHerr('zonaS') },
@@ -7130,14 +7133,9 @@ export default function Visor3D({ cliente = false }) {
         <button style={bTop} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())} title="Volver al proyecto" aria-label="Volver al proyecto"><img src="/logos/visor-icono-blanco.png" alt="" style={{ display: 'block', width: 33, height: 33, objectFit: 'contain' }} /></button>
         <button style={bTop} onClick={() => abrirEnPlanos()} title="Abre este mismo plano en Planos, en otra pestaña (O)">Planos ↗</button>
         <div className="estudio-modos" role="group" aria-label="Espacio de trabajo" style={{ display: 'inline-flex', flexShrink: 0, padding: 2, border: '1px solid #56514c', borderRadius: 8, background: '#211f1d' }}>
-          {[['modelar', 'Modelar'], ['render', 'Render']].map(([k, nombre]) => (
+          {[['modelado', 'Modelar'], ['modelar', '3D'], ['render', 'Render']].map(([k, nombre]) => (
             <button key={k} aria-pressed={espacio === k} style={{ ...bTop, border: 0, background: espacio === k ? '#e3d5bf' : 'transparent', color: espacio === k ? '#231f1c' : '#dedbd6', padding: '6px 14px', fontWeight: 650 }}
-              onClick={() => {
-                setLuzSel(null);
-                setEspacio(k);
-                setRenderAbierto(k === 'render');
-                if (k === 'render' && espacio !== k) setPestanaRender('ambiente');
-              }}>{nombre}</button>
+              onClick={() => irEspacio(k)}>{nombre}</button>
           ))}
         </div>
         <b className="estudio-proyecto" style={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titulo}</b>
@@ -7221,6 +7219,26 @@ export default function Visor3D({ cliente = false }) {
           {railBtn(renderAbierto && pestanaRender === 'ambiente', 'luz', 'Luces', 'Ajustar el ambiente o seleccionar un foco', () => { setLuzSel(null); setCamAbierta(false); setHerr('sel'); setPestanaRender('ambiente'); setRenderAbierto(true); })}
           {railBtn(camAbierta, '📷', 'Cámara', 'Ajustar el encuadre', () => { setLuzSel(null); setHerr('sel'); setRenderAbierto(false); setCamAbierta(true); })}
           {railBtn(escAbierta, '🎞', 'Escenas' + (escenas.length ? ' (' + escenas.length + ')' : ''), 'Vistas guardadas: volver a una vista y renderizarla', () => setEscAbierta(v => !v))}
+        </> : modelado ? <>
+        {grupoRail([
+          railBtn(herr === 'sel', 'sel', 'Seleccionar', 'Seleccionar objetos (Espacio)', () => setHerr('sel')),
+          railBtn(false, 'ocultar', 'Ocultar', 'Oculta lo seleccionado sin borrarlo (H)', ocultarSel),
+          nOcultos > 0 && railBtn(false, 'mostrar', 'Mostrar (' + nOcultos + ')', 'Ver la lista y recuperar elementos', () => setMostrarOcultos(v => !v)),
+        ].filter(Boolean))}
+        {grupoRail([
+          railBtn(herr === 'dibCara' && formaDib === 'rect', 'rect', 'Rectángulo', 'Dibuja en CUALQUIER cara (suelo, techo, pared, objeto) como en SketchUp. Antes del primer clic: ↑ plano horizontal · → vertical rojo · ← vertical verde · ↓ libre. Escribe ancho;alto y Enter', () => { setFormaDib('rect'); setHerr('dibCara'); }),
+          railBtn(herr === 'dibCara' && formaDib === 'oval', 'circ', 'Círculo', 'Círculo o elipse sobre cualquier cara', () => { setFormaDib('oval'); setHerr('dibCara'); }),
+          railBtn(herr === 'dibCara' && formaDib === 'poli', 'poli', 'Polígono', 'Clic punto a punto sobre cualquier cara; Enter cierra. Flechas: bloquean el plano y la dirección', () => { setFormaDib('poli'); setHerr('dibCara'); }),
+        ], false, 'Dibujar')}
+        {grupoRail([
+          railBtn(herr === 'empujar', 'empujar', 'Empujar', 'Tira de una cara en su propia dirección y escribe la medida + Enter', () => setHerr('empujar')),
+          railBtn(herr === 'mover', 'mover', 'Mover', 'Clic en un punto, mueve y clic. Flechas: ↑ azul · → rojo · ← verde · ↓ libre. Se pega a muros y objetos', () => setHerr('mover')),
+          railBtn(herr === 'pincel', 'pintar', 'Pintar', 'Pinta la cara que toques (también la de lo que acabas de dibujar)', () => { setMatAbierto(true); setHerr('pincel'); }),
+        ], false, 'Modificar')}
+        {grupoRail([
+          railBtn(herr === 'guia', 'cinta', 'Cinta', 'Cinta métrica: clic en dos puntos para crear una línea guía', () => setHerr('guia')),
+          railBtn(capasAbierto, 'capas', 'Capas', 'Mostrar u ocultar muros, suelos, techos, plantas y etiquetas', () => setCapasAbierto(v => !v)),
+        ], true, 'Medir')}
         </> : <>
         {grupoRail([
           railBtn(herr === 'sel', 'sel', 'Seleccionar', modoRender ? 'Modo render: el modelo está bloqueado; aquí solo se eligen luces' : 'Seleccionar y mover objetos (Espacio)', () => setHerr('sel')),
@@ -7238,8 +7256,6 @@ export default function Visor3D({ cliente = false }) {
           railBtn(herr === 'poli' && formaDib === 'oval', 'circ', 'Círculo', 'Dibuja un círculo o elipse sobre el suelo (y tira hacia arriba) o sobre una pared: haz el primer clic en la pared', () => { setFormaDib('oval'); setHerr('poli'); }),
           railBtn(herr === 'poli' && formaDib === 'poli', 'poli', 'Polígono', 'Clic punto a punto; cierra con Enter. Luego tira hacia arriba para darle altura', () => { setFormaDib('poli'); setHerr('poli'); }),
           railBtn(herr === 'mover', 'mover', 'Mover', 'Mueve objetos como en SketchUp: clic en un punto, mueve y clic. Flechas: ↑ azul (alto) · → rojo · ← verde · ↓ libre. Se pega a muros y objetos. Escribe una medida y Enter', () => setHerr('mover')),
-          railBtn(herr === 'dibCara' && formaDib === 'rect', 'rect', 'Rect. en cara', 'Rectángulo sobre CUALQUIER cara (techo, pared, objeto…) como en SketchUp. Antes del primer clic: ↑ plano horizontal · → vertical rojo · ← vertical verde. Escribe ancho;alto y Enter', () => { setFormaDib('rect'); setHerr('dibCara'); }),
-          railBtn(herr === 'dibCara' && formaDib === 'poli', 'poli', 'Forma en cara', 'Polígono sobre cualquier cara: clic punto a punto, Enter cierra. Flechas: bloquean el plano y la dirección', () => { setFormaDib('poli'); setHerr('dibCara'); }),
           railBtn(herr === 'empujar', 'empujar', 'Empujar', 'Arrastra la cara de arriba de una forma para darle o cambiarle la altura', () => setHerr('empujar')),
           menuRail(sigueMenu, setSigueMenu, railBtn(herr === 'sigue' || sigueMenu, 'sigue', 'Sígueme', 'Un perfil recorre un camino: rodapiés, molduras, tubos, bandejas…', () => setSigueMenu(v => !v)), (<>
             <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Elige el perfil y dibuja el camino en el suelo (Enter termina; volver al primer punto cierra en lazo)</div>
