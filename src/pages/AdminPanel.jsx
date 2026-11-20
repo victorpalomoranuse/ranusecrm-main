@@ -14,6 +14,7 @@ import SectionManuales from './SectionManuales';
 import { SectionAsistenteDiseno } from './SectionAsistenteDiseno';
 import { SectionAsistenteSetter } from './SectionAsistenteSetter';
 import { SectionAgenda } from './SectionAgenda';
+import { SectionHomeGym } from './SectionHomeGym';
 import { SectionSetting } from './SectionSetting';
 import { SectionPedidos } from './SectionPedidos';
 import { SectionTareas } from './SectionTareas';
@@ -2871,6 +2872,7 @@ const NAV_ITEMS = [
   { id:'setting', label:'Métricas', Icon:PhoneCall, permission:'leads' },
   { id:'asistente-setter', label:'Asistente Setter', Icon:MessageCircle, permission:'leads' },
   { id:'mi-agenda', label:'Mi Agenda', Icon:CalendarDays, permission:'leads' },
+  { id:'homegym', label:'Home Gym', Icon:Package, permission:'leads' },
   { id:'ventas', label:'Ventas', Icon:TrendingUp, permission:'ventas' },
   { id:'mis-comisiones', label:'Mis Comisiones', Icon:Wallet },
   { id:'proyectos', label:'Proyectos', Icon:FolderOpen, permission:'proyectos' },
@@ -2928,6 +2930,7 @@ export function AdminPanel() {
       case 'trabajos': return <SectionTrabajos/>;
       case 'leads': return <SectionLeads/>;
       case 'setting': return <SectionSetting/>;
+      case 'homegym': return <SectionHomeGym/>;
       case 'ventas': return <SectionVentas/>;
       case 'mis-comisiones': return <SectionMisComisiones/>;
       case 'proyectos': return <SectionProyectos/>;

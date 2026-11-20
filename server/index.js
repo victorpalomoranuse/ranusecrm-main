@@ -32,6 +32,7 @@ import biblioteca3dRoutes from './routes/biblioteca3d.routes.js';
 import medicionSketchupRoutes from './routes/medicion-sketchup.routes.js';
 import tourPublicoRoutes from './routes/tour-publico.routes.js';
 import historiaPublicaRoutes from './routes/historia-publica.routes.js';
+import homegymRoutes from './routes/homegym.routes.js';
 import employeesRoutes from './routes/employees.routes.js';
 import catalogRoutes from './routes/catalog.routes.js';
 import referencesRoutes from './routes/references.routes.js';
@@ -139,6 +140,7 @@ app.use('/api/visor-ayuda', visorAyudaRoutes);
 app.use('/api/render-nube', renderNubeRoutes);
 app.use('/api/biblioteca3d', biblioteca3dRoutes);
 app.use('/api/historia-publica', historiaPublicaRoutes);
+app.use('/api/homegym', homegymRoutes); // Home Gym Studio: catálogo y solicitud pública + revisión del equipo
 app.use('/api/employees', employeesRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/references', referencesRoutes);
