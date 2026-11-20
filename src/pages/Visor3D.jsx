@@ -4266,12 +4266,12 @@ export default function Visor3D({ cliente = false }) {
       const mat = new THREE.LineBasicMaterial({ color: 0xffc400, depthTest: false });
       const lin = (p, q) => { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...p), new THREE.Vector3(...q)]), mat); l.renderOrder = 998; g.add(l); };
       const txt = (t, p) => { const s = cartel(t); s.position.set(...p); s.scale.multiplyScalar(0.7); g.add(s); };
-      lin([-W / 2, 0, D / 2 + off], [W / 2, 0, D / 2 + off]); lin([-W / 2, 0, D / 2 + off - 0.04], [-W / 2, 0, D / 2 + off + 0.04]); lin([W / 2, 0, D / 2 + off - 0.04], [W / 2, 0, D / 2 + off + 0.04]);
-      txt(Math.round(d.w * 10) / 10 + ' cm', [0, 0.06, D / 2 + off + 0.12]);
-      lin([W / 2 + off, 0, -D / 2], [W / 2 + off, 0, D / 2]); lin([W / 2 + off - 0.04, 0, -D / 2], [W / 2 + off + 0.04, 0, -D / 2]); lin([W / 2 + off - 0.04, 0, D / 2], [W / 2 + off + 0.04, 0, D / 2]);
-      txt(Math.round(d.d * 10) / 10 + ' cm', [W / 2 + off + 0.14, 0.06, 0]);
-      lin([-W / 2 - off, 0, D / 2 + off], [-W / 2 - off, H, D / 2 + off]); lin([-W / 2 - off - 0.04, H, D / 2 + off], [-W / 2 - off + 0.04, H, D / 2 + off]);
-      txt(Math.round(d.alto * 10) / 10 + ' cm', [-W / 2 - off - 0.16, H / 2, D / 2 + off]);
+      if (d.w >= 0.5) { lin([-W / 2, 0, D / 2 + off], [W / 2, 0, D / 2 + off]); lin([-W / 2, 0, D / 2 + off - 0.04], [-W / 2, 0, D / 2 + off + 0.04]); lin([W / 2, 0, D / 2 + off - 0.04], [W / 2, 0, D / 2 + off + 0.04]);
+      txt(Math.round(d.w * 10) / 10 + ' cm', [0, 0.06, D / 2 + off + 0.12]); }
+      if (d.d >= 0.5) { lin([W / 2 + off, 0, -D / 2], [W / 2 + off, 0, D / 2]); lin([W / 2 + off - 0.04, 0, -D / 2], [W / 2 + off + 0.04, 0, -D / 2]); lin([W / 2 + off - 0.04, 0, D / 2], [W / 2 + off + 0.04, 0, D / 2]);
+      txt(Math.round(d.d * 10) / 10 + ' cm', [W / 2 + off + 0.14, 0.06, 0]); }
+      if (d.alto >= 0.5) { lin([-W / 2 - off, 0, D / 2 + off], [-W / 2 - off, H, D / 2 + off]); lin([-W / 2 - off - 0.04, H, D / 2 + off], [-W / 2 - off + 0.04, H, D / 2 + off]);
+      txt(Math.round(d.alto * 10) / 10 + ' cm', [-W / 2 - off - 0.16, H / 2, D / 2 + off]); }
       a.scene.add(g); a.cotasG = g;
     }
     const gz = (dx && ob ? { ...ob, cx: dx.cx, cy: dx.cy, z0: dx.z0, alto: dx.alto, w: dx.w, d: dx.d } : ob) || (seleccion ? { cx: seleccion.cx, cy: seleccion.cy, z0: 0, alto: seleccion.alto || 110, w: seleccion.w || seleccion.largo, d: seleccion.d || seleccion.fondo, plan: true } : null);
@@ -8073,6 +8073,13 @@ export default function Visor3D({ cliente = false }) {
                     <div style={{ fontWeight: 700, marginBottom: 6 }}>Mapa</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}><span style={{ opacity: 0.7, fontSize: 12, width: 100 }}>Color base</span><input type="color" key={hexL} defaultValue={hexL} title="Rueda de color" onChange={e => { const v = e.target.value; clearTimeout(window.__tcol); window.__tcol = setTimeout(() => crear({}, v), 500); }} style={{ width: 40, height: 30, padding: 0, border: '1px solid #666', borderRadius: 6, background: 'none', cursor: 'pointer' }} /><code style={{ fontSize: 12 }}>{hexL}</code></div>
                     {sl('Rugosidad', 'rough', 1, 0.6)}{sl('Metálico', 'metal', 1, 0)}{sl('Reflejos entorno', 'env', 3, 1)}{sl('Barniz', 'clearcoat', 1, 0)}
+                    {(() => { // formas modeladas (y cajas): casilla directa para que brillen como una tira LED
+                      const g = api3d.current.ultimoGoteo; let o = g?.hit?.object; while (o && !o.userData.oid) o = o.parent;
+                      const ob = o && objs.find(x => x.id === o.userData.oid); if (!ob || !['extr', 'caja', 'prisma'].includes(ob.tipo)) return null;
+                      const led = esLed(ob.color), base = /^#[0-9a-fA-F]{6}/.test(String(ob.color || '')) ? String(ob.color).slice(0, 7) : hexL;
+                      return <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, margin: '6px 0', padding: '6px 8px', background: led ? '#4a3d1f' : '#2a2724', borderRadius: 6, cursor: 'pointer' }} title="Como darle emisivo en SketchUp: se ve como una tira LED y en el render alumbra"><input type="checkbox" checked={led} onChange={e => setObjs(p => p.map(x => (x.id === ob.id ? { ...x, color: base + (e.target.checked ? '!' : '') } : x)))} /> <b>Emisivo</b> (se ve como una tira LED y alumbra)</label>;
+                    })()}
+                    {sl('Emisivo (luz de la superficie)', 'emis', 5, 0)}
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, margin: '4px 0', cursor: 'pointer' }} title="Por defecto, al ajustar se cambian todas las superficies que tengan este mismo color"><input type="checkbox" checked={soloEsta} onChange={e => setSoloEsta(e.target.checked)} /> Solo esta superficie (no las demás con el mismo color)</label>
                     <label style={{ ...btn, display: 'block', textAlign: 'center', margin: '6px 0 4px', cursor: 'pointer', fontSize: 12 }} title="Sube la imagen de un mapa normal: se crea un material propio con este color y ese relieve">⬆ Subir mapa normal (imagen)<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const fl = e.target.files?.[0]; e.target.value = ''; if (fl) crear({}, null, fl); }} /></label>
                     <button style={{ ...btn, width: '100%', fontSize: 12 }} onClick={() => setMatAbierto(true)} title="Sube una foto y crea una textura nueva para aplicarla">🖼 Cambiar por una textura de imagen…</button>
@@ -9278,9 +9285,11 @@ export default function Visor3D({ cliente = false }) {
             <button style={{ ...btn, flex: 1, padding: '4px 8px', background: objSel.bloqueado ? '#7a5a1f' : undefined }} onClick={() => cambiar(objSel.id, { bloqueado: !objSel.bloqueado })} title="Un objeto bloqueado se puede seleccionar y editar en su ficha, pero no se mueve, gira ni borra por accidente al arrastrar o con el teclado">{objSel.bloqueado ? '🔒 Bloqueado · desbloquear' : '🔓 Bloquear este objeto'}</button>
             <button style={{ ...btn, padding: '4px 8px' }} onClick={() => { const hay = objs.some(o => !o.bloqueado); setObjs(prev => prev.map(o => ({ ...o, bloqueado: hay ? true : undefined }))); setAviso(hay ? 'Todos los objetos bloqueados 🔒: ya no se mueven por accidente.' : 'Todos los objetos desbloqueados.'); }} title="Bloquea o desbloquea todos los objetos del plano de una vez">{objs.some(o => !o.bloqueado) ? '🔒 Bloquear todos' : '🔓 Desbloquear todos'}</button>
           </div>
-          {!['zona', 'falsotecho', 'barrido', 'carril', 'led', 'logo', 'imagen'].includes(objSel.tipo) && botonProp()}
+          {!['zona', 'falsotecho', 'barrido', 'carril', 'led', 'logo', 'imagen', 'extr'].includes(objSel.tipo) && botonProp()}
+          {objSel.tipo === 'extr' && Array.isArray(objSel.pl) && objSel.o3 && (() => { const m = dimsExtr(objSel); return <div style={{ margin: '4px 0 8px', padding: '6px 8px', background: '#2a2724', borderRadius: 6 }}><div style={{ opacity: 0.6, fontSize: 11 }}>Medidas reales (X × Z × alto)</div><div style={{ fontWeight: 700 }}>{m.w} × {m.d} × {m.alto} cm</div><div style={{ opacity: 0.5, fontSize: 10, marginTop: 2 }}>Para cambiarlas usa Empujar/Tirar en Modelar (o escribe la medida y Enter).</div></div>; })()}
           {[['cx', 'Posición X'], ['cy', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Altura desde suelo'], ['rot', 'Giro °']].filter(([k]) => {
             const t = objSel.tipo;
+            if (t === 'extr') return k === 'cx' || k === 'cy' || k === 'z0';
             if (t === 'mueble' && k === 'w') return false;
             if (t === 'mueble' && k === 'alto' && objSel.mueble?.hBase) return false;
             if (t === 'zona' && objSel.plano === 'pared') return false;
