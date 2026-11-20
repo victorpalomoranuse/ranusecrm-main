@@ -288,6 +288,27 @@ router.get('/sketchfab/buscar', async (req, res) => {
     res.json({ resultados, siguiente: j.cursors?.next || null });
   } catch (e) { console.error('sketchfab buscar:', e); res.status(500).json({ error: 'No se pudo buscar en Sketchfab' }); }
 });
+// Tanda recomendada: los mejores modelos (por «me gusta») de cada tipo de mueble, primero CC0 y luego CC-BY, ligeros, para revisarlos y añadir los que gusten
+const TANDA = [['modern sofa', 'Sofás'], ['modern armchair', 'Sillones'], ['modern dining chair', 'Sillas'], ['modern coffee table', 'Mesas de centro'], ['modern dining table', 'Mesas'], ['modern bed', 'Camas'], ['modern bookshelf', 'Estanterías'], ['modern floor lamp', 'Lámparas'], ['modern tv stand', 'Muebles de TV'], ['modern bar stool', 'Taburetes']];
+const NO_MUEBLE = /room|scene|pack|set|collection|house|building|interior|kitchen|bedroom|living|apartment|studio|victorian|antique|retro|old|vintage|gothic|baroque|kid|sci-fi|demo|download|please|low.?poly/i;
+router.get('/sketchfab/tanda', async (req, res) => {
+  try {
+    const buscar = async (q, lic, n) => {
+      const p = new URLSearchParams({ type: 'models', q, downloadable: 'true', license: lic, sort_by: '-likeCount', count: '12', max_face_count: '80000', categories: 'furniture-home' });
+      const r = await fetch(SF + '/search?' + p.toString()); if (!r.ok) return [];
+      return ((await r.json()).results || []).filter(m => !NO_MUEBLE.test(m.name || '') && (m.faceCount || 0) > 800).slice(0, n).map(m => {
+        const im = (m.thumbnails?.images || []).slice().sort((a, b) => Math.abs(a.width - 200) - Math.abs(b.width - 200))[0];
+        return { uid: m.uid, nombre: m.name, autor: m.user?.displayName || m.user?.username || '', licencia: m.license?.label || lic, caras: m.faceCount || 0, miniatura: im?.url || '', url: m.viewerUrl || ('https://sketchfab.com/3d-models/' + m.uid) };
+      });
+    };
+    const visto = new Set(), out = [];
+    for (const [q, cat] of TANDA) {
+      const [a, b] = await Promise.all([buscar(q, 'cc0', 4), buscar(q, 'by', 4)]);
+      for (const m of [...a, ...b]) if (!visto.has(m.uid)) { visto.add(m.uid); out.push({ ...m, cat }); }
+    }
+    res.json({ resultados: out });
+  } catch (e) { console.error('sketchfab tanda:', e); res.status(500).json({ error: 'No se pudo preparar la tanda' }); }
+});
 // Descarga el modelo (zip glTF con sus texturas) y lo entrega para que el visor lo guarde y lo mida como cualquier modelo subido
 router.get('/sketchfab/descargar/:uid', async (req, res) => {
   try {

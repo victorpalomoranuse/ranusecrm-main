@@ -4956,7 +4956,7 @@ export default function Visor3D({ cliente = false }) {
     } catch (e) { setSubiendoMio(pref + '«' + file.name + '»: ' + (e.response?.data?.error || 'No se pudo subir el modelo')); return false; }
   };
   // Buscador de Sketchfab (modelos gratis con licencia CC0 / CC-BY): el servidor busca y descarga; aquí se guarda y se mide como cualquier modelo
-  const [sf, setSf] = useState({ q: '', lic: 'by', soloMuebles: true, res: [], sig: null, estado: '', cargando: false, token: null });
+  const [sf, setSf] = useState({ q: '', lic: 'by', soloMuebles: true, res: [], sig: null, estado: '', cargando: false, token: null, marcados: [] });
   useEffect(() => { if (!b3dAbierta || sf.token !== null) return; api.get('/biblioteca3d/sketchfab/estado').then(r => setSf(s => ({ ...s, token: !!r.data?.configurado }))).catch(() => setSf(s => ({ ...s, token: false }))); }, [b3dAbierta]); // eslint-disable-line react-hooks/exhaustive-deps
   const sfBuscar = async (mas = false) => {
     const q = sf.q.trim(); if (!q) return;
@@ -4966,16 +4966,27 @@ export default function Visor3D({ cliente = false }) {
       setSf(s => ({ ...s, res: mas ? [...s.res, ...(r.data.resultados || [])] : (r.data.resultados || []), sig: r.data.siguiente || null, cargando: false, estado: (r.data.resultados || []).length || mas ? '' : 'No hay resultados: prueba otra palabra (en inglés suele haber más: sofa, armchair, table…)' }));
     } catch (e) { setSf(s => ({ ...s, cargando: false, estado: e.response?.data?.error || 'No se pudo buscar' })); }
   };
-  const sfAnadir = async (m) => {
+  const sfTanda = async () => {
+    setSf(s => ({ ...s, cargando: true, estado: 'Preparando la tanda recomendada (tarda unos segundos)…', marcados: [] }));
+    try { const r = await api.get('/biblioteca3d/sketchfab/tanda'); setSf(s => ({ ...s, res: r.data.resultados || [], sig: null, cargando: false, estado: (r.data.resultados || []).length + ' modelos: marca los que quieras y pulsa «Añadir marcados».' })); }
+    catch (e) { setSf(s => ({ ...s, cargando: false, estado: e.response?.data?.error || 'No se pudo preparar la tanda' })); }
+  };
+  const sfAnadirMarcados = async () => {
+    const lista = sf.res.filter(m => sf.marcados.includes(m.uid)); let ok = 0;
+    for (let i = 0; i < lista.length; i++) { setSf(s => ({ ...s, estado: (i + 1) + '/' + lista.length + ' · añadiendo «' + lista[i].nombre + '»…' })); if (await sfAnadir(lista[i], true)) ok++; }
+    setSf(s => ({ ...s, marcados: [], estado: ok + ' de ' + lista.length + ' modelos añadidos a Mis modelos ✓' }));
+  };
+  const sfAnadir = async (m, enLote = false) => {
     setSf(s => ({ ...s, estado: 'Descargando «' + m.nombre + '»…' }));
     try {
       const r = await api.get('/biblioteca3d/sketchfab/descargar/' + m.uid, { responseType: 'blob' });
       const tipo = r.headers['x-modelo-tipo'] === 'glb' ? 'glb' : 'zip', archivo = new File([r.data], 'sketchfab-' + m.uid + '.' + tipo);
-      const ok = await subirMio1(archivo, b3dCat || 'Mis modelos', '', { nombre: m.nombre, meta: { autor: m.autor, licencia: m.licencia, fuente: m.url } });
-      setSf(s => ({ ...s, estado: ok ? '«' + m.nombre + '» añadido a Mis modelos ✓ (autor: ' + m.autor + ', ' + m.licencia + ')' : 'No se pudo guardar «' + m.nombre + '»' }));
+      const ok = await subirMio1(archivo, m.cat || b3dCat || 'Mis modelos', '', { nombre: m.nombre, meta: { autor: m.autor, licencia: m.licencia, fuente: m.url } });
+      if (!enLote) setSf(s => ({ ...s, estado: ok ? '«' + m.nombre + '» añadido a Mis modelos ✓ (autor: ' + m.autor + ', ' + m.licencia + ')' : 'No se pudo guardar «' + m.nombre + '»' }));
+      return ok;
     } catch (e) {
       let msg = 'No se pudo traer el modelo'; try { const j = JSON.parse(await e.response?.data?.text?.()); msg = j.error || msg; } catch { /* sin detalle */ }
-      setSf(s => ({ ...s, estado: msg }));
+      if (!enLote) setSf(s => ({ ...s, estado: msg })); return false;
     }
   };
   // «Crear con ChatGPT»: foto del producto → modelo 3D (.glb) que se guarda en Mis modelos
@@ -9059,6 +9070,8 @@ export default function Visor3D({ cliente = false }) {
                     <select value={sf.lic} onChange={e => setSf(s => ({ ...s, lic: e.target.value }))} style={{ ...btn, fontSize: 11, padding: '1px 3px' }}><option value="by">CC-BY (se cita al autor)</option><option value="cc0">CC0 (sin condiciones)</option></select>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}><input type="checkbox" checked={sf.soloMuebles} onChange={e => setSf(s => ({ ...s, soloMuebles: e.target.checked }))} /> Solo muebles y hogar</label>
                   </div>
+                  <button style={{ ...btn, width: '100%', marginTop: 6, background: '#6b6159', fontSize: 12 }} onClick={sfTanda} disabled={sf.cargando}>✨ Tanda recomendada (muebles modernos)</button>
+                  {sf.marcados.length > 0 && <button style={{ ...btn, width: '100%', marginTop: 4, background: '#2f7a4a', fontSize: 12 }} onClick={sfAnadirMarcados} disabled={sf.token === false}>Añadir marcados ({sf.marcados.length})</button>}
                   {sf.token === false && <div style={{ fontSize: 11, marginTop: 4, color: '#e8b04b' }}>Para poder añadir modelos falta la clave de Sketchfab en el servidor (variable SKETCHFAB_TOKEN). Buscar ya funciona.</div>}
                   {sf.estado && <div style={{ fontSize: 11, marginTop: 4, color: '#d4c9bb' }}>{sf.estado}</div>}
                   {sf.res.map(m => (
@@ -9066,9 +9079,10 @@ export default function Visor3D({ cliente = false }) {
                       {m.miniatura ? <img src={m.miniatura} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 4, background: '#222' }} /> : <div style={{ width: 56, height: 56, background: '#222', borderRadius: 4 }} />}
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontSize: 12, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.nombre}>{m.nombre}</div>
-                        <div style={{ opacity: 0.55, fontSize: 10 }}>{m.autor} · {m.licencia}{m.caras ? ' · ' + Math.round(m.caras / 1000) + 'k caras' : ''}</div>
+                        <div style={{ opacity: 0.55, fontSize: 10 }}>{m.cat ? m.cat + ' · ' : ''}{m.autor} · {m.licencia}{m.caras ? ' · ' + Math.round(m.caras / 1000) + 'k caras' : ''}</div>
                         <a href={m.url} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: '#9ab' }}>ver en Sketchfab</a>
                       </div>
+                      {m.cat && <input type="checkbox" checked={sf.marcados.includes(m.uid)} onChange={e => setSf(s => ({ ...s, marcados: e.target.checked ? [...s.marcados, m.uid] : s.marcados.filter(x => x !== m.uid) }))} title="Marcar para añadir" />}
                       <button style={{ ...btn, fontSize: 11, padding: '2px 6px', background: '#6b6159' }} disabled={sf.token === false} onClick={() => sfAnadir(m)} title="Lo trae a Mis modelos y mide su tamaño">Añadir</button>
                     </div>
                   ))}
