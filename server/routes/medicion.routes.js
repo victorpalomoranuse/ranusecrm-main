@@ -630,7 +630,7 @@ router.put('/:id', async (req, res) => {
 
 // Escena 3D de un plano: objetos que se colocan y modelan en el visor 3D (bloques de la biblioteca y cajas).
 // Se guarda aparte del dibujo 2D para que ninguno de los dos editores pise al otro.
-const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen', 'sauna', 'revest', 'cubierta', 'cesped', 'rack', 'deco'];
+const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen', 'sauna', 'revest', 'extr', 'cubierta', 'cesped', 'rack', 'deco'];
 const BUCKET_TEX = 'project-documents';
 // Las luminarias que se ponen solo en el 3D (focos y colgantes de un carril, y objetos con nombre de lámpara) también se escriben en el plano,
 // en su capa de iluminación. Llevan un id que empieza por «l3_»: cada vez que se guarda la escena 3D se vuelven a calcular.
@@ -803,6 +803,13 @@ router.put('/:id/escena3d', async (req, res) => {
         lm: Math.max(0, Math.min(20000, num(f?.lm, 800))), k: Math.max(1500, Math.min(10000, num(f?.k, 3000))),
         ap: Math.max(5, Math.min(140, num(f?.ap, 36))), largo: Math.max(10, Math.min(300, num(f?.largo, 60))),
       })) : undefined,
+      // formas dibujadas sobre una cara (espacio Modelar): contorno en un plano + distancia de empuje
+      pl: o.tipo === 'extr' && Array.isArray(o.pl) ? o.pl.slice(0, 300).map(p => [Math.round(num(p?.[0]) * 100) / 100, Math.round(num(p?.[1]) * 100) / 100]) : undefined,
+      o3: o.tipo === 'extr' && o.o3 && typeof o.o3 === 'object' ? (() => { const v3 = a => (Array.isArray(a) ? [0, 1, 2].map(i => Math.round(num(a[i]) * 1e5) / 1e5) : [0, 0, 1]); return { y: num(o.o3.y), u: v3(o.o3.u), v: v3(o.o3.v), n: v3(o.o3.n) }; })() : undefined,
+      dist: o.tipo === 'extr' ? Math.max(-5000, Math.min(5000, num(o.dist))) : undefined,
+      modelado: o.modelado === true ? true : undefined,
+      comp: o.comp ? String(o.comp).slice(0, 30) : undefined,
+      compIdx: Number.isFinite(parseFloat(o.compIdx)) ? Math.max(0, Math.min(500, Math.round(parseFloat(o.compIdx)))) : undefined,
       pts: ['prisma', 'zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(o.tipo) && Array.isArray(o.pts) ? o.pts.slice(0, 80).map(p => [num(p?.[0]), num(p?.[1])]) : undefined,
       skp: o.skp?.url ? { url: String(o.skp.url).slice(0, 500), rot: num(o.skp.rot) } : null,
       mod: /^https:\/\/[^\s]+\/storage\/v1\/object\/public\//.test(o.mod?.url || '') ? { url: String(o.mod.url).slice(0, 600), tipo: ['gltf', 'glb', 'obj', 'dae'].includes(o.mod.tipo) ? o.mod.tipo : 'gltf', rot: num(o.mod.rot) } : undefined,
