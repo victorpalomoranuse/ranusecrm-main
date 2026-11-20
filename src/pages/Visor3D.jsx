@@ -38,7 +38,7 @@ import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import apiReal from '../services/api';
-import { crearModelador, geometriaExtr } from '../components/modelar3d';
+import { crearModelador, geometriaExtr, dimsExtr } from '../components/modelar3d';
 // En modo cliente (enlace público del recorrido) el visor solo lee: el plano sale del enlace firmado y cualquier escritura se rechaza
 let api = apiReal;
 const crearApiCliente = (id, firma) => {
@@ -4253,7 +4253,9 @@ export default function Visor3D({ cliente = false }) {
     let mmE = null; if (!ob && seleccion) a.raiz?.traverse(g => { if (g.userData.equipo?.id === seleccion.id) g.children.forEach(c => { if (c.userData.modeloEq) mmE = c; }); });
     const m0 = mmE?.userData?.mostrado, mos = m0 && (mmE.userData.girado ? [m0[1], m0[0], m0[2]] : m0);
     const bb = ob && ob.tipo === 'prisma' && Array.isArray(ob.pts) && ob.pts.length >= 3 ? [Math.max(...ob.pts.map(p => p[0])) - Math.min(...ob.pts.map(p => p[0])), Math.max(...ob.pts.map(p => p[1])) - Math.min(...ob.pts.map(p => p[1]))] : null; // un volumen dibujado: las cotas son las de su contorno
-    const d = ob ? { w: bb ? bb[0] : ob.w, d: bb ? bb[1] : ob.d, alto: ob.alto, cx: ob.cx, cy: ob.cy, rot: ob.rot || 0, z0: ob.z0 || 0, tipo: ob.tipo }
+    const dx = ob && ob.tipo === 'extr' && Array.isArray(ob.pl) && ob.o3 ? dimsExtr(ob) : null; // forma dibujada sobre una cara: las cotas son las reales (X, Z y altura) y van en su sitio
+    const d = dx ? { w: dx.w, d: dx.d, alto: dx.alto, cx: dx.cx, cy: dx.cy, rot: 0, z0: dx.z0, tipo: ob.tipo }
+      : ob ? { w: bb ? bb[0] : ob.w, d: bb ? bb[1] : ob.d, alto: ob.alto, cx: ob.cx, cy: ob.cy, rot: ob.rot || 0, z0: ob.z0 || 0, tipo: ob.tipo }
       : (seleccion ? { w: mos ? mos[0] : (seleccion.w || seleccion.largo), d: mos ? mos[1] : (seleccion.d || seleccion.fondo), alto: mos ? mos[2] : (seleccion.alto || 110), cx: seleccion.cx, cy: seleccion.cy, rot: seleccion.rot || 0, z0: 0 } : null);
     if (!d) return;
     if (!['zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(d.tipo)) {
@@ -4261,7 +4263,7 @@ export default function Visor3D({ cliente = false }) {
       g.position.set((d.cx + (ob ? 0 : offE[0])) * CM, (d.z0 + (ob ? 0 : offE[2])) * CM, (d.cy + (ob ? 0 : offE[1])) * CM); g.rotation.y = -d.rot * Math.PI / 180;
       const mat = new THREE.LineBasicMaterial({ color: 0xffc400, depthTest: false });
       const lin = (p, q) => { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...p), new THREE.Vector3(...q)]), mat); l.renderOrder = 998; g.add(l); };
-      const txt = (t, p) => { const s = cartel(t); s.position.set(...p); g.add(s); };
+      const txt = (t, p) => { const s = cartel(t); s.position.set(...p); s.scale.multiplyScalar(0.7); g.add(s); };
       lin([-W / 2, 0, D / 2 + off], [W / 2, 0, D / 2 + off]); lin([-W / 2, 0, D / 2 + off - 0.04], [-W / 2, 0, D / 2 + off + 0.04]); lin([W / 2, 0, D / 2 + off - 0.04], [W / 2, 0, D / 2 + off + 0.04]);
       txt(Math.round(d.w * 10) / 10 + ' cm', [0, 0.06, D / 2 + off + 0.12]);
       lin([W / 2 + off, 0, -D / 2], [W / 2 + off, 0, D / 2]); lin([W / 2 + off - 0.04, 0, -D / 2], [W / 2 + off + 0.04, 0, -D / 2]); lin([W / 2 + off - 0.04, 0, D / 2], [W / 2 + off + 0.04, 0, D / 2]);
@@ -4270,7 +4272,7 @@ export default function Visor3D({ cliente = false }) {
       txt(Math.round(d.alto * 10) / 10 + ' cm', [-W / 2 - off - 0.16, H / 2, D / 2 + off]);
       a.scene.add(g); a.cotasG = g;
     }
-    const gz = ob || (seleccion ? { cx: seleccion.cx, cy: seleccion.cy, z0: 0, alto: seleccion.alto || 110, w: seleccion.w || seleccion.largo, d: seleccion.d || seleccion.fondo, plan: true } : null);
+    const gz = (dx && ob ? { ...ob, cx: dx.cx, cy: dx.cy, z0: dx.z0, alto: dx.alto, w: dx.w, d: dx.d } : ob) || (seleccion ? { cx: seleccion.cx, cy: seleccion.cy, z0: 0, alto: seleccion.alto || 110, w: seleccion.w || seleccion.largo, d: seleccion.d || seleccion.fondo, plan: true } : null);
     if (gz && !(gz.tipo === 'zona' && gz.plano === 'pared') && gz.tipo !== 'falsotecho') {
       const G = new THREE.Group(); G.position.set((gz.cx + (ob ? 0 : offE[0])) * CM, ((gz.z0 || 0) + (ob ? 0 : offE[2])) * CM + (gz.alto * CM) / 2, (gz.cy + (ob ? 0 : offE[1])) * CM);
       const L = Math.max(0.5, Math.max(gz.w, gz.d, gz.alto) * CM * 0.6 + 0.25);

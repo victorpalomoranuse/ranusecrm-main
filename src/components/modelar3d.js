@@ -27,6 +27,15 @@ export function geometriaExtr(o) {
   return geo;
 }
 
+// Medidas reales de una forma «extr» en el mundo (X, Z y altura) y su caja: sirve para las cotas y el Inspector aunque esté dibujada en una pared o inclinada
+export function dimsExtr(o) {
+  const geo = geometriaExtr(o); geo.computeBoundingBox(); const bx = geo.boundingBox.clone(); geo.dispose();
+  const ang = -(o.rot || 0) * Math.PI / 180, co = Math.cos(ang), si = Math.sin(ang), xs = [], zs = [];
+  for (const x of [bx.min.x, bx.max.x]) for (const z of [bx.min.z, bx.max.z]) { xs.push(x * co + z * si); zs.push(-x * si + z * co); }
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs), r1 = v => Math.round(v * 10) / 10;
+  return { w: r1((x1 - x0) / CM), d: r1((z1 - z0) / CM), alto: r1((bx.max.y - bx.min.y) / CM), cx: o.cx + (x0 + x1) / 2 / CM, cy: o.cy + (z0 + z1) / 2 / CM, z0: bx.min.y / CM };
+}
+
 export function crearModelador(c) {
   const V3 = THREE.Vector3, sueloP = new THREE.Plane(new V3(0, 1, 0), 0), pt = new V3(), p2 = new THREE.Vector2();
   let lock = null;          // plano bloqueado: 'h' horizontal · 'x' vertical (eje rojo) · 'z' vertical (eje verde)
@@ -123,6 +132,7 @@ export function crearModelador(c) {
       w: Math.max(...us) - Math.min(...us), d: Math.max(...vs) - Math.min(...vs), alto: 0, color: '#9aa3ad',
       o3: { y: o.y / CM, u: plano.u.toArray(), v: plano.v.toArray(), n: plano.n.toArray() }, pl: pts.map(p => [p[0], p[1]]), dist: 0,
     };
+    { const dm = dimsExtr(nuevo); nuevo.w = dm.w; nuevo.d = dm.d; nuevo.alto = dm.alto; }
     c.setObjs(prev => [...prev, nuevo]); c.setSelObj(nuevo.id);
     reinicia(); c.setAviso('Forma creada. Púlsale con Empujar/Tirar (P) para darle volumen, o dale color en el Inspector (y márcala como emisiva para una tira LED).');
   };
@@ -169,7 +179,7 @@ export function crearModelador(c) {
   };
   const pullFin = () => {
     const p = pull; pull = null; c.ctrl.enabled = true; c.setMedida('');
-    if (p.nuevo != null && Math.abs(p.nuevo - p.dist0) > 0.01) c.setObjs(prev => prev.map(x => (x.id === p.id ? { ...x, dist: p.nuevo, alto: Math.abs(p.nuevo) } : x)));
+    if (p.nuevo != null && Math.abs(p.nuevo - p.dist0) > 0.01) c.setObjs(prev => prev.map(x => { if (x.id !== p.id) return x; const n2 = { ...x, dist: p.nuevo }, dm = dimsExtr(n2); return { ...n2, w: dm.w, d: dm.d, alto: dm.alto }; }));
     else { p.malla.geometry.dispose(); p.malla.geometry = geometriaExtr(p.ob); }
   };
 
