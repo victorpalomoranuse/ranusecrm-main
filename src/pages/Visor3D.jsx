@@ -3185,6 +3185,7 @@ export default function Visor3D({ cliente = false }) {
     let arrastre = null, trazo = null, previa = null;
     const modelador = crearModelador({ scene, cam, dom, rayo, raiz, esc, ctrl, snap, setObjs, setSelObj, setMedida: setMedidaMuro, setAviso, getObjs: () => objsRef.current, getHerr: () => herrRef.current, setHerr, getForma: () => formaRef.current, puntosForma, impactoVisible, puedeModelar: () => espacioRef.current === 'modelado', getSel: () => [selObjRef.current, ...selExtraRef.current].filter(Boolean), seleccionar: ids => { setSelObj(ids[0] || null); setMulti({ base: ids[0] || null, ids: ids.slice(1) }); } });
     api3d.current.modelador = modelador;
+    try { window.__ranuseVisor = api3d.current; } catch { /* solo para diagnóstico */ }
     let poli = [], poliLinea = null, poliAbajo = null, poliIniDown = false, empuje = null, escrito = '', ultCur = null;
     // Mayús = recto (sigue el eje más cercano al último punto), salvo en rectángulos y círculos
     // Flechas (como SketchUp): → bloquea al eje rojo (X), ← al verde (Y), ↓ lo libera. Volver a pulsar la misma flecha también lo libera.
