@@ -237,8 +237,8 @@ export function crearModelador(c) {
     if (!g) { c.setAviso('Mover solo mueve objetos dibujados en el visor. Las máquinas se mueven desde Planos o con su gizmo.'); return true; }
     const ob = c.getObjs().find(x => x.id === g.userData.oid); if (!ob) return true;
     let ids = c.getSel(); if (!ids.includes(ob.id)) { ids = [ob.id, ...c.getObjs().filter(y => ob.grupo && y.grupo === ob.grupo && y.id !== ob.id).map(y => y.id)]; c.seleccionar(ids); }
-    ids = ids.filter(i => { const q = c.getObjs().find(x => x.id === i); return q && !q.bloqueado; });
-    if (!ids.length) { c.setAviso('Está bloqueado: para moverlo entra en el espacio «Modelar».'); return true; }
+    ids = ids.filter(i => { const q = c.getObjs().find(x => x.id === i); return q && q.modelado === true && !q.bloqueado; }); // solo se mueve lo que se ha modelado
+    if (!ids.length) { c.setAviso(c.puedeModelar() ? 'Solo se mueve lo que has modelado aquí.' : 'Para mover lo modelado entra en el espacio «Modelar».'); return true; }
     const grupos = c.esc.children.filter(q => ids.includes(q.userData.oid)).map(q => ({ g: q, p0: q.position.clone() }));
     if (!grupos.length) return true;
     // el punto de agarre se pega al vértice más cercano de la cara tocada (si hay uno a menos de 8 cm)
@@ -263,6 +263,7 @@ export function crearModelador(c) {
     down(e) {
       const h = c.getHerr();
       if (h === 'mover') { const ya = !!mov; const res = movDown(e); if (!ya && mov) mov.x0 = e.clientX, mov.y0 = e.clientY; return res; }
+      if (h === 'mover' && !c.puedeModelar()) { c.setAviso('Para mover lo modelado entra en el espacio «Modelar».'); return true; }
       if ((h === 'dibCara' || h === 'empujar' || h === 'mover') && !c.puedeModelar()) { if (h === 'dibCara') { c.setAviso('Para dibujar y modelar entra en el espacio «Modelar» (arriba).'); c.setHerr('sel'); return true; } if (h === 'empujar') { const hh = golpe(e); let gg = hh && hh.object; while (gg && !gg.userData.oid) gg = gg.parent; const oo = gg && c.getObjs().find(x => x.id === gg.userData.oid); if (oo && oo.tipo === 'extr') { c.setAviso('Lo modelado está bloqueado aquí. Para cambiarlo entra en el espacio «Modelar».'); return true; } return false; } }
       if (h === 'dibCara') {
         abajo = [e.clientX, e.clientY]; iniDown = false; c.ctrl.enabled = false;

@@ -2273,6 +2273,7 @@ export default function Visor3D({ cliente = false }) {
   const modoRender = espacio === 'render' && !cliente;
   const modelado = espacio === 'modelado' && !cliente; // espacio «Modelar»: dibujar, extruir y mover como en SketchUp; lo que se hace aquí queda bloqueado en 3D y en Render
   const espacioRef = useRef(espacio); espacioRef.current = modelado ? 'modelado' : espacio;
+  const puedeMoverObj = o => !!o && o.modelado === true && espacioRef.current === 'modelado'; // solo se mueven y deforman las formas modeladas, y solo en el espacio Modelar
   const modelando = !cliente && !modoRender;
   const [realistaEdicion, setRealistaEdicion] = useState(false);
   const [realistaSalida, setRealistaSalida] = useState(true);
@@ -3421,6 +3422,7 @@ export default function Visor3D({ cliente = false }) {
         if (nrm.y < 0.9) return; // solo se empuja o tira de la cara de arriba
         let o = h.object; while (o && !o.userData.oid) o = o.parent;
         const ob = o && objsRef.current.find(x => x.id === o.userData.oid); if (!ob || !o.userData.malla) return;
+        if (!puedeMoverObj(ob)) { setAviso('Solo se empuja lo que has modelado, y desde el espacio «Modelar».'); return; }
         setSelObj(ob.id); ctrl.enabled = false;
         empuje = { id: ob.id, alto0: ob.alto, z0: ob.z0 || 0, y0: e.clientY, malla: o.userData.malla, nuevo: null };
         e.stopPropagation(); return;
@@ -3434,7 +3436,7 @@ export default function Visor3D({ cliente = false }) {
       if (modoRenderRef.current && !objsRef.current.some(o => o.id === selObjRef.current && o.tipo === 'led')) return;
       {
         const vg = api3d.current.vertG, ob0 = objsRef.current.find(x => x.id === selObjRef.current);
-        if (vg && ob0 && Array.isArray(ob0.pts)) {
+        if (vg && ob0 && Array.isArray(ob0.pts) && puedeMoverObj(ob0)) {
           const r = dom.getBoundingClientRect();
           p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
           rayo.setFromCamera(p2, cam);
@@ -3449,7 +3451,7 @@ export default function Visor3D({ cliente = false }) {
       }
       {
         const ngG = api3d.current.nodoG;
-        if (ngG) {
+        if (ngG && espacioRef.current === 'modelado') {
           const r = dom.getBoundingClientRect();
           p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
           rayo.setFromCamera(p2, cam);
@@ -3464,11 +3466,11 @@ export default function Visor3D({ cliente = false }) {
           p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
           rayo.setFromCamera(p2, cam);
           const hg = rayo.intersectObjects(gzG.children, true)[0], ob0 = objsRef.current.find(x => x.id === selObjRef.current), eqp = !ob0 ? seleccionRef.current : null;
-          if (hg && eqp) {
+          if (hg && eqp && espacioRef.current === 'modelado' && false) {
             let g3p = null; raiz.traverse(o => { if (o.userData.equipo && o.userData.equipo.id === eqp.id) g3p = o; });
             if (g3p) { ctrl.enabled = false; eje3 = { plan: true, eqId: eqp.id, g3: g3p, eje: hg.object.userData.eje, rot0: eqp.rot || 0, cx0: eqp.cx, cy0: eqp.cy, z00: eqp.z0 || 0, y0: e.clientY, p0: sueloRaw(e), nuevo: {} }; e.stopPropagation(); return; }
           }
-          if (hg && ob0 && !ob0.bloqueado) { ctrl.enabled = false; eje3 = { eje: hg.object.userData.eje, id: ob0.id, rot0: ob0.rot || 0, cx0: ob0.cx, cy0: ob0.cy, z00: ob0.z0 || 0, p0: sueloRaw(e), y0: e.clientY, nuevo: {} }; e.stopPropagation(); return; }
+          if (hg && ob0 && !ob0.bloqueado && puedeMoverObj(ob0)) { ctrl.enabled = false; eje3 = { eje: hg.object.userData.eje, id: ob0.id, rot0: ob0.rot || 0, cx0: ob0.cx, cy0: ob0.cy, z00: ob0.z0 || 0, p0: sueloRaw(e), y0: e.clientY, nuevo: {} }; e.stopPropagation(); return; }
         }
       }
       const o = objetoBajo(e);
@@ -3483,7 +3485,7 @@ export default function Visor3D({ cliente = false }) {
       }
       let sel = actuales;
       if (!actuales.includes(ob.id)) { sel = [ob.id, ...miembros(ob).filter(i => i !== ob.id)]; setSelObj(ob.id); setMulti({ base: ob.id, ids: sel.slice(1) }); }
-      if (o.userData.sinArrastre || ob.bloqueado) return;
+      if (o.userData.sinArrastre || ob.bloqueado || !puedeMoverObj(ob)) return;
       const p = puntoSuelo(e); if (!p) return;
       const otros = sel.filter(i => i !== ob.id).map(i => objsRef.current.find(x => x.id === i)).filter(q => q && !q.pts && !q.bloqueado).map(q => ({ id: q.id, dx0: q.cx - ob.cx, dy0: q.cy - ob.cy }));
       ctrl.enabled = false; arrastre = { id: ob.id, dx: ob.cx - p.x, dy: ob.cy - p.y, mov: false, otros };
@@ -4273,7 +4275,7 @@ export default function Visor3D({ cliente = false }) {
       a.scene.add(g); a.cotasG = g;
     }
     const gz = (dx && ob ? { ...ob, cx: dx.cx, cy: dx.cy, z0: dx.z0, alto: dx.alto, w: dx.w, d: dx.d } : ob) || (seleccion ? { cx: seleccion.cx, cy: seleccion.cy, z0: 0, alto: seleccion.alto || 110, w: seleccion.w || seleccion.largo, d: seleccion.d || seleccion.fondo, plan: true } : null);
-    if (gz && !(gz.tipo === 'zona' && gz.plano === 'pared') && gz.tipo !== 'falsotecho') {
+    if (gz && !(gz.tipo === 'zona' && gz.plano === 'pared') && gz.tipo !== 'falsotecho' && ob && puedeMoverObj(ob)) {
       const G = new THREE.Group(); G.position.set((gz.cx + (ob ? 0 : offE[0])) * CM, ((gz.z0 || 0) + (ob ? 0 : offE[2])) * CM + (gz.alto * CM) / 2, (gz.cy + (ob ? 0 : offE[1])) * CM);
       const L = Math.max(0.5, Math.max(gz.w, gz.d, gz.alto) * CM * 0.6 + 0.25);
       const flecha = (col, eje) => {
@@ -4293,13 +4295,13 @@ export default function Visor3D({ cliente = false }) {
       }
       a.scene.add(G); a.gizmoG = G;
     }
-  }, [objs, selObj, seleccion, estado, rev, mtick, modosEq]);
+  }, [objs, selObj, seleccion, estado, rev, mtick, modosEq, espacio]);
 
   // Asas azules en los extremos del muro seleccionado: arrastrarlas mueve el muro (y los muros conectados) en el plano
   useEffect(() => {
     const a = api3d.current; if (!a.scene) return;
     if (a.nodoG) { a.scene.remove(a.nodoG); a.nodoG.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); a.nodoG = null; }
-    if (!selAcab || selAcab.tipo !== 'muro' || !a.modelo) return;
+    if (!selAcab || selAcab.tipo !== 'muro' || !a.modelo || espacioRef.current !== 'modelado') return;
     const mu = (a.modelo.plantas || [a.modelo]).flatMap(p => p.muros || []).find(m => m.id === selAcab.id); if (!mu) return;
     const g = new THREE.Group();
     [['a', mu.a], ['b', mu.b]].forEach(([k, p]) => {
@@ -4307,7 +4309,7 @@ export default function Visor3D({ cliente = false }) {
       s.position.set(p[0] * CM, ((mu.h || a.modelo.altura || 260) * CM) + 0.05, p[1] * CM); s.renderOrder = 999; s.userData = { nodo: k, muroId: mu.id }; g.add(s);
     });
     a.scene.add(g); a.nodoG = g;
-  }, [selAcab, rev, estado]);
+  }, [selAcab, rev, estado, espacio]);
 
   // Las máquinas del plano se ven con su modelo 3D del catálogo si lo tienen (así se pueden pintar por partes)
   useEffect(() => {
@@ -4467,7 +4469,7 @@ export default function Visor3D({ cliente = false }) {
     const a = api3d.current; if (!a.scene) return;
     if (a.vertG) { a.scene.remove(a.vertG); a.vertG.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); a.vertG = null; }
     const ob = objs.find(x => x.id === selObj);
-    if (!ob || !['zona', 'prisma', 'falsotecho'].includes(ob.tipo) || !Array.isArray(ob.pts) || ob.pts.length < 2 || !a.modelo) return;
+    if (!ob || !puedeMoverObj(ob) || !['zona', 'prisma', 'falsotecho'].includes(ob.tipo) || !Array.isArray(ob.pts) || ob.pts.length < 2 || !a.modelo) return;
     const H = a.modelo.altura || 260, muros = (a.modelo.plantas || [a.modelo]).flatMap(p => p.muros || []);
     const pared = ob.tipo === 'zona' && ob.plano === 'pared', mu = pared ? muros.find(m => m.id === ob.muroId) : null;
     if (pared && !mu) return;
@@ -4483,7 +4485,7 @@ export default function Visor3D({ cliente = false }) {
       if (ob.pts.length >= 3 || i === 0) { const q = ob.pts[(i + 1) % ob.pts.length], m = new THREE.Mesh(new THREE.SphereGeometry(r * 0.6, 12, 10), new THREE.MeshBasicMaterial({ color: 0x2ecc71, depthTest: false })); m.position.copy(mundo([(p[0] + q[0]) / 2, (p[1] + q[1]) / 2])); m.renderOrder = 999; m.userData = { mid: i }; g.add(m); }
     });
     a.scene.add(g); a.vertG = g;
-  }, [objs, selObj, rev, estado, alz]);
+  }, [objs, selObj, rev, estado, alz, espacio]);
 
   // Rodapié: sigue el perímetro de cada sala (por dentro) y se interrumpe en las puertas
   useEffect(() => {
@@ -7268,11 +7270,6 @@ export default function Visor3D({ cliente = false }) {
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderTop: '1px solid #333', cursor: 'pointer' }}><input type="checkbox" checked={curvo} onChange={e => setCurvo(e.target.checked)} /> Contorno curvo (suave)</label>
             <div style={{ opacity: 0.55, fontSize: 11, padding: '0 8px 4px' }}>Clic punto a punto; cierra con Enter o volviendo al primer punto.</div>
           </>)),
-          railBtn(herr === 'poli' && formaDib === 'rect', 'rect', 'Rectángulo', 'Dibuja un rectángulo sobre el suelo (y tira hacia arriba para darle altura) o sobre una pared: haz el primer clic en la pared', () => { setFormaDib('rect'); setHerr('poli'); }),
-          railBtn(herr === 'poli' && formaDib === 'oval', 'circ', 'Círculo', 'Dibuja un círculo o elipse sobre el suelo (y tira hacia arriba) o sobre una pared: haz el primer clic en la pared', () => { setFormaDib('oval'); setHerr('poli'); }),
-          railBtn(herr === 'poli' && formaDib === 'poli', 'poli', 'Polígono', 'Clic punto a punto; cierra con Enter. Luego tira hacia arriba para darle altura', () => { setFormaDib('poli'); setHerr('poli'); }),
-          railBtn(herr === 'mover', 'mover', 'Mover', 'Mueve objetos como en SketchUp: clic en un punto, mueve y clic. Flechas: ↑ azul (alto) · → rojo · ← verde · ↓ libre. Se pega a muros y objetos. Escribe una medida y Enter', () => setHerr('mover')),
-          railBtn(herr === 'empujar', 'empujar', 'Empujar', 'Arrastra la cara de arriba de una forma para darle o cambiarle la altura', () => setHerr('empujar')),
           menuRail(sigueMenu, setSigueMenu, railBtn(herr === 'sigue' || sigueMenu, 'sigue', 'Sígueme', 'Un perfil recorre un camino: rodapiés, molduras, tubos, bandejas…', () => setSigueMenu(v => !v)), (<>
             <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Elige el perfil y dibuja el camino en el suelo (Enter termina; volver al primer punto cierra en lazo)</div>
             {Object.keys(PERFILES).map(n => <div key={n} onClick={() => { setPerfilSel(n); setHerr('sigue'); setSigueMenu(false); }} style={{ ...itemMenu, background: perfilSel === n ? '#3a342f' : 'transparent' }}>{n}</div>)}
