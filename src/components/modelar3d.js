@@ -54,19 +54,31 @@ export function crearModelador(c) {
     if (Math.max(Math.abs(n.x), Math.abs(n.y), Math.abs(n.z)) > 0.999) { if (Math.abs(n.x) < 0.5) q.x = g(q.x); if (Math.abs(n.y) < 0.5) q.y = g(q.y); if (Math.abs(n.z) < 0.5) q.z = g(q.z); }
     return q;
   };
+  // imán a los vértices y a los puntos medios de las aristas de la cara que se toca (6 cm)
+  const imanCara = (h, P, tol = 0.06) => {
+    try {
+      const pos = h.object.geometry.attributes.position, vs = [h.face.a, h.face.b, h.face.c].map(i => new V3().fromBufferAttribute(pos, i).applyMatrix4(h.object.matrixWorld));
+      const cand = [...vs, ...vs.map((v, i) => v.clone().add(vs[(i + 1) % 3]).multiplyScalar(0.5))];
+      let mejor = null, dm = tol; cand.forEach(v => { const d = v.distanceTo(P); if (d < dm) { dm = d; mejor = v; } });
+      return mejor;
+    } catch { return null; }
+  };
   const candidato = e => {
-    const h = golpe(e); let P, n;
-    if (h) { P = h.point.clone(); n = h.face.normal.clone().transformDirection(h.object.matrixWorld); }
+    const h = golpe(e); let P, n, im = null;
+    if (h) { P = h.point.clone(); n = h.face.normal.clone().transformDirection(h.object.matrixWorld); im = imanCara(h, P); if (im) P = im; }
     else { rayoDe(e); if (!c.rayo.ray.intersectPlane(sueloP, pt)) return null; P = pt.clone(); n = new V3(0, 1, 0); }
     if (lock) n = lock === 'h' ? new V3(0, 1, 0) : lock === 'x' ? new V3(1, 0, 0) : new V3(0, 0, 1);
     rayoDe(e); if (n.dot(c.rayo.ray.direction) > 0) n.negate();
-    return { P: ajusta(P, n), n };
+    return { P: im && !lock ? P : ajusta(P, n), n };
   };
   const aMundo = (p) => plano.o.clone().addScaledVector(plano.u, p[0] * CM).addScaledVector(plano.v, p[1] * CM);
   const puntoPlano = (e) => {
     rayoDe(e);
     const pl = new THREE.Plane().setFromNormalAndCoplanarPoint(plano.n, plano.o);
     if (!c.rayo.ray.intersectPlane(pl, pt)) return null;
+    const h = golpe(e), im = h ? imanCara(h, pt.clone()) : null;
+    if (im && Math.abs(im.clone().sub(plano.o).dot(plano.n)) < 0.02) { const d2 = im.clone().sub(plano.o); return [Math.round(d2.dot(plano.u) / CM * 10) / 10, Math.round(d2.dot(plano.v) / CM * 10) / 10]; }
+    rayoDe(e); c.rayo.ray.intersectPlane(pl, pt);
     const d = pt.clone().sub(plano.o);
     return [c.snap(d.dot(plano.u) / CM), c.snap(d.dot(plano.v) / CM)];
   };
@@ -147,12 +159,84 @@ export function crearModelador(c) {
     else { p.malla.geometry.dispose(); p.malla.geometry = geometriaExtr(p.ob); }
   };
 
+  // ── Mover (como en SketchUp): clic en un punto del objeto, mover y clic; flechas bloquean el eje; se pega a muros y objetos ──
+  let mov = null, lockM = null;
+  const TOL = 0.07; // 7 cm de imán
+  const cajasDe = (excluidos) => {
+    const out = [];
+    const toma = o => { const b = new THREE.Box3().setFromObject(o); if (!b.isEmpty()) out.push(b); };
+    c.raiz.traverse(o => { if (o.isMesh && !o.userData.hit && !o.userData.overlay && (o.userData.muroId || o.userData.salaKey || o.userData.techoKey || o.userData.pilarId)) toma(o); });
+    c.esc.children.forEach(g => { if (!excluidos.has(g)) toma(g); });
+    c.raiz.traverse(o => { if (o.userData.equipo && !o.userData.cuerpoDe) toma(o); });
+    return out;
+  };
+  const textoMov = () => {
+    const D = mov.D, f = v => Math.round(v / CM * 10) / 10;
+    return (lockM === 'x' ? 'Eje rojo · ' : lockM === 'z' ? 'Eje verde · ' : lockM === 'y' ? 'Eje azul (vertical) · ' : '') + 'X ' + f(D.x) + ' · Y ' + f(-D.z) + ' · Alt ' + f(D.y) + ' cm' + (mov.pegado ? '  · pegado' : '');
+  };
+  const movCalcula = (e) => {
+    rayoDe(e);
+    let D = new V3();
+    if (lockM === 'y') {
+      const dir = new V3(); c.cam.getWorldDirection(dir); dir.y = 0; if (dir.lengthSq() < 1e-6) return; dir.normalize();
+      const pl = new THREE.Plane().setFromNormalAndCoplanarPoint(dir, mov.base);
+      if (!c.rayo.ray.intersectPlane(pl, pt)) return; D.y = pt.y - mov.base.y;
+    } else {
+      const pl = new THREE.Plane(new V3(0, 1, 0), -mov.base.y);
+      if (!c.rayo.ray.intersectPlane(pl, pt)) return; D.set(pt.x - mov.base.x, 0, pt.z - mov.base.z);
+      if (lockM === 'x') D.z = 0; else if (lockM === 'z') D.x = 0;
+    }
+    mov.pegado = false;
+    const ejes = lockM === 'x' ? ['x'] : lockM === 'z' ? ['z'] : lockM === 'y' ? ['y'] : ['x', 'z'];
+    ejes.forEach(ax => {
+      let mejor = null;
+      const mn = mov.caja.min[ax] + D[ax], mx = mov.caja.max[ax] + D[ax];
+      for (const b of mov.otras) for (const pl of [b.min[ax], b.max[ax]]) for (const dd of [pl - mn, pl - mx]) if (Math.abs(dd) < TOL && (mejor === null || Math.abs(dd) < Math.abs(mejor))) mejor = dd;
+      if (mejor !== null) { D[ax] += mejor; mov.pegado = true; } else D[ax] = c.snap(D[ax] / CM) * CM;
+    });
+    mov.D = D;
+    mov.grupos.forEach(({ g, p0 }) => g.position.copy(p0).add(D));
+    c.setMedida(textoMov());
+  };
+  const movCancela = () => { if (!mov) return; mov.grupos.forEach(({ g, p0 }) => g.position.copy(p0)); mov = null; c.ctrl.enabled = true; c.setMedida(''); };
+  const movFin = () => {
+    const m = mov; mov = null; c.ctrl.enabled = true; c.setMedida('');
+    const dx = m.D.x / CM, dz = m.D.z / CM, dy = m.D.y / CM;
+    if (Math.abs(dx) + Math.abs(dz) + Math.abs(dy) < 0.05) { m.grupos.forEach(({ g, p0 }) => g.position.copy(p0)); return; }
+    const r1 = v => Math.round(v * 10) / 10;
+    c.setObjs(prev => prev.map(x => (m.ids.includes(x.id) && !x.bloqueado ? { ...x, cx: r1(x.cx + dx), cy: r1(x.cy + dz), z0: r1((x.z0 || 0) + dy) } : x)));
+  };
+  const movDown = (e) => {
+    if (mov) { movFin(); return true; } // segundo clic: suelta
+    const h = golpe(e); if (!h) return true;
+    let g = h.object; while (g && !g.userData.oid) g = g.parent;
+    if (!g) { c.setAviso('Mover solo mueve objetos dibujados en el visor. Las máquinas se mueven desde Planos o con su gizmo.'); return true; }
+    const ob = c.getObjs().find(x => x.id === g.userData.oid); if (!ob) return true;
+    let ids = c.getSel(); if (!ids.includes(ob.id)) { ids = [ob.id, ...c.getObjs().filter(y => ob.grupo && y.grupo === ob.grupo && y.id !== ob.id).map(y => y.id)]; c.seleccionar(ids); }
+    ids = ids.filter(i => { const q = c.getObjs().find(x => x.id === i); return q && !q.bloqueado; });
+    const grupos = c.esc.children.filter(q => ids.includes(q.userData.oid)).map(q => ({ g: q, p0: q.position.clone() }));
+    if (!grupos.length) return true;
+    // el punto de agarre se pega al vértice más cercano de la cara tocada (si hay uno a menos de 8 cm)
+    let base = h.point.clone();
+    try {
+      const pos = h.object.geometry.attributes.position, idx = h.object.geometry.index, f = h.face, vs = [f.a, f.b, f.c].map(i => new V3().fromBufferAttribute(pos, i).applyMatrix4(h.object.matrixWorld));
+      void idx; let dm = 0.08; vs.forEach(v => { const d = v.distanceTo(base); if (d < dm) { dm = d; base = v.clone(); } });
+    } catch { /* sin vértices */ }
+    const caja = new THREE.Box3(); grupos.forEach(({ g: q }) => caja.union(new THREE.Box3().setFromObject(q)));
+    mov = { ids, grupos, base, D: new V3(), caja, otras: cajasDe(new Set(grupos.map(q => q.g))), x0: e.clientX, y0: e.clientY, modo: null, pegado: false, escrito: '' };
+    c.ctrl.enabled = false; c.setMedida('Mueve y haz clic para soltar · ↑ eje azul · → eje rojo · ← eje verde · ↓ libre · escribe una medida y Enter · Esc cancela');
+    return true;
+  };
+
   return {
-    activo: () => c.getHerr() === 'dibCara',
+    activo: () => c.getHerr() === 'dibCara' || c.getHerr() === 'mover',
+    movActivo: () => !!mov,
+    cancelarMover: () => movCancela(),
     herramientaElegida() { lock = null; reinicia(); ayuda(); },
-    salir() { reinicia(); },
+    salir() { reinicia(); movCancela(); },
     down(e) {
       const h = c.getHerr();
+      if (h === 'mover') { const ya = !!mov; const res = movDown(e); if (!ya && mov) mov.x0 = e.clientX, mov.y0 = e.clientY; return res; }
       if (h === 'dibCara') {
         abajo = [e.clientX, e.clientY]; iniDown = false; c.ctrl.enabled = false;
         if (!pts.length && c.getForma() !== 'poli' && iniciar(e)) iniDown = true;
@@ -163,6 +247,7 @@ export function crearModelador(c) {
     },
     move(e) {
       if (pull) { pullMueve(e); return true; }
+      if (c.getHerr() === 'mover') { if (mov) movCalcula(e); return true; }
       if (c.getHerr() !== 'dibCara') return false;
       if (!plano) { dibujaMarca(candidato(e)); return true; }
       let p = puntoPlano(e); if (!p) return true;
@@ -177,6 +262,7 @@ export function crearModelador(c) {
     },
     up(e) {
       if (pull) { pullFin(); return true; }
+      if (c.getHerr() === 'mover') { if (mov && mov.modo === null) { if (Math.hypot(e.clientX - mov.x0, e.clientY - mov.y0) >= 6) { movCalcula(e); movFin(); } else mov.modo = 'clic'; } return true; }
       if (c.getHerr() !== 'dibCara') return false;
       if (!abajo) return true;
       const d0 = Math.hypot(e.clientX - abajo[0], e.clientY - abajo[1]); abajo = null; c.ctrl.enabled = true;
@@ -202,6 +288,23 @@ export function crearModelador(c) {
         if (k === 'Backspace') { e.preventDefault(); pull.escrito = pull.escrito.slice(0, -1); c.setMedida(pull.escrito ? pull.escrito + ' cm  ↵' : ''); return true; }
         if (k === 'Enter') { e.preventDefault(); const v = parseFloat(pull.escrito); if (v > 0) { const sg = (pull.nuevo ?? pull.dist0) < 0 ? -1 : 1; pullPon(sg * v); } pullFin(); return true; }
         if (k === 'Escape') { e.preventDefault(); pullPon(pull.dist0); pull.nuevo = null; pullFin(); return true; }
+        return false;
+      }
+      if (c.getHerr() === 'mover') {
+        if (k === 'ArrowUp' || k === 'ArrowRight' || k === 'ArrowLeft' || k === 'ArrowDown') { e.preventDefault(); const nuevo = k === 'ArrowUp' ? 'y' : k === 'ArrowRight' ? 'x' : k === 'ArrowLeft' ? 'z' : null; lockM = nuevo && nuevo === lockM ? null : nuevo; c.setMedida(lockM ? (lockM === 'x' ? 'Bloqueado al eje rojo' : lockM === 'z' ? 'Bloqueado al eje verde' : 'Bloqueado al eje azul (vertical)') : 'Movimiento libre'); return true; }
+        if (!mov) { if (k === 'Escape') { e.preventDefault(); c.setHerr('sel'); return true; } return false; }
+        if (k === 'Escape') { e.preventDefault(); movCancela(); return true; }
+        if (/^[0-9.,-]$/.test(k)) { e.preventDefault(); mov.escrito += k === ',' ? '.' : k; c.setMedida(mov.escrito + ' cm  ↵'); return true; }
+        if (k === 'Backspace') { e.preventDefault(); mov.escrito = mov.escrito.slice(0, -1); c.setMedida(mov.escrito ? mov.escrito + ' cm  ↵' : ''); return true; }
+        if (k === 'Enter') {
+          e.preventDefault(); const v = parseFloat(mov.escrito); mov.escrito = '';
+          if (v) {
+            const D = mov.D.clone(); let dir;
+            if (lockM === 'x') dir = new V3(Math.sign(D.x) || 1, 0, 0); else if (lockM === 'z') dir = new V3(0, 0, Math.sign(D.z) || 1); else if (lockM === 'y') dir = new V3(0, Math.sign(D.y) || 1, 0); else { dir = new V3(D.x, 0, D.z); if (dir.lengthSq() < 1e-9) dir.set(1, 0, 0); dir.normalize(); }
+            mov.D = dir.multiplyScalar(v * CM); mov.grupos.forEach(({ g, p0 }) => g.position.copy(p0).add(mov.D));
+          }
+          movFin(); return true;
+        }
         return false;
       }
       if (c.getHerr() !== 'dibCara') return false;

@@ -1514,7 +1514,7 @@ function wbVec(K, tinte) {
 const ICONOS = {
   sel: 'M5 3l14 8-6 2-3 6z', pintar: 'M4 12l7-8 9 9-8 7z M20 16c1.2 1.6 1.8 2.6 1.8 3.5a1.8 1.8 0 01-3.6 0c0-.9.6-1.9 1.8-3.5z',
   gotero: 'M20.5 3.5a2.2 2.2 0 00-3.1 0L14 6.9l-1-1-1.5 1.5 1 1L5 16v3h3l7.6-7.6 1 1L18 11l-1-1 3.5-3.4a2.2 2.2 0 000-3.1z',
-  muro: 'M3 6h18v12H3z M3 12h18 M9 6v6 M15 12v6', rect: 'M4 6h16v12H4z', circ: 'M12 4a8 8 0 100 16 8 8 0 000-16z', poli: 'M12 3l8 6-3 11H7L4 9z',
+  mover: 'M12 3v18 M3 12h18 M12 3l-3 3 M12 3l3 3 M12 21l-3-3 M12 21l3-3 M3 12l3-3 M3 12l3 3 M21 12l-3-3 M21 12l-3 3', muro: 'M3 6h18v12H3z M3 12h18 M9 6v6 M15 12v6', rect: 'M4 6h16v12H4z', circ: 'M12 4a8 8 0 100 16 8 8 0 000-16z', poli: 'M12 3l8 6-3 11H7L4 9z',
   empujar: 'M12 20V10 M8 13l4-4 4 4 M4 8l8-4 8 4', zona: 'M4 5h16v14H4z M4 12l8-7 M4 19L19 5 M12 19l7-7', sigue: 'M3 19c6 0 4-14 9-14s3 14 9 14',
   catalogo: 'M3 8l9-5 9 5v8l-9 5-9-5z M3 8l9 5 9-5 M12 13v8', biblioteca: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z',
   revest: 'M4 4h16v16H4z M8 4v16 M12 4v16 M16 4v16',
@@ -3176,7 +3176,7 @@ export default function Visor3D({ cliente = false }) {
       return o && o.visible ? o : null;
     };
     let arrastre = null, trazo = null, previa = null;
-    const modelador = crearModelador({ scene, cam, dom, rayo, raiz, esc, ctrl, snap, setObjs, setSelObj, setMedida: setMedidaMuro, setAviso, getObjs: () => objsRef.current, getHerr: () => herrRef.current, setHerr, getForma: () => formaRef.current, puntosForma, impactoVisible });
+    const modelador = crearModelador({ scene, cam, dom, rayo, raiz, esc, ctrl, snap, setObjs, setSelObj, setMedida: setMedidaMuro, setAviso, getObjs: () => objsRef.current, getHerr: () => herrRef.current, setHerr, getForma: () => formaRef.current, puntosForma, impactoVisible, getSel: () => [selObjRef.current, ...selExtraRef.current].filter(Boolean), seleccionar: ids => { setSelObj(ids[0] || null); setMulti({ base: ids[0] || null, ids: ids.slice(1) }); } });
     api3d.current.modelador = modelador;
     let poli = [], poliLinea = null, poliAbajo = null, poliIniDown = false, empuje = null, escrito = '', ultCur = null;
     // Mayús = recto (sigue el eje más cercano al último punto), salvo en rectángulos y círculos
@@ -5324,6 +5324,10 @@ export default function Visor3D({ cliente = false }) {
   const borrar = idObj => { setObjs(prev => prev.filter(o => o.id !== idObj)); setSelObj(null); };
   const duplicar = idObj => {
     const o = objs.find(x => x.id === idObj); if (!o) return;
+    if (o.grupo) { // si forma parte de un grupo o componente se copia el grupo entero, con un grupo nuevo
+      const t = Date.now().toString(36), gn = 'g' + t + Math.random().toString(36).slice(2, 4), nuevos = objs.filter(x => x.grupo === o.grupo).map(x => ({ ...x, id: 'o' + t + Math.random().toString(36).slice(2, 5), cx: x.cx + 30, cy: x.cy + 30, grupo: gn }));
+      setObjs(prev => [...prev, ...nuevos]); setSelObj(nuevos[0].id); setMulti({ base: nuevos[0].id, ids: nuevos.slice(1).map(q => q.id) }); return;
+    }
     const n = { ...o, id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), cx: o.cx + 30, cy: o.cy + 30 };
     setObjs(prev => [...prev, n]); setSelObj(n.id);
   };
@@ -5406,6 +5410,29 @@ export default function Visor3D({ cliente = false }) {
   const mostrarTodo = () => { setOcultas(o => o.filter(k => !k.startsWith('id:'))); setModosEq(m => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v?.v3 === 'oculto' ? { ...v, v3: undefined } : v]))); };
   ocultarRef.current = ocultarSel;
   const agrupar = () => { const g = 'g' + Date.now().toString(36); setObjs(prev => prev.map(o => (idsSel.includes(o.id) ? { ...o, grupo: g } : o))); setGuardado('Agrupados: al pulsar uno se seleccionan todos'); };
+  // Componente (como en SketchUp): lo seleccionado queda como una pieza que se puede copiar; al editar una copia, «Actualizar copias» pasa el cambio a todas
+  const crearComponente = () => {
+    const c = 'c' + Date.now().toString(36), g = 'g' + Date.now().toString(36), orden = objs.filter(o => idsSel.includes(o.id)); if (!orden.length) return;
+    setObjs(prev => prev.map(o => { const i = orden.findIndex(q => q.id === o.id); return i < 0 ? o : { ...o, comp: c, compIdx: i, grupo: o.grupo || g }; }));
+    setGuardado('Componente creado: duplícalo (Ctrl+D) para tener copias y, si cambias una, pulsa «Actualizar copias»');
+  };
+  const actualizarCopias = () => {
+    const fuente = objs.filter(o => idsSel.includes(o.id) && o.comp); if (!fuente.length) { setAviso('Selecciona una pieza que sea componente (Crear componente).'); return; }
+    const comp = fuente[0].comp, ancla = fuente.find(o => o.compIdx === 0) || fuente[0], claveG = o => o.grupo || o.id;
+    const grupos = {}; objs.filter(o => o.comp === comp).forEach(o => { (grupos[claveG(o)] = grupos[claveG(o)] || []).push(o); });
+    const gFuente = claveG(ancla), anclaF = (grupos[gFuente] || []).find(o => o.compIdx === 0) || ancla;
+    const NO = ['id', 'cx', 'cy', 'z0', 'rot', 'grupo', 'comp', 'compIdx', 'bloqueado'];
+    let n = 0;
+    setObjs(prev => prev.map(o => {
+      if (o.comp !== comp || claveG(o) === gFuente) return o;
+      const miGrupo = grupos[claveG(o)] || [], anclaT = miGrupo.find(q => q.compIdx === 0) || o, fu = (grupos[gFuente] || []).find(q => q.compIdx === o.compIdx); if (!fu) return o;
+      const nuevo = { ...o }; Object.keys(fu).forEach(k => { if (!NO.includes(k)) nuevo[k] = fu[k]; });
+      Object.keys(o).forEach(k => { if (!NO.includes(k) && !(k in fu)) delete nuevo[k]; });
+      nuevo.cx = anclaT.cx + (fu.cx - anclaF.cx); nuevo.cy = anclaT.cy + (fu.cy - anclaF.cy); nuevo.z0 = (anclaT.z0 || 0) + ((fu.z0 || 0) - (anclaF.z0 || 0)); n++;
+      return nuevo;
+    }));
+    setGuardado('Copias del componente actualizadas');
+  };
   const desagrupar = () => { setObjs(prev => prev.map(o => { if (!idsSel.includes(o.id) || !o.grupo) return o; const { grupo, ...r } = o; return r; })); setGuardado('Grupo deshecho'); };
   const borrarSel = () => { setObjs(prev => prev.filter(o => !idsSel.includes(o.id))); setSelObj(null); };
   const duplicarSel = () => {
@@ -5477,6 +5504,7 @@ export default function Visor3D({ cliente = false }) {
     { g: 'Herramientas', n: 'Círculo', k: 'C', t: 'c', f: () => { setFormaDib('oval'); setHerr('poli'); } },
     { g: 'Herramientas', n: 'Polígono', k: 'G', t: 'g', f: () => { setFormaDib('poli'); setHerr('poli'); } },
     { g: 'Herramientas', n: 'Arco (3 clics: inicio, final y por dónde curva)', k: '', f: () => { setFormaDib('arco'); setHerr('poli'); } },
+    { g: 'Herramientas', n: 'Mover (con ejes e imanes)', k: 'Q', t: 'q', f: () => setHerr('mover') },
     { g: 'Herramientas', n: 'Rectángulo sobre una cara', k: 'E', t: 'e', f: () => { setFormaDib('rect'); setHerr('dibCara'); } },
     { g: 'Herramientas', n: 'Círculo sobre una cara', k: '', f: () => { setFormaDib('oval'); setHerr('dibCara'); } },
     { g: 'Herramientas', n: 'Polígono sobre una cara', k: '', f: () => { setFormaDib('poli'); setHerr('dibCara'); } },
@@ -6634,7 +6662,7 @@ export default function Visor3D({ cliente = false }) {
   };
   const menuRail = (abierto, setAbierto, boton, contenido, ancho) => <MenuRail key={'m' + (boton.key || '')} abierto={abierto} ancho={ancho} boton={boton}>{contenido}</MenuRail>;
   const AYUDA_HERR = {
-    sel: null, caja: ['Caja', 'Arrastra sobre el suelo para dibujar el rectángulo · Para girar la vista: pulsa la rueda y muévelo'], poli: ['Dibujar forma', 'Rectángulo y círculo: arrastra · Polígono: clic a clic, Enter cierra · después tira hacia arriba para darle altura'], dibCara: ['Dibujar sobre una cara', 'Toca una cara (suelo, techo, pared, objeto) y dibuja ahí · Flechas antes del primer clic: ↑ plano horizontal · → vertical rojo · ← vertical verde · ↓ libre · Puedes escribir medidas (ancho;alto) y Enter'], empujar: ['Empujar/Tirar', 'Arrastra la cara de arriba de la forma para darle altura · En formas dibujadas sobre una cara: tira en su propia dirección y escribe la medida + Enter'],
+    sel: null, caja: ['Caja', 'Arrastra sobre el suelo para dibujar el rectángulo · Para girar la vista: pulsa la rueda y muévelo'], poli: ['Dibujar forma', 'Rectángulo y círculo: arrastra · Polígono: clic a clic, Enter cierra · después tira hacia arriba para darle altura'], mover: ['Mover', 'Haz clic en un punto del objeto, muévelo y haz clic para soltar (o arrastra) · ↑ eje azul (alto) · → eje rojo · ← eje verde · ↓ libre · se pega solo a muros y objetos · escribe una medida y Enter · Esc cancela'], dibCara: ['Dibujar sobre una cara', 'Toca una cara (suelo, techo, pared, objeto) y dibuja ahí · Flechas antes del primer clic: ↑ plano horizontal · → vertical rojo · ← vertical verde · ↓ libre · Puedes escribir medidas (ancho;alto) y Enter'], empujar: ['Empujar/Tirar', 'Arrastra la cara de arriba de la forma para darle altura · En formas dibujadas sobre una cara: tira en su propia dirección y escribe la medida + Enter'],
     muro: ['Muro', 'Clic para empezar y cada punto; Mayús = recto; Enter termina'], zonaS: ['Zona en suelo', 'Clic punto a punto; Enter cierra'], zonaT: ['Zona en techo', 'Clic punto a punto; Enter cierra'], zonaP: ['Zona en pared', 'Clic punto a punto sobre una pared; Enter cierra'],
     vistaM: ['Alzado de un muro', 'Pulsa el muro del que quieres ver el alzado (vista de frente) para dibujar y colocar materiales'], vistaS: ['Planta de un suelo', 'Pulsa el suelo del que quieres ver la planta (vista desde arriba)'], vistaT: ['Planta de un techo', 'Pulsa el suelo de la sala de la que quieres ver el techo desde abajo'],
     revest: ['Revestimiento', 'Pulsa el muro donde lo quieres (Mayús = seguir poniéndolo en más muros). Después ajustas las medidas en la ficha'],
@@ -7012,7 +7040,7 @@ export default function Visor3D({ cliente = false }) {
           ))}
         </div>
       )}
-      <div ref={caja} data-vista="1" style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'dibCara', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
+      <div ref={caja} data-vista="1" style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'dibCara', 'mover', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
       {!cliente && limitadasN > 0 && limiteTri < 1e9 && (
         <div style={{ position: 'absolute', left: '50%', bottom: 14, transform: 'translateX(-50%)', zIndex: 6, display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(22,20,18,0.92)', color: '#fff', borderRadius: 12, padding: '8px 14px', fontSize: 12.5, boxShadow: '0 4px 16px rgba(0,0,0,0.4)', maxWidth: '92%' }}>
           <span>⚡ {limitadasN} máquina{limitadasN > 1 ? 's' : ''} se han dejado como caja para que la página vaya fluida (demasiados detalles a la vez). Seleccionar una máquina carga su modelo.</span>
@@ -7186,6 +7214,7 @@ export default function Visor3D({ cliente = false }) {
           railBtn(herr === 'poli' && formaDib === 'rect', 'rect', 'Rectángulo', 'Dibuja un rectángulo sobre el suelo (y tira hacia arriba para darle altura) o sobre una pared: haz el primer clic en la pared', () => { setFormaDib('rect'); setHerr('poli'); }),
           railBtn(herr === 'poli' && formaDib === 'oval', 'circ', 'Círculo', 'Dibuja un círculo o elipse sobre el suelo (y tira hacia arriba) o sobre una pared: haz el primer clic en la pared', () => { setFormaDib('oval'); setHerr('poli'); }),
           railBtn(herr === 'poli' && formaDib === 'poli', 'poli', 'Polígono', 'Clic punto a punto; cierra con Enter. Luego tira hacia arriba para darle altura', () => { setFormaDib('poli'); setHerr('poli'); }),
+          railBtn(herr === 'mover', 'mover', 'Mover', 'Mueve objetos como en SketchUp: clic en un punto, mueve y clic. Flechas: ↑ azul (alto) · → rojo · ← verde · ↓ libre. Se pega a muros y objetos. Escribe una medida y Enter', () => setHerr('mover')),
           railBtn(herr === 'dibCara' && formaDib === 'rect', 'rect', 'Rect. en cara', 'Rectángulo sobre CUALQUIER cara (techo, pared, objeto…) como en SketchUp. Antes del primer clic: ↑ plano horizontal · → vertical rojo · ← vertical verde. Escribe ancho;alto y Enter', () => { setFormaDib('rect'); setHerr('dibCara'); }),
           railBtn(herr === 'dibCara' && formaDib === 'poli', 'poli', 'Forma en cara', 'Polígono sobre cualquier cara: clic punto a punto, Enter cierra. Flechas: bloquean el plano y la dirección', () => { setFormaDib('poli'); setHerr('dibCara'); }),
           railBtn(herr === 'empujar', 'empujar', 'Empujar', 'Arrastra la cara de arriba de una forma para darle o cambiarle la altura', () => setHerr('empujar')),
@@ -9150,6 +9179,8 @@ export default function Visor3D({ cliente = false }) {
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             <button style={{ ...btn, background: '#6b6159' }} onClick={agrupar} title="Al pulsar uno del grupo se seleccionan todos y se mueven juntos">Agrupar</button>
             <button style={btn} onClick={desagrupar}>Desagrupar</button>
+            <button style={{ ...btn, background: '#4a5d7a' }} onClick={crearComponente} title="Lo seleccionado pasa a ser un componente: se puede copiar y actualizar todas las copias a la vez">Crear componente</button>
+            <button style={btn} onClick={actualizarCopias} title="Pasa los cambios de esta pieza a todas las copias del mismo componente">Actualizar copias</button>
             <button style={btn} onClick={duplicarSel}>Duplicar</button>
             <button style={btn} onClick={() => moverSel({ z0: -100000 })} title="Los apoya en el suelo">⬇ Al suelo</button>
             <button style={{ ...btn, background: '#a33' }} onClick={borrarSel}>Borrar</button>
@@ -9941,6 +9972,8 @@ export default function Visor3D({ cliente = false }) {
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
             <button style={btn} onClick={() => cambiar(objSel.id, { rot: ((objSel.rot || 0) + 90) % 360 })}>⟳ 90°</button>
             <button style={btn} onClick={() => duplicar(objSel.id)}>Duplicar</button>
+            <button style={{ ...btn, background: '#4a5d7a' }} onClick={crearComponente} title="Convierte esta pieza en un componente (se puede copiar y actualizar todas las copias)">Crear componente</button>
+            {objSel.comp && <button style={btn} onClick={actualizarCopias} title="Pasa los cambios de esta pieza a todas las copias del mismo componente">Actualizar copias</button>}
             <button style={{ ...btn, background: '#7a2b2b' }} onClick={() => borrar(objSel.id)}>Borrar</button>
           </div>
         </div>
