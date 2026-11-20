@@ -63,6 +63,18 @@ export function crearModelador(c) {
       return mejor;
     } catch { return null; }
   };
+  // Inferencia: el vértice (esquina) de cualquier otro objeto más cercano al puntero; sirve para que empujar/tirar llegue justo a un punto
+  const inferirVertice = (e, excluirOid, tol = 0.1) => {
+    rayoDe(e);
+    const hs = c.rayo.intersectObjects([...c.raiz.children, ...c.esc.children], true).filter(h => h.object.isMesh && h.face && !h.object.userData.hit && c.impactoVisible(h));
+    for (const h of hs) {
+      let g = h.object; while (g && !g.userData.oid) g = g.parent;
+      if (excluirOid && g && g.userData.oid === excluirOid) continue;
+      const v = imanCara(h, h.point.clone(), tol); // vértices y puntos medios de la cara tocada
+      return v ? { v, hit: h.point.clone() } : { v: null, hit: h.point.clone() };
+    }
+    return null;
+  };
   const candidato = e => {
     const h = golpe(e); let P, n, im = null;
     if (h) { P = h.point.clone(); n = h.face.normal.clone().transformDirection(h.object.matrixWorld); im = imanCara(h, P); if (im) P = im; }
@@ -150,7 +162,9 @@ export function crearModelador(c) {
     let dn;
     if (Math.sqrt(ss) < 6) { const dist = c.cam.position.distanceTo(pull.p0), cmPx = (2 * dist * Math.tan(c.cam.fov * Math.PI / 360) / c.dom.clientHeight) * 100; dn = -m[1] * cmPx; }
     else dn = ((m[0] * s[0] + m[1] * s[1]) / ss) * 100;
-    const d = e.shiftKey ? Math.round(pull.dist0 + dn) : c.snap(pull.dist0 + dn);
+    let d = e.shiftKey ? Math.round(pull.dist0 + dn) : c.snap(pull.dist0 + dn);
+    const inf = inferirVertice(e, pull.id);
+    if (inf && inf.v) d = Math.round((pull.dist0 + inf.v.clone().sub(pull.p0).dot(pull.nW) / CM) * 10) / 10; // llega justo al punto tocado
     pull.escrito = ''; pullPon(d);
   };
   const pullFin = () => {
@@ -230,6 +244,7 @@ export function crearModelador(c) {
   };
 
   return {
+    inferir: (e, excluirOid) => inferirVertice(e, excluirOid),
     activo: () => c.getHerr() === 'dibCara' || c.getHerr() === 'mover',
     movActivo: () => !!mov,
     cancelarMover: () => movCancela(),

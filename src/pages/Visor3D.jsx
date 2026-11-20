@@ -3527,7 +3527,9 @@ export default function Visor3D({ cliente = false }) {
         }
         if (eje3.eje === 'y') {
           const dist = cam.position.distanceTo(g3.position), cmPx = ((2 * dist * Math.tan(cam.fov * Math.PI / 360)) / dom.clientHeight) * 100;
-          const z = Math.max(0, Math.round((eje3.z00 + (eje3.y0 - e.clientY) * cmPx) / 5) * 5); eje3.nuevo = { z0: z }; g3.position.y = eje3.plan ? z * CM : (z - eje3.z00) * CM; if (eje3.plan) eje3.nuevoPlan = { z0: z };
+          let z = Math.max(0, Math.round((eje3.z00 + (eje3.y0 - e.clientY) * cmPx) / 5) * 5);
+          if (!eje3.plan) { const inf = api3d.current.modelador?.inferir(e, eje3.id); if (inf && inf.v) { const alto = objsRef.current.find(x => x.id === eje3.id)?.alto || 0, vy = inf.v.y / CM, zb = vy, zt = vy - alto; z = Math.max(0, Math.round((Math.abs(zb - z) < Math.abs(zt - z) ? zb : zt) * 10) / 10); setMedidaMuro('Se ajusta a ese punto: ' + z + ' cm'); } }
+          eje3.nuevo = { z0: z }; g3.position.y = eje3.plan ? z * CM : (z - eje3.z00) * CM; if (eje3.plan) eje3.nuevoPlan = { z0: z };
         } else {
           const p = sueloRaw(e);
           if (p && eje3.p0) {
@@ -3547,7 +3549,8 @@ export default function Visor3D({ cliente = false }) {
       if (empuje) {
         const m = empuje.malla, dist = cam.position.distanceTo(m.getWorldPosition(new THREE.Vector3()));
         const cmPorPx = (2 * dist * Math.tan(cam.fov * Math.PI / 360) / dom.clientHeight) * 100;
-        const alto = Math.max(5, Math.round((empuje.alto0 + (empuje.y0 - e.clientY) * cmPorPx) / 5) * 5);
+        let alto = Math.max(5, Math.round((empuje.alto0 + (empuje.y0 - e.clientY) * cmPorPx) / 5) * 5);
+        { const inf = api3d.current.modelador?.inferir(e, empuje.id); if (inf && inf.v) { const a2 = Math.round((inf.v.y / CM - empuje.z0) * 10) / 10; if (a2 >= 5) { alto = a2; setMedidaMuro('Llega a ese punto: ' + a2 + ' cm'); } } }
         empuje.nuevo = alto;
         const s = alto / empuje.alto0; m.scale.y = s;
         if (m.userData.centrado) m.position.y = (empuje.z0 + empuje.alto0 * s / 2) * CM;
