@@ -232,21 +232,31 @@ export function crearModelador(c) {
   };
   const movDown = (e) => {
     if (mov) { movFin(); return true; } // segundo clic: suelta
-    const h = golpe(e); if (!h) return true;
-    let g = h.object; while (g && !g.userData.oid) g = g.parent;
-    if (!g) { c.setAviso('Mover solo mueve objetos dibujados en el visor. Las máquinas se mueven desde Planos o con su gizmo.'); return true; }
-    const ob = c.getObjs().find(x => x.id === g.userData.oid); if (!ob) return true;
-    let ids = c.getSel(); if (!ids.includes(ob.id)) { ids = [ob.id, ...c.getObjs().filter(y => ob.grupo && y.grupo === ob.grupo && y.id !== ob.id).map(y => y.id)]; c.seleccionar(ids); }
-    ids = ids.filter(i => { const q = c.getObjs().find(x => x.id === i); return q && q.modelado === true && !q.bloqueado; }); // solo se mueve lo que se ha modelado
-    if (!ids.length) { c.setAviso(c.puedeModelar() ? 'Solo se mueve lo que has modelado aquí.' : 'Para mover lo modelado entra en el espacio «Modelar».'); return true; }
+    const objs = c.getObjs(), movible = i => { const q = objs.find(x => x.id === i); return !!q && q.modelado === true && !q.bloqueado; };
+    // como en SketchUp: si ya hay algo seleccionado, se mueve eso y el punto de agarre es donde hagas clic (no hace falta acertar encima de una pieza fina)
+    let ids = c.getSel().filter(movible);
+    const h = golpe(e);
+    if (!ids.length) {
+      if (!h) return true;
+      let g = h.object; while (g && !g.userData.oid) g = g.parent;
+      if (!g) { c.setAviso('Mover solo mueve lo que has modelado.'); return true; }
+      const ob = objs.find(x => x.id === g.userData.oid); if (!ob) return true;
+      ids = [ob.id, ...objs.filter(y => ob.grupo && y.grupo === ob.grupo && y.id !== ob.id).map(y => y.id)];
+      c.seleccionar(ids); ids = ids.filter(movible);
+      if (!ids.length) { c.setAviso(c.puedeModelar() ? 'Solo se mueve lo que has modelado aquí.' : 'Para mover lo modelado entra en el espacio «Modelar».'); return true; }
+    }
     const grupos = c.esc.children.filter(q => ids.includes(q.userData.oid)).map(q => ({ g: q, p0: q.position.clone() }));
-    if (!grupos.length) return true;
-    // el punto de agarre se pega al vértice más cercano de la cara tocada (si hay uno a menos de 8 cm)
-    let base = h.point.clone();
-    try {
-      const pos = h.object.geometry.attributes.position, idx = h.object.geometry.index, f = h.face, vs = [f.a, f.b, f.c].map(i => new V3().fromBufferAttribute(pos, i).applyMatrix4(h.object.matrixWorld));
-      void idx; let dm = 0.08; vs.forEach(v => { const d = v.distanceTo(base); if (d < dm) { dm = d; base = v.clone(); } });
-    } catch { /* sin vértices */ }
+    if (!grupos.length) { c.setAviso('No encuentro esa pieza en la escena.'); return true; }
+    // punto de agarre: el vértice más cercano de lo tocado (si hay uno a menos de 8 cm); si no se toca nada, el punto del suelo bajo el cursor
+    let base = null;
+    if (h) {
+      base = h.point.clone();
+      try {
+        const pos = h.object.geometry.attributes.position, f = h.face, vs = [f.a, f.b, f.c].map(i => new V3().fromBufferAttribute(pos, i).applyMatrix4(h.object.matrixWorld));
+        let dm = 0.08; vs.forEach(v => { const d = v.distanceTo(base); if (d < dm) { dm = d; base = v.clone(); } });
+      } catch { /* sin vértices */ }
+    } else { rayoDe(e); if (c.rayo.ray.intersectPlane(sueloP, pt)) base = pt.clone(); }
+    if (!base) { const bb = new THREE.Box3(); grupos.forEach(({ g: q }) => bb.union(new THREE.Box3().setFromObject(q))); base = bb.getCenter(new V3()); }
     const caja = new THREE.Box3(); grupos.forEach(({ g: q }) => caja.union(new THREE.Box3().setFromObject(q)));
     mov = { ids, grupos, base, D: new V3(), caja, otras: cajasDe(new Set(grupos.map(q => q.g))), x0: e.clientX, y0: e.clientY, modo: null, pegado: false, escrito: '' };
     c.ctrl.enabled = false; c.setMedida('Mueve y haz clic para soltar · ↑ eje azul · → eje rojo · ← eje verde · ↓ libre · escribe una medida y Enter · Esc cancela');
