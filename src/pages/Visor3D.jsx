@@ -1244,7 +1244,10 @@ function ledPerimetro(holder, pts, hex, zLed, lado, haciaFuera) {
     const col0 = new THREE.Color(hex), cur = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(p[0] * CM, p[1] * CM, zLed)), true), cinta = new THREE.Mesh(new THREE.TubeGeometry(cur, Math.min(480, pts.length * 3), 0.011, 6, true), new THREE.MeshBasicMaterial({ color: col0 }));
     const halo = haloLed(pts, col0);
     halo.position.z = zLed + lado * 0.002;
-    holder.add(cinta); holder.add(halo); return;
+    cinta.userData.ledPerim = true; halo.userData.ledPerim = true;
+    holder.add(cinta); holder.add(halo);
+    { const paso2 = Math.max(1, Math.floor(pts.length / 24)); for (let i = 0; i < pts.length; i += paso2) { const p = pts[i], q = pts[(i + paso2) % pts.length], Ls = Math.hypot(q[0] - p[0], q[1] - p[1]); if (Ls < 1) continue; const mk = new THREE.Object3D(); mk.position.set((p[0] + q[0]) / 2 * CM, (p[1] + q[1]) / 2 * CM, zLed); mk.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); mk.userData.ledSeg = { len: Ls * CM, col: hex, lado }; holder.add(mk); } }
+    return;
   }
   const col = new THREE.Color(hex), mat = new THREE.MeshBasicMaterial({ color: col }), n = pts.length, c = pts.reduce((q, p) => [q[0] + p[0] / n, q[1] + p[1] / n], [0, 0]), paso = Math.max(1, Math.ceil(n / 4));
   let luces = 0;
@@ -1253,9 +1256,10 @@ function ledPerimetro(holder, pts, hex, zLed, lado, haciaFuera) {
     const mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2, ex = (q[0] - p[0]) / Ls, ey = (q[1] - p[1]) / Ls;
     let ix = c[0] - mx, iy = c[1] - my; const il = Math.hypot(ix, iy) || 1; ix /= il; iy /= il;
     const sg = haciaFuera ? -1 : 1, px = mx + sg * ix * 0.4, py = my + sg * iy * 0.4;
-    const b = new THREE.Mesh(new THREE.BoxGeometry(Ls * CM * 1.02, 0.022, 0.02), mat); b.position.set(px * CM, py * CM, zLed); b.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); holder.add(b);
+    const b = new THREE.Mesh(new THREE.BoxGeometry(Ls * CM * 1.02, 0.022, 0.02), mat); b.position.set(px * CM, py * CM, zLed); b.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); b.userData.ledPerim = true; holder.add(b);
+    { const mk = new THREE.Object3D(); mk.position.set(px * CM, py * CM, zLed); mk.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); mk.userData.ledSeg = { len: Ls * CM, col: hex, lado }; holder.add(mk); }
     // brillo suave alrededor de la cinta (sin luces de área: cada luz de área recompila todos los materiales y bloqueaba la página)
-    { const g2 = new THREE.Mesh(new THREE.PlaneGeometry(Ls * CM * 1.02, 0.16), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false })); g2.position.set(px * CM, py * CM, zLed + lado * 0.002); g2.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); holder.add(g2); }
+    { const g2 = new THREE.Mesh(new THREE.PlaneGeometry(Ls * CM * 1.02, 0.16), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false })); g2.position.set(px * CM, py * CM, zLed + lado * 0.002); g2.rotation.z = Math.atan2(q[1] - p[1], q[0] - p[0]); g2.userData.ledPerim = true; holder.add(g2); }
   }
 }
 function luzLedObjeto(g, o, presup, amb) {
@@ -2406,7 +2410,7 @@ export default function Visor3D({ cliente = false }) {
   const prepararEscena = () => new Promise((ok, ko) => {
     const a = api3d.current; if (!a.raiz) return ko(new Error('No hay escena'));
     const ocultos = [];
-    [a.raiz, a.esc].forEach(g => g.traverse(o => { if (o.visible && (o.userData?.eje || o.userData?.guia || o.userData?.asa || o.isLine || o.isSprite || o.isLight || (o.isMesh && o.material && !Array.isArray(o.material) && o.material.depthTest === false) || (o.isMesh && o.material && (o.material.colorWrite === false || o.material.visible === false)))) { o.visible = false; ocultos.push(o); } }));
+    [a.raiz, a.esc].forEach(g => g.traverse(o => { if (o.visible && (o.userData?.ledPerim || o.userData?.eje || o.userData?.guia || o.userData?.asa || o.isLine || o.isSprite || o.isLight || (o.isMesh && o.material && !Array.isArray(o.material) && o.material.depthTest === false) || (o.isMesh && o.material && (o.material.colorWrite === false || o.material.visible === false)))) { o.visible = false; ocultos.push(o); } }));
     new GLTFExporter().parse([a.raiz, a.esc], buf => {
       ocultos.forEach(o => { o.visible = true; });
       try {
@@ -2420,6 +2424,13 @@ export default function Visor3D({ cliente = false }) {
       else if (o.isSpotLight) { const tg = new THREE.Vector3(); o.target.updateWorldMatrix(true, false); o.target.getWorldPosition(tg); luces.push({ t: 'spot', pos: V(o), tg: [tg.x, tg.y, tg.z], ang: o.angle, pen: o.penumbra, col, i: o.intensity }); }
       else if (o.isPointLight) luces.push({ t: 'point', pos: V(o), col, i: o.intensity });
       else if (o.isDirectionalLight) { const tg = new THREE.Vector3(); o.target.updateWorldMatrix(true, false); o.target.getWorldPosition(tg); luces.push({ t: 'sol', pos: V(o), tg: [tg.x, tg.y, tg.z], col, i: o.intensity }); }
+          }));
+          // Borde luminoso de las zonas de pared (espejo retroiluminado…): en el visor es solo un brillo sin luces reales; en el render no se ve la tira, solo su luz sobre la pared
+          [a.raiz, a.esc].forEach(g => g.traverse(o => {
+            const s = o.userData?.ledSeg; if (!s) return; let vis = true; for (let p = o; p; p = p.parent) if (p.visible === false) vis = false; if (!vis) return;
+            o.updateWorldMatrix(true, false);
+            const wp = new THREE.Vector3().setFromMatrixPosition(o.matrixWorld), n = new THREE.Vector3(0, 0, s.lado || 1).transformDirection(o.matrixWorld), ex = new THREE.Vector3(1, 0, 0).transformDirection(o.matrixWorld), hh = 0.04, p2 = wp.clone().add(n.clone().multiplyScalar(0.015));
+            luces.push({ t: 'area', pos: [p2.x, p2.y, p2.z], dir: [-n.x, -n.y, -n.z], ex: [ex.x, ex.y, ex.z], w: s.len, h: hh, col: s.col, i: luminanciaArea(800 * s.len, s.len, hh) * (ambiente.kLuces ?? 1), retro: true });
           }));
           const { cam, ctrl } = a;
           const info = { camara: { pos: [cam.position.x, cam.position.y, cam.position.z], tg: [ctrl.target.x, ctrl.target.y, ctrl.target.z], fov: cam.fov, aspect: cam.aspect }, hora, exposicion: ambiente.exposicion, ev: ambiente.ev ?? 7, luces };
