@@ -4803,19 +4803,15 @@ export default function Visor3D({ cliente = false }) {
         ledEm(mt, val);
         const led = esLed(val), colL = color(val, '#ffd9a0');
         // cara emisiva: se ve como una tira LED (sin tonemapping, muy clara) y alumbra; los LED reales se ven casi blancos en el centro
-        const matCara = led ? new THREE.MeshBasicMaterial({ color: colL.clone().lerp(new THREE.Color(0xffffff), 0.08), toneMapped: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : mt;
+        const matCara = led ? new THREE.MeshBasicMaterial({ color: colL.clone().lerp(new THREE.Color(0xffffff), 0.12), toneMapped: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : mt;
         const me = new THREE.Mesh(geometriaExtr(o), matCara); me.castShadow = me.receiveShadow = !led; ge.add(me);
         if (selIdsRef.current.has(o.id)) ge.add(new THREE.LineSegments(new THREE.EdgesGeometry(me.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6, depthTest: false })));
-        if (led && Math.abs(o.dist || 0) < 0.05) { // cara plana emisiva: luz real hacia donde mira y un brillo suave alrededor, como las tiras LED
+        if (led && mostrarLuz) { // la cara es luz: alumbra igual que una tira LED de la herramienta LED (800 lm por metro, repartida en una franja 3 veces más ancha que la cara)
           const nn = new THREE.Vector3(...o.o3.n), uu = new THREE.Vector3(...o.o3.u), vv = new THREE.Vector3(...o.o3.v), us = o.pl.map(p => p[0]), vs = o.pl.map(p => p[1]);
           const cu = (Math.min(...us) + Math.max(...us)) / 2, cv = (Math.min(...vs) + Math.max(...vs)) / 2, wU = (Math.max(...us) - Math.min(...us)) * CM, hV = (Math.max(...vs) - Math.min(...vs)) * CM;
-          const pos = new THREE.Vector3(0, ((o.o3.y || 0) + (o.z0 || 0)) * CM, 0).addScaledVector(uu, cu * CM).addScaledVector(vv, cv * CM).addScaledVector(nn, 0.004);
-          if (mostrarLuz) luzArea(ge, pos, nn, Math.max(0.02, wU), Math.max(0.02, hV), colL, luminanciaArea(600 * Math.max(wU, hV), Math.max(0.02, wU), Math.max(0.03, hV)), presup, uu);
-          const cv2 = document.createElement('canvas'); cv2.width = cv2.height = 64; const cx2 = cv2.getContext('2d'), gr = cx2.createRadialGradient(32, 32, 0, 32, 32, 32);
-          gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); cx2.fillStyle = gr; cx2.fillRect(0, 0, 64, 64);
-          const halo = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(0.14, wU + 0.2), Math.max(0.14, hV + 0.2)), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv2), color: colL, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
-          halo.applyMatrix4(new THREE.Matrix4().makeBasis(uu, vv, nn).setPosition(pos.clone().addScaledVector(nn, -0.002) ));
-          halo.userData.ledPerim = true; halo.raycast = () => {}; ge.add(halo);
+          const pos = new THREE.Vector3(0, ((o.o3.y || 0) + (o.z0 || 0)) * CM, 0).addScaledVector(uu, cu * CM).addScaledVector(vv, cv * CM).addScaledVector(nn, 0.006);
+          const largo = Math.max(wU, hV), lw = wU < hV ? Math.max(0.03, wU * 3) : wU, lh = hV < wU ? Math.max(0.03, hV * 3) : hV;
+          luzArea(ge, pos, nn, Math.max(0.02, lw), Math.max(0.02, lh), colL, luminanciaArea(800 * largo, Math.max(0.02, lw), Math.max(0.02, lh)), presup, uu);
         }
         ge.position.set(o.cx * CM, 0, o.cy * CM); ge.rotation.y = -(o.rot || 0) * Math.PI / 180;
         ge.userData.oid = o.id; ge.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
