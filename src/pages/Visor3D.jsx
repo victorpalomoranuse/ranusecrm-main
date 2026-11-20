@@ -2402,7 +2402,7 @@ export default function Visor3D({ cliente = false }) {
   const fxActivo = (fx.bloom || 0) > 0 || fx.contraste !== 1 || fx.saturacion !== 1 || fx.calidez !== 0 || fx.vineta > 0 || fx.exp !== 0 || fx.realce !== 0 || fx.sombra !== 0 || fx.bb !== 6500 || fx.tinte !== 0;
   useEffect(() => { try { localStorage.setItem('visor3dFx', JSON.stringify(fx)); localStorage.setItem('visor3dRes', String(resRender)); } catch { /* sin almacenamiento */ } }, [fx, resRender]);
   useEffect(() => {
-    const a = api3d.current; if (a.bloom) a.bloom.strength = Math.min(2, Math.max(0.35, fx.bloom || 0)); if (a.gradeU) { const u = a.gradeU; u.contraste.value = fx.contraste; u.saturacion.value = fx.saturacion; u.calidez.value = fx.calidez; u.vineta.value = fx.vineta; u.exposure.value = fx.exp; u.highlights.value = fx.realce; u.shadows.value = fx.sombra; u.wb.value = wbVec(fx.bb, fx.tinte); }
+    const a = api3d.current; if (a.bloom) a.bloom.strength = Math.min(2, Math.max(0, fx.bloom || 0)); if (a.gradeU) { const u = a.gradeU; u.contraste.value = fx.contraste; u.saturacion.value = fx.saturacion; u.calidez.value = fx.calidez; u.vineta.value = fx.vineta; u.exposure.value = fx.exp; u.highlights.value = fx.realce; u.shadows.value = fx.sombra; u.wb.value = wbVec(fx.bb, fx.tinte); }
     a.despertar?.();
   }, [fx, realista, estado]);
   // Óptica: ángulo de visión vertical de la cámara (como el objetivo de una cámara). Menos grados = más zoom y menos deformación; más grados = gran angular
@@ -4220,7 +4220,7 @@ export default function Visor3D({ cliente = false }) {
       }
       if (modoRender && !GL_SOFTWARE && calidad !== 'baja') {
         // Extrae las altas luces antes de comprimir el rango de color para la pantalla.
-        a.bloom = new UnrealBloomPass(sz, Math.min(2, Math.max(0.35, fx.bloom || 0)), 0.3, 2 / Math.max(0.0001, a.renderer.toneMappingExposure));
+        a.bloom = new UnrealBloomPass(sz, Math.min(2, Math.max(0, fx.bloom || 0)), 0.1, 2 / Math.max(0.0001, a.renderer.toneMappingExposure));
         comp.addPass(a.bloom);
       }
       comp.addPass(new OutputPass());
@@ -4813,7 +4813,7 @@ export default function Visor3D({ cliente = false }) {
           if (mostrarLuz) luzArea(ge, pos, nn, Math.max(0.02, wU), Math.max(0.02, hV), colL, luminanciaArea(600 * Math.max(wU, hV), Math.max(0.02, wU), Math.max(0.03, hV)), presup, uu);
           const cv2 = document.createElement('canvas'); cv2.width = cv2.height = 64; const cx2 = cv2.getContext('2d'), gr = cx2.createRadialGradient(32, 32, 0, 32, 32, 32);
           gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); cx2.fillStyle = gr; cx2.fillRect(0, 0, 64, 64);
-          const halo = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(0.14, wU + 0.2), Math.max(0.14, hV + 0.2)), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv2), color: colL, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+          const halo = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(0.14, wU + 0.2), Math.max(0.14, hV + 0.2)), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv2), color: colL, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
           halo.applyMatrix4(new THREE.Matrix4().makeBasis(uu, vv, nn).setPosition(pos.clone().addScaledVector(nn, -0.002) ));
           halo.userData.ledPerim = true; halo.raycast = () => {}; ge.add(halo);
         }
