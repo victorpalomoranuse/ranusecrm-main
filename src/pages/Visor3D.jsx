@@ -1172,7 +1172,7 @@ const esLed = v => /^#[0-9a-fA-F]{6}!$/.test(v || '');
 const ledEm = (m, v) => { if (esLed(v)) { m.emissive.set(v.slice(0, 7)); m.userData.ledColor = true; m.emissiveIntensity = 1.8; espejoSucio = true; } };
 // Color de un cuerpo negro a la temperatura K (aproximación habitual), para luces y LED. KGLOBAL.luces = temperatura única para todas las luces artificiales
 const KGLOBAL = { luces: null };
-// En Render las superficies emisivas (tiras LED, caras emisivas) se pintan con más energía que el blanco de pantalla: así superan el umbral del bloom y brillan con resplandor
+// En Render las caras emisivas que dibujas tú se pintan con más energía que el blanco de pantalla: así superan el umbral del bloom y brillan con resplandor
 const LED_HDR = { k: 1 };
 function kelvinColor(K) {
   const t = Math.max(1000, Math.min(12000, K)) / 100, cl = v => Math.max(0, Math.min(255, v));
@@ -1278,7 +1278,7 @@ function construirLed(o, presup, amb, seleccionado, iluminado) {
   const encendida = iluminado && (L.lm ?? 800) > 0;
   // El difusor es una fuente visible; la exposición fotográfica no debe convertirlo en negro.
   // Su luminaria mantiene los lúmenes configurados, sin amplificarlos para aclarar el perfil.
-  const mat = encendida ? new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(0.65 * LED_HDR.k), toneMapped: false }) : new THREE.MeshStandardMaterial({ color: seleccionado ? 0x9cc8ff : 0xbebbb7, roughness: 0.85 });
+  const mat = encendida ? new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(0.65), toneMapped: false }) : new THREE.MeshStandardMaterial({ color: seleccionado ? 0x9cc8ff : 0xbebbb7, roughness: 0.85 });
   for (let i = 0; i < m; i++) {
     const a = pts[i], b = pts[(i + 1) % n], largo = Math.hypot(b[0] - a[0], b[1] - a[1]) * CM; if (largo < 0.01) continue;
     const ux = (b[0] - a[0]) / (largo / CM), uy = (b[1] - a[1]) / (largo / CM), mid = new THREE.Vector3(((a[0] + b[0]) / 2) * CM, y, ((a[1] + b[1]) / 2) * CM);
@@ -2273,7 +2273,7 @@ export default function Visor3D({ cliente = false }) {
   // el modo Realista nunca arranca solo (es lo más pesado del visor): se enciende a mano cuando se quiere mirar o renderizar
   const [espacio, setEspacio] = useState('modelar');
   const modoRender = espacio === 'render' && !cliente;
-  LED_HDR.k = modoRender ? 5 : 1;
+  LED_HDR.k = modoRender ? 3.5 : 1;
   const modelado = espacio === 'modelado' && !cliente; // espacio «Modelar»: dibujar, extruir y mover como en SketchUp; lo que se hace aquí queda bloqueado en 3D y en Render
   const espacioRef = useRef(espacio); espacioRef.current = modelado ? 'modelado' : espacio;
   const puedeMoverObj = o => !!o && o.modelado === true && espacioRef.current === 'modelado'; // solo se mueven y deforman las formas modeladas, y solo en el espacio Modelar
@@ -2402,7 +2402,7 @@ export default function Visor3D({ cliente = false }) {
   const fxActivo = (fx.bloom || 0) > 0 || fx.contraste !== 1 || fx.saturacion !== 1 || fx.calidez !== 0 || fx.vineta > 0 || fx.exp !== 0 || fx.realce !== 0 || fx.sombra !== 0 || fx.bb !== 6500 || fx.tinte !== 0;
   useEffect(() => { try { localStorage.setItem('visor3dFx', JSON.stringify(fx)); localStorage.setItem('visor3dRes', String(resRender)); } catch { /* sin almacenamiento */ } }, [fx, resRender]);
   useEffect(() => {
-    const a = api3d.current; if (a.bloom) a.bloom.strength = Math.min(2, Math.max(0.6, fx.bloom || 0)); if (a.gradeU) { const u = a.gradeU; u.contraste.value = fx.contraste; u.saturacion.value = fx.saturacion; u.calidez.value = fx.calidez; u.vineta.value = fx.vineta; u.exposure.value = fx.exp; u.highlights.value = fx.realce; u.shadows.value = fx.sombra; u.wb.value = wbVec(fx.bb, fx.tinte); }
+    const a = api3d.current; if (a.bloom) a.bloom.strength = Math.min(2, Math.max(0.35, fx.bloom || 0)); if (a.gradeU) { const u = a.gradeU; u.contraste.value = fx.contraste; u.saturacion.value = fx.saturacion; u.calidez.value = fx.calidez; u.vineta.value = fx.vineta; u.exposure.value = fx.exp; u.highlights.value = fx.realce; u.shadows.value = fx.sombra; u.wb.value = wbVec(fx.bb, fx.tinte); }
     a.despertar?.();
   }, [fx, realista, estado]);
   // Óptica: ángulo de visión vertical de la cámara (como el objetivo de una cámara). Menos grados = más zoom y menos deformación; más grados = gran angular
@@ -4220,7 +4220,7 @@ export default function Visor3D({ cliente = false }) {
       }
       if (modoRender && !GL_SOFTWARE && calidad !== 'baja') {
         // Extrae las altas luces antes de comprimir el rango de color para la pantalla.
-        a.bloom = new UnrealBloomPass(sz, Math.min(2, Math.max(0.6, fx.bloom || 0)), 0.45, 2 / Math.max(0.0001, a.renderer.toneMappingExposure));
+        a.bloom = new UnrealBloomPass(sz, Math.min(2, Math.max(0.35, fx.bloom || 0)), 0.3, 2 / Math.max(0.0001, a.renderer.toneMappingExposure));
         comp.addPass(a.bloom);
       }
       comp.addPass(new OutputPass());
