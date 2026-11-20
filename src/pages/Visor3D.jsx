@@ -4801,7 +4801,9 @@ export default function Visor3D({ cliente = false }) {
         const tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
         if (tx) { const mp = texturaDe(tx, true).clone(); mp.needsUpdate = true; mp.repeat.set(1 / Math.max(10, tx.tam), 1 / Math.max(10, tx.tamH || tx.tam)); mt.map = mp; mt.color.setHex(0xffffff); }
         ledEm(mt, val);
-        const led = esLed(val), colL = color(val, '#ffd9a0');
+        // emisivo por la casilla de color («!») o por el ajuste «Que el material emita luz» del panel de material (textura con emisión)
+        const emisP = tx && tx.pbr && tx.pbr.emis > 0 ? tx.pbr : null, kEmis = emisP ? Math.max(0.2, emisP.emis) : 1;
+        const led = esLed(val) || !!emisP, colL = emisP ? color(emisP.emisHex || tx.color || '#ffd9a0', '#ffd9a0') : color(val, '#ffd9a0');
         // cara emisiva: se ve como una tira LED (sin tonemapping, muy clara) y alumbra; los LED reales se ven casi blancos en el centro
         const matCara = led ? new THREE.MeshBasicMaterial({ color: colL.clone().lerp(new THREE.Color(0xffffff), 0.12), toneMapped: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : mt;
         const me = new THREE.Mesh(geometriaExtr(o), matCara); me.castShadow = me.receiveShadow = !led; ge.add(me);
@@ -4811,7 +4813,7 @@ export default function Visor3D({ cliente = false }) {
           const cu = (Math.min(...us) + Math.max(...us)) / 2, cv = (Math.min(...vs) + Math.max(...vs)) / 2, wU = (Math.max(...us) - Math.min(...us)) * CM, hV = (Math.max(...vs) - Math.min(...vs)) * CM;
           const pos = new THREE.Vector3(0, ((o.o3.y || 0) + (o.z0 || 0)) * CM, 0).addScaledVector(uu, cu * CM).addScaledVector(vv, cv * CM).addScaledVector(nn, 0.006);
           const largo = Math.max(wU, hV), lw = wU < hV ? Math.max(0.03, wU * 3) : wU, lh = hV < wU ? Math.max(0.03, hV * 3) : hV;
-          luzArea(ge, pos, nn, Math.max(0.02, lw), Math.max(0.02, lh), colL, luminanciaArea(800 * largo, Math.max(0.02, lw), Math.max(0.02, lh)), presup, uu);
+          luzArea(ge, pos, nn, Math.max(0.02, lw), Math.max(0.02, lh), colL, luminanciaArea(800 * largo, Math.max(0.02, lw), Math.max(0.02, lh)) * kEmis, presup, uu);
         }
         ge.position.set(o.cx * CM, 0, o.cy * CM); ge.rotation.y = -(o.rot || 0) * Math.PI / 180;
         ge.userData.oid = o.id; ge.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
