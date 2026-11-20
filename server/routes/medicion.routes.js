@@ -808,6 +808,8 @@ router.put('/:id/escena3d', async (req, res) => {
       o3: o.tipo === 'extr' && o.o3 && typeof o.o3 === 'object' ? (() => { const v3 = a => (Array.isArray(a) ? [0, 1, 2].map(i => Math.round(num(a[i]) * 1e5) / 1e5) : [0, 0, 1]); return { y: num(o.o3.y), u: v3(o.o3.u), v: v3(o.o3.v), n: v3(o.o3.n) }; })() : undefined,
       dist: o.tipo === 'extr' ? Math.max(-5000, Math.min(5000, num(o.dist))) : undefined,
       modelado: o.modelado === true ? true : undefined,
+      emis: o.tipo === 'extr' && Number.isFinite(parseFloat(o.emis)) ? Math.max(0, Math.min(20, parseFloat(o.emis))) : undefined,
+      emisK: o.tipo === 'extr' && Number.isFinite(parseFloat(o.emisK)) ? Math.max(1000, Math.min(12000, Math.round(parseFloat(o.emisK)))) : undefined,
       comp: o.comp ? String(o.comp).slice(0, 30) : undefined,
       compIdx: Number.isFinite(parseFloat(o.compIdx)) ? Math.max(0, Math.min(500, Math.round(parseFloat(o.compIdx)))) : undefined,
       pts: ['prisma', 'zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(o.tipo) && Array.isArray(o.pts) ? o.pts.slice(0, 80).map(p => [num(p?.[0]), num(p?.[1])]) : undefined,
