@@ -1172,6 +1172,8 @@ const esLed = v => /^#[0-9a-fA-F]{6}!$/.test(v || '');
 const ledEm = (m, v) => { if (esLed(v)) { m.emissive.set(v.slice(0, 7)); m.userData.ledColor = true; m.emissiveIntensity = 1.8; espejoSucio = true; } };
 // Color de un cuerpo negro a la temperatura K (aproximación habitual), para luces y LED. KGLOBAL.luces = temperatura única para todas las luces artificiales
 const KGLOBAL = { luces: null };
+// En Render las superficies emisivas (tiras LED, caras emisivas) se pintan con más energía que el blanco de pantalla: así superan el umbral del bloom y brillan con resplandor
+const LED_HDR = { k: 1 };
 function kelvinColor(K) {
   const t = Math.max(1000, Math.min(12000, K)) / 100, cl = v => Math.max(0, Math.min(255, v));
   const r = t <= 66 ? 255 : cl(329.698727446 * Math.pow(t - 60, -0.1332047592)), g = t <= 66 ? cl(99.4708025861 * Math.log(t) - 161.1195681661) : cl(288.1221695283 * Math.pow(t - 60, -0.0755148492)), b = t >= 66 ? 255 : (t <= 19 ? 0 : cl(138.5177312231 * Math.log(t - 10) - 305.0447927307));
@@ -1276,7 +1278,7 @@ function construirLed(o, presup, amb, seleccionado, iluminado) {
   const encendida = iluminado && (L.lm ?? 800) > 0;
   // El difusor es una fuente visible; la exposición fotográfica no debe convertirlo en negro.
   // Su luminaria mantiene los lúmenes configurados, sin amplificarlos para aclarar el perfil.
-  const mat = encendida ? new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(0.65), toneMapped: false }) : new THREE.MeshStandardMaterial({ color: seleccionado ? 0x9cc8ff : 0xbebbb7, roughness: 0.85 });
+  const mat = encendida ? new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(0.65 * LED_HDR.k), toneMapped: false }) : new THREE.MeshStandardMaterial({ color: seleccionado ? 0x9cc8ff : 0xbebbb7, roughness: 0.85 });
   for (let i = 0; i < m; i++) {
     const a = pts[i], b = pts[(i + 1) % n], largo = Math.hypot(b[0] - a[0], b[1] - a[1]) * CM; if (largo < 0.01) continue;
     const ux = (b[0] - a[0]) / (largo / CM), uy = (b[1] - a[1]) / (largo / CM), mid = new THREE.Vector3(((a[0] + b[0]) / 2) * CM, y, ((a[1] + b[1]) / 2) * CM);
@@ -2271,6 +2273,7 @@ export default function Visor3D({ cliente = false }) {
   // el modo Realista nunca arranca solo (es lo más pesado del visor): se enciende a mano cuando se quiere mirar o renderizar
   const [espacio, setEspacio] = useState('modelar');
   const modoRender = espacio === 'render' && !cliente;
+  LED_HDR.k = modoRender ? 5 : 1;
   const modelado = espacio === 'modelado' && !cliente; // espacio «Modelar»: dibujar, extruir y mover como en SketchUp; lo que se hace aquí queda bloqueado en 3D y en Render
   const espacioRef = useRef(espacio); espacioRef.current = modelado ? 'modelado' : espacio;
   const puedeMoverObj = o => !!o && o.modelado === true && espacioRef.current === 'modelado'; // solo se mueven y deforman las formas modeladas, y solo en el espacio Modelar
@@ -2399,7 +2402,7 @@ export default function Visor3D({ cliente = false }) {
   const fxActivo = (fx.bloom || 0) > 0 || fx.contraste !== 1 || fx.saturacion !== 1 || fx.calidez !== 0 || fx.vineta > 0 || fx.exp !== 0 || fx.realce !== 0 || fx.sombra !== 0 || fx.bb !== 6500 || fx.tinte !== 0;
   useEffect(() => { try { localStorage.setItem('visor3dFx', JSON.stringify(fx)); localStorage.setItem('visor3dRes', String(resRender)); } catch { /* sin almacenamiento */ } }, [fx, resRender]);
   useEffect(() => {
-    const a = api3d.current; if (a.bloom) a.bloom.strength = Math.min(2, Math.max(0, fx.bloom || 0)); if (a.gradeU) { const u = a.gradeU; u.contraste.value = fx.contraste; u.saturacion.value = fx.saturacion; u.calidez.value = fx.calidez; u.vineta.value = fx.vineta; u.exposure.value = fx.exp; u.highlights.value = fx.realce; u.shadows.value = fx.sombra; u.wb.value = wbVec(fx.bb, fx.tinte); }
+    const a = api3d.current; if (a.bloom) a.bloom.strength = Math.min(2, Math.max(0.6, fx.bloom || 0)); if (a.gradeU) { const u = a.gradeU; u.contraste.value = fx.contraste; u.saturacion.value = fx.saturacion; u.calidez.value = fx.calidez; u.vineta.value = fx.vineta; u.exposure.value = fx.exp; u.highlights.value = fx.realce; u.shadows.value = fx.sombra; u.wb.value = wbVec(fx.bb, fx.tinte); }
     a.despertar?.();
   }, [fx, realista, estado]);
   // Óptica: ángulo de visión vertical de la cámara (como el objetivo de una cámara). Menos grados = más zoom y menos deformación; más grados = gran angular
@@ -4217,7 +4220,7 @@ export default function Visor3D({ cliente = false }) {
       }
       if (modoRender && !GL_SOFTWARE && calidad !== 'baja') {
         // Extrae las altas luces antes de comprimir el rango de color para la pantalla.
-        a.bloom = new UnrealBloomPass(sz, Math.min(2, Math.max(0, fx.bloom || 0)), 0.1, 2 / Math.max(0.0001, a.renderer.toneMappingExposure));
+        a.bloom = new UnrealBloomPass(sz, Math.min(2, Math.max(0.6, fx.bloom || 0)), 0.45, 2 / Math.max(0.0001, a.renderer.toneMappingExposure));
         comp.addPass(a.bloom);
       }
       comp.addPass(new OutputPass());
@@ -4800,7 +4803,7 @@ export default function Visor3D({ cliente = false }) {
         ledEm(mt, val);
         const led = esLed(val), colL = color(val, '#ffd9a0');
         // cara emisiva: se ve como una tira LED (sin tonemapping, muy clara) y alumbra; los LED reales se ven casi blancos en el centro
-        const matCara = led ? new THREE.MeshBasicMaterial({ color: colL.clone().lerp(new THREE.Color(0xffffff), 0.45), toneMapped: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : mt;
+        const matCara = led ? new THREE.MeshBasicMaterial({ color: colL.clone().lerp(new THREE.Color(0xffffff), 0.45).multiplyScalar(LED_HDR.k), toneMapped: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : mt;
         const me = new THREE.Mesh(geometriaExtr(o), matCara); me.castShadow = me.receiveShadow = !led; ge.add(me);
         if (selIdsRef.current.has(o.id)) ge.add(new THREE.LineSegments(new THREE.EdgesGeometry(me.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6, depthTest: false })));
         if (led && Math.abs(o.dist || 0) < 0.05) { // cara plana emisiva: luz real hacia donde mira y un brillo suave alrededor, como las tiras LED
@@ -7007,9 +7010,10 @@ export default function Visor3D({ cliente = false }) {
           {interruptor('Que el material emita luz', P.emis > 0, () => (P.emis > 0 ? ajustaMat(t.id, { pbr: { emis: null, emisHex: null } }) : ajustaMat(t.id, { pbr: { emis: 1, emisHex: P.emisHex || (esColor ? t.color : P.tinte) || '#ffffff' } })))}
           {P.emis > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-              <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(P.emisHex || '') ? P.emisHex : '#ffffff'} onChange={e => ajustaMat(t.id, { pbr: { emisHex: e.target.value } })} style={{ width: 30, height: 26, padding: 0, border: '1px solid #666', borderRadius: 4, background: 'none' }} />
+              <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(P.emisHex || '') ? P.emisHex : '#ffffff'} onChange={e => ajustaMat(t.id, { pbr: { emisHex: e.target.value } })} title="Color de la luz" style={{ width: 30, height: 26, padding: 0, border: '1px solid #666', borderRadius: 4, background: 'none' }} />
+              <select value="" onChange={e => { const k = parseInt(e.target.value, 10); if (k) ajustaMat(t.id, { pbr: { emisHex: '#' + kelvinColor(k).getHexString() } }); }} title="Temperatura de color del LED" style={{ ...btn, fontSize: 11, padding: '2px 3px', maxWidth: 74 }}><option value="">Temp. K</option>{[[2200, '2200 K · muy cálida'], [2700, '2700 K · cálida'], [3000, '3000 K'], [3500, '3500 K'], [4000, '4000 K · neutra'], [5000, '5000 K'], [6500, '6500 K · fría']].map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>
               <span style={{ fontSize: 12, width: 52 }}>Fuerza</span>
-              <input type="range" min="0.1" max="3" step="0.05" value={P.emis} onChange={e => ajustaMat(t.id, { pbr: { emis: parseFloat(e.target.value) } })} style={{ flex: 1, minWidth: 0 }} />
+              <input type="range" min="0.1" max="6" step="0.05" value={P.emis} onChange={e => ajustaMat(t.id, { pbr: { emis: parseFloat(e.target.value) } })} style={{ flex: 1, minWidth: 0 }} />
             </div>
           )}
           <div style={cab}>UV</div>
@@ -9513,6 +9517,7 @@ export default function Visor3D({ cliente = false }) {
               <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>Forma sobre una cara</div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Color</span><input type="color" value={hexOk ? hex : '#9aa3ad'} onChange={e => cambiar(objSel.id, { color: e.target.value + (led ? '!' : '') })} /><input key={hex} defaultValue={hex} style={{ ...btn, width: 84 }} onBlur={e => { const v = e.target.value.trim(); if (/^#[0-9a-fA-F]{6}$/.test(v)) cambiar(objSel.id, { color: v + (led ? '!' : '') }); }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Temperatura</span><select value="" onChange={e => { const k = parseInt(e.target.value, 10); if (k) cambiar(objSel.id, { color: '#' + kelvinColor(k).getHexString() + (led ? '!' : '') }); }} style={btn}><option value="">Elegir…</option>{[[2200, '2200 K · muy cálida'], [2700, '2700 K · cálida'], [3000, '3000 K'], [3500, '3500 K'], [4000, '4000 K · neutra'], [5000, '5000 K'], [6500, '6500 K · fría']].map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }} title="Como darle emisivo en SketchUp: se ve como una tira LED y en el render alumbra"><input type="checkbox" checked={led} onChange={e => cambiar(objSel.id, { color: (hexOk ? hex : '#ffd9a0') + (e.target.checked ? '!' : '') })} /> Emisiva (luz LED)</label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Grosor (cm)</span><input type="number" step="1" value={Math.round((objSel.dist || 0) * 10) / 10} style={{ ...btn, width: 80 }} onChange={e => { const v = Number(e.target.value); if (Number.isFinite(v)) cambiar(objSel.id, { dist: v, alto: Math.abs(v) }); }} /></label>
                 <div style={{ opacity: 0.5, fontSize: 11 }}>Con Empujar/Tirar (P) arrastra la cara para darle volumen, o escribe la medida y Enter. 0 = solo una cara plana (como una tira LED pintada).</div>
