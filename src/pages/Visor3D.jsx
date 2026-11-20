@@ -7169,8 +7169,8 @@ export default function Visor3D({ cliente = false }) {
               onClick={() => irEspacio(k)}>{nombre}</button>
           ))}
         </div>
-        <b className="estudio-proyecto" style={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titulo}</b>
-        {guardado && guardado !== 'inicial' && <span style={{ opacity: 0.55, fontSize: 11, whiteSpace: 'nowrap' }}>{guardado}</span>}
+        <b className="estudio-proyecto" style={{ maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titulo}</b>
+        {guardado && guardado !== 'inicial' && <span title={guardado} style={{ opacity: 0.55, fontSize: 11, whiteSpace: 'nowrap', maxWidth: '14vw', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>{guardado}</span>}
         <span style={sepTop} />
         <button style={bTop} onClick={() => deshacer()} title="Deshacer (Ctrl+Z)">↶</button>
         <button style={bTop} onClick={() => rehacer()} title="Rehacer (Ctrl+Y)">↷</button>
