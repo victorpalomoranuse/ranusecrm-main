@@ -25,7 +25,7 @@ export const SALAS = [
 
 export const NIVELES = ['Esencial', 'Equilibrado', 'Completo'];
 export const TAM_NIVEL = [3, 5, 7];
-export const DESCUENTO = 0.10; // descuento exclusivo orientativo; el real lo confirma Ranuse al revisar
+export const DESCUENTO = 0; // los descuentos de marca se gestionarán aparte del servicio (decisión de Víctor, nov 2026)
 const GAP = 30, EDGE = 8, LIBRE_MIN = { 1: 0.2, 2: 0.3, 3: 0.38 };
 
 // Catálogo de ejemplo: se usa solo si el catálogo real aún no tiene máquinas marcadas para Home Gym
@@ -115,6 +115,6 @@ export function razones(s, nivel, fmtM, fmtEur) {
   nivel.lista.filter(c => c.cambio).forEach(c => out.push(`Cambiamos «${c.primera.nombre}» por «${c.it.nombre}» ${c.cambio === 'altura' ? `porque tu techo mide ${fmtM(s.H)} m` : 'para ahorrar espacio'}.`));
   out.push(`Dejamos libre al menos el ${Math.round((LIBRE_MIN[s.people] || 0.2) * 100)} % del suelo${s.people > 1 ? ' para que entrenéis a la vez' : ' para moverte con comodidad'}, y la puerta despejada.`);
   const c = nivel.total * (1 - DESCUENTO);
-  out.push(c <= s.budget ? `Con el descuento, ${fmtEur(c)}: dentro de tu presupuesto.` : `Con el descuento, ${fmtEur(c)}: ${fmtEur(c - s.budget)} por encima de tu presupuesto. Prueba un nivel inferior.`);
+  out.push(c <= s.budget ? `Total ${fmtEur(c)}: dentro de tu presupuesto.` : `Total ${fmtEur(c)}: ${fmtEur(c - s.budget)} por encima de tu presupuesto. Prueba un nivel inferior.`);
   return out;
 }

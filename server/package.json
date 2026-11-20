@@ -16,6 +16,7 @@
     "license": "ISC",
     "dependencies": {
         "@gltf-transform/core": "^4.5.1",
+        "@gltf-transform/extensions": "^4.5.1",
         "@gltf-transform/functions": "^4.5.1",
         "@gradio/client": "^2.7.1",
         "@resvg/resvg-js": "^2.6.2",

@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
 import { OBJETIVOS, SALAS, DESCUENTO, CATALOGO_DEMO, construyeHuecos, recomienda, nivelRecomendado, razones } from '../utils/homegymMotor';
 import './HomeGym.css';
+const HomeGymAR = lazy(() => import('../components/HomeGymAR')); // el visor AR solo se descarga al abrirlo
 
 // Home Gym Studio (público): el cliente mete su espacio, recibe una recomendación a escala y solicita el equipamiento.
 // La solicitud cae en el CRM (Métricas → lead nuevo + Home Gym) para que Ranuse la revise antes de que se compre nada.
@@ -123,6 +124,7 @@ export function HomeGym() {
   const [nivel, setNivel] = useState(0);
   const [quitados, setQuitados] = useState(() => new Set());
   const [vista, setVista] = useState('3d');
+  const [ar, setAr] = useState(false);
   const [anim, setAnim] = useState(false);
   const [productos, setProductos] = useState(null);
   const [contacto, setContacto] = useState({ nombre: '', email: '', telefono: '', acepto: false, web: '' });
@@ -221,6 +223,10 @@ export function HomeGym() {
             <span className="p">{eur(c.it.precio)}</span>
           </label>))}</div></div>
       {R.omitidos.filter(o => o.idx < niv.maxIdx).length > 0 && <div className="hg-skip"><h3>No incluido en tu sala</h3>{R.omitidos.filter(o => o.idx < niv.maxIdx).map(o => <span key={o.it.id}><b>{o.it.nombre}</b>: {o.r}.</span>)}</div>}
+      <div className="hg-fld">
+        <button type="button" className="hg-ghost" disabled={demo || !activos.length} onClick={() => setAr(true)}>Ver mi gym en tu sala (3D real y AR)</button>
+        {demo && <p className="hg-note">Disponible cuando haya máquinas reales en el catálogo.</p>}
+      </div>
       <div className="hg-nav"><button type="button" className="hg-ghost" onClick={() => ir(1)}>Atrás</button><button type="button" className="hg-primary" disabled={!activos.length} onClick={() => ir(3)}>Continuar</button></div>
     </>
   );
@@ -229,18 +235,16 @@ export function HomeGym() {
     <div className="hg-done">
       <span className="hg-kicker">Solicitud enviada</span><h1>Ya la tenemos</h1>
       <span className="hg-ref">{envio.ref}</span>
-      <p className="hg-lead">El equipo de Ranuse revisará tu diseño (medidas, compatibilidad y plazos) y te escribirá con el presupuesto cerrado y el enlace con tu descuento. No se compra nada hasta que lo veas.</p>
+      <p className="hg-lead">El equipo de Ranuse revisará tu diseño (medidas, compatibilidad y plazos) y te escribirá con el presupuesto cerrado. No se compra nada hasta que lo veas.</p>
     </div>
   ) : (
     <>
-      <div><span className="hg-kicker">Paso 4 de 4</span><h1>Solicita tu equipamiento</h1><p className="hg-lead">Revisamos tu diseño contigo antes de comprar nada. Si todo encaja, te pasamos el enlace con tu descuento de marca.</p></div>
+      <div><span className="hg-kicker">Paso 4 de 4</span><h1>Solicita tu equipamiento</h1><p className="hg-lead">Revisamos tu diseño contigo antes de comprar nada. Si todo encaja, te pasamos el presupuesto cerrado.</p></div>
       <div className="hg-sum">
         {activos.map(c => <div key={c.it.id}><span>{c.it.nombre}</span><span>{eur(c.it.precio)}</span></div>)}
-        <div style={{ borderTop: '1px solid var(--line)', paddingTop: 8 }}><span>Precio de catálogo</span><span>{eur(total)}</span></div>
-        <div style={{ color: 'var(--ok)' }}><span>Descuento exclusivo (~{DESCUENTO * 100} %)</span><span>−{eur(dto)}</span></div>
         <div className="tot"><span>Total orientativo</span><span>{eur(total - dto)}</span></div>
       </div>
-      <div className="hg-save"><span>Con el descuento ahorras</span><b>{eur(dto)}</b><span className="hg-note" style={{ color: 'var(--ink)' }}>El importe final lo confirma Ranuse al revisar tu diseño.</span></div>
+      <p className="hg-note">El importe final lo confirma Ranuse al revisar tu diseño.</p>
       <form className="hg-form" onSubmit={e => { e.preventDefault(); if (puedeEnviar) enviar(); }}>
         <input type="text" placeholder="Tu nombre" autoComplete="name" value={contacto.nombre} onChange={e => setContacto(c => ({ ...c, nombre: e.target.value }))} aria-label="Tu nombre" />
         <input type="email" placeholder="Email" autoComplete="email" value={contacto.email} onChange={e => setContacto(c => ({ ...c, email: e.target.value }))} aria-label="Email" />
@@ -277,6 +281,7 @@ export function HomeGym() {
         </div>
         <section className="hg-panel">{[p0, p1, p2, p3][paso]}</section>
       </div>
+      {ar && <Suspense fallback={null}><HomeGymAR S={S} items={activos} onClose={() => setAr(false)} /></Suspense>}
     </div>
   );
 }

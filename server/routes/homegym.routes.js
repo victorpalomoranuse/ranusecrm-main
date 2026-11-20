@@ -2,6 +2,7 @@ import express from 'express';
 import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
+import { montaGymGlb } from '../utils/homegym-ar.js';
 
 // Home Gym Studio: la parte pública (catálogo y solicitud de equipamiento) y la del equipo (revisar solicitudes y elegir qué máquinas salen).
 const router = express.Router();
@@ -99,6 +100,58 @@ router.post('/solicitud', async (req, res) => {
     console.error('Home Gym · solicitud:', err);
     res.status(500).json({ error: 'No se pudo enviar la solicitud. Inténtalo de nuevo.' });
   }
+});
+
+// ── Público: el gym completo colocado y a tamaño real, en un solo .glb para verlo en realidad aumentada ──
+// Las medidas y los modelos salen del catálogo; del navegador solo se aceptan los ids y dónde coloca cada máquina el motor.
+const arCache = new Map(); // hash → { buf, t }
+const arIntentos = new Map();
+function limitaAR(req) {
+  const ip = req.ip || 'x', ahora = Date.now();
+  const lista = (arIntentos.get(ip) || []).filter(t => ahora - t < 60 * 60 * 1000);
+  if (lista.length >= 30) return false;
+  lista.push(ahora); arIntentos.set(ip, lista);
+  if (arIntentos.size > 5000) arIntentos.clear();
+  return true;
+}
+router.post('/ar', async (req, res) => {
+  try {
+    if (!limitaAR(req)) return res.status(429).json({ error: 'Demasiadas vistas seguidas. Inténtalo en un rato.' });
+    const sala = { L: num(req.body?.sala?.L, 0, 100, 2000), W: num(req.body?.sala?.W, 0, 100, 2000), door: ['arriba', 'abajo', 'izq', 'der'].includes(req.body?.sala?.door) ? req.body.sala.door : 'abajo' };
+    const pedidos = (Array.isArray(req.body?.items) ? req.body.items : []).slice(0, 12)
+      .filter(i => /^[0-9a-f-]{36}$/i.test(String(i?.id)))
+      .map(i => ({ id: String(i.id), x: num(i.x, 0, -50, 2000), y: num(i.y, 0, -50, 2000), w: num(i.w, 0, 10, 400), d: num(i.d, 0, 10, 400) }));
+    if (!sala.L || !sala.W || !pedidos.length) return res.status(400).json({ error: 'Faltan datos de la sala o del equipamiento' });
+
+    const { data: prods, error } = await supabase.from('catalog_products').select('id, name, longitud, ancho, altura, homegym_tipo, bloques').in('id', pedidos.map(p => p.id)).not('homegym_tipo', 'is', null);
+    if (error) throw error;
+    const porId = new Map((prods || []).map(p => [p.id, p]));
+    const items = pedidos.map(p => {
+      const pr = porId.get(p.id); if (!pr) return null;
+      const girada = Math.abs(p.w - Number(pr.longitud)) > 1 && Math.abs(p.w - Number(pr.ancho)) <= 1;
+      const m = pr.bloques?.modelo3d;
+      return { nombre: pr.name, x: p.x, y: p.y, w: p.w, d: p.d, h: Number(pr.altura) || 100, cat: ({ rack: 'fuerza', banco: 'fuerza', discos: 'fuerza', mancu: 'fuerza', polea: 'fuerza', cinta: 'cardio', bici: 'cardio', remo: 'cardio' })[pr.homegym_tipo] || 'func',
+        rot: (Number(m?.rot) || 0) + (girada ? 90 : 0), modelo3d: m?.url && (m.tipo || 'glb') === 'glb' ? { url: m.url } : null };
+    }).filter(Boolean);
+    if (!items.length) return res.status(400).json({ error: 'El equipamiento elegido ya no está disponible' });
+
+    const hash = crypto.createHash('sha1').update(JSON.stringify([sala, items.map(i => [i.nombre, i.x, i.y, i.w, i.d, i.h, i.rot, i.modelo3d?.url || ''])])).digest('hex').slice(0, 20);
+    if (!arCache.has(hash)) {
+      const buf = await montaGymGlb(items, sala);
+      arCache.set(hash, { buf, t: Date.now() });
+      if (arCache.size > 30) arCache.delete(arCache.keys().next().value);
+    }
+    res.json({ path: `/homegym/ar/${hash}.glb`, modelos: items.filter(i => i.modelo3d).length, cajas: items.filter(i => !i.modelo3d).length });
+  } catch (err) {
+    console.error('Home Gym · AR:', err);
+    res.status(500).json({ error: 'No se pudo preparar la vista en realidad aumentada' });
+  }
+});
+router.get('/ar/:hash.glb', (req, res) => {
+  const e = arCache.get(String(req.params.hash));
+  if (!e) return res.status(404).json({ error: 'La vista caducó. Vuelve a abrirla.' });
+  res.set({ 'Content-Type': 'model/gltf-binary', 'Cache-Control': 'public, max-age=3600', 'Access-Control-Allow-Origin': '*', 'Cross-Origin-Resource-Policy': 'cross-origin' });
+  res.send(e.buf);
 });
 
 // ── Equipo: solicitudes recibidas ──
