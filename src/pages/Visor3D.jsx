@@ -1276,13 +1276,15 @@ function luzLedObjeto(g, o, presup, amb) {
   luzArea(g, new THREE.Vector3(...cfg[0]), new THREE.Vector3(...cfg[1]), cfg[2], cfg[3], col, 8 * amb, presup);
 }
 // Tira LED: cinta luminosa que sigue un recorrido y alumbra de verdad hacia donde se le indique
-function construirLed(o, presup, amb, seleccionado, iluminado) {
+function construirLed(o, presup, amb, seleccionado, iluminado, emis) {
   const g = new THREE.Group(), pts = o.pts || [], L = o.led || { ancho: 1.2, k: 3000, lm: 800, dir: 'abajo' }; if (pts.length < 2) return g;
   const n = pts.length, m = L.cerrado ? n : n - 1, y = (o.z0 ?? 250) * CM, ancho = Math.max(0.3, L.ancho) * CM, hex = /^#[0-9a-fA-F]{6}$/.test(o.color || '') ? o.color : kelvinHex(L.k), col = new THREE.Color(hex); // si la tira tiene un color elegido, manda sobre la temperatura
   const encendida = iluminado && (L.lm ?? 800) > 0;
   // El difusor es una fuente visible; la exposición fotográfica no debe convertirlo en negro.
   // Su luminaria mantiene los lúmenes configurados, sin amplificarlos para aclarar el perfil.
-  const mat = encendida ? new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(0.65), toneMapped: false }) : new THREE.MeshStandardMaterial({ color: seleccionado ? 0x9cc8ff : 0xbebbb7, roughness: 0.85 });
+  // Si la tira se ha pintado con un material emisivo (panel de material): se ve como ese material (brillante y con bloom en Render); si no, la tira de siempre
+  const colE = emis && encendida ? new THREE.Color(emis.hex) : null;
+  const mat = colE ? (() => { const m0 = new THREE.MeshBasicMaterial({ color: colE.clone().multiplyScalar(EXPO_R.v < 0.5 ? 40 * kLumEm(colE) * emis.k / Math.max(1e-4, EXPO_R.v) : 0.65), toneMapped: false }); m0.userData.ledBloomBase = colE.clone(); m0.userData.ledBloomK = emis.k; return m0; })() : encendida ? new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(0.65), toneMapped: false }) : new THREE.MeshStandardMaterial({ color: seleccionado ? 0x9cc8ff : 0xbebbb7, roughness: 0.85 });
   for (let i = 0; i < m; i++) {
     const a = pts[i], b = pts[(i + 1) % n], largo = Math.hypot(b[0] - a[0], b[1] - a[1]) * CM; if (largo < 0.01) continue;
     const ux = (b[0] - a[0]) / (largo / CM), uy = (b[1] - a[1]) / (largo / CM), mid = new THREE.Vector3(((a[0] + b[0]) / 2) * CM, y, ((a[1] + b[1]) / 2) * CM);
@@ -4101,6 +4103,7 @@ export default function Visor3D({ cliente = false }) {
     a.renderer.toneMappingExposure = modelando ? 1 : ambiente.exposicion / (1.2 * Math.pow(2, ambiente.ev ?? 7));
     if (a.bloom) a.bloom.threshold = ((fx.bloom || 0) > 0 ? 2 : 12) / Math.max(0.0001, a.renderer.toneMappingExposure);
     EXPO_R.v = a.renderer.toneMappingExposure;
+    a.scene.traverse(o => { const mm = o.material; if (mm && !Array.isArray(mm) && mm.userData && mm.userData.ledBloomBase) mm.color.copy(mm.userData.ledBloomBase).multiplyScalar(modelando ? 0.65 : 40 * kLumEm(mm.userData.ledBloomBase) * mm.userData.ledBloomK / Math.max(1e-4, a.renderer.toneMappingExposure)); });
     a.scene.traverse(o => { const mm = o.material; if (mm && !Array.isArray(mm) && mm.userData && mm.userData.emisPbr && mm.userData.emisK > 0) mm.emissiveIntensity = modelando ? 0 : Math.min(3000, mm.userData.emisK * 40 * kLumEm(mm.emissive) / Math.max(1e-4, a.renderer.toneMappingExposure)); }); // la emisión de los materiales del panel se reescala con la exposición
     a.esc?.traverse(o => { const m = o.material; if (m && m.userData && m.userData.ledFaceBase) m.color.copy(m.userData.ledFaceBase).multiplyScalar(modelando ? 1 : Math.min(2000, 0.7 / Math.max(1e-5, a.renderer.toneMappingExposure))); });
     // Cielo y suelo del Render: el cielo cambia con la hora (azul de día, naranja al atardecer, oscuro de noche) y el suelo exterior es de tierra, no blanco
@@ -4618,7 +4621,9 @@ export default function Visor3D({ cliente = false }) {
         return;
       }
       if (o.tipo === 'led' && Array.isArray(o.pts) && o.pts.length >= 2) {
-        const gl = construirLed({ ...o, z0: 0 }, presup, 1, selIdsRef.current.has(o.id), mostrarLuz);
+        const txL = o.color && String(o.color).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === o.color) : null; // tira pintada con un material emisivo
+        const emL = txL && txL.pbr && txL.pbr.emis > 0 && /^#[0-9a-fA-F]{6}$/.test(txL.pbr.emisHex || txL.color || '') ? { hex: txL.pbr.emisHex || txL.color, k: txL.pbr.emis } : null;
+        const gl = construirLed({ ...o, z0: 0 }, presup, 1, selIdsRef.current.has(o.id), mostrarLuz, emL);
         gl.position.set(o.cx * CM, (o.z0 ?? 250) * CM, o.cy * CM); gl.rotation.set((o.inclinacionX || 0) * Math.PI / 180, -(o.rot || 0) * Math.PI / 180, (o.inclinacionZ || 0) * Math.PI / 180, 'YXZ'); gl.userData.oid = o.id; gl.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
         a.esc.add(gl);
         return;
