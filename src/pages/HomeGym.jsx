@@ -124,6 +124,23 @@ function VistaPlanta({ S, items, anim, malos, sel, onSel, onMove, editable }) {
   );
 }
 
+/* ---------- Subir un plano o una foto: se reduce en el móvil antes de enviarlo (más rápido y más barato) ---------- */
+const aBase64 = blob => new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = () => ko(new Error('No se pudo leer el archivo.')); r.readAsDataURL(blob); });
+async function preparaArchivo(file) {
+  if (file.type === 'application/pdf') {
+    if (file.size > 5e6) throw new Error('El PDF pesa más de 5 MB. Prueba con una captura del plano.');
+    return { tipo: file.type, data: await aBase64(file), vista: null };
+  }
+  if (!file.type.startsWith('image/')) throw new Error('Sube una imagen o un PDF.');
+  const url = URL.createObjectURL(file);
+  const img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('No se pudo abrir la imagen.')); i.src = url; });
+  const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return { tipo: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.85).split(',')[1], vista: url };
+}
+const ETIQ_CONF = { alta: 'Confianza alta', media: 'Confianza media', baja: 'Confianza baja' };
+
 /* ---------- Campo de medida: número escrito + deslizador ---------- */
 function Medida({ id, label, valor, min, max, paso, onChange }) {
   const [txt, setTxt] = useState(String(valor / 100));
@@ -158,6 +175,7 @@ export function HomeGym() {
   const [productos, setProductos] = useState(null);
   const [contacto, setContacto] = useState({ nombre: '', email: '', telefono: '', mensaje: '', acepto: false, web: '' });
   const [envio, setEnvio] = useState({ estado: 'idle', ref: '', error: '' });
+  const [lectura, setLectura] = useState({ estado: 'idle', datos: null, vista: null, error: '' });
 
   useEffect(() => {
     document.title = 'Home Gym Studio · Ranuse Design';
@@ -187,6 +205,24 @@ export function HomeGym() {
     window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion:reduce)').matches ? 'auto' : 'smooth' });
   };
   const ponS = c => { setS(s => ({ ...s, ...c })); setSala(-1); };
+
+  // Lee las medidas de un plano o una foto y las pone en los campos de abajo, para que el cliente las revise
+  const leeEspacio = async file => {
+    if (!file) return;
+    setLectura({ estado: 'leyendo', datos: null, vista: null, error: '' });
+    try {
+      const a = await preparaArchivo(file);
+      const r = await api.post('/homegym/leer-espacio', { tipo: a.tipo, data: a.data });
+      const d = r.data, cambios = {};
+      if (d.largo) cambios.L = entre(Math.round(d.largo * 100), 200, 1000);
+      if (d.ancho) cambios.W = entre(Math.round(d.ancho * 100), 200, 800);
+      if (d.alto) cambios.H = entre(Math.round(d.alto * 100), 200, 350);
+      if (Object.keys(cambios).length) ponS(cambios);
+      setLectura({ estado: 'ok', datos: d, vista: a.vista, error: '' });
+    } catch (e) {
+      setLectura({ estado: 'error', datos: null, vista: null, error: e.response?.data?.error || e.message || 'No se pudo leer el archivo.' });
+    }
+  };
 
   // Cambios del cliente sobre la distribución
   const mover = (id, x, y) => setLay(l => l.map(a => (a.it.id === id ? { ...a, x, y } : a)));
@@ -226,7 +262,24 @@ export function HomeGym() {
       <div className="hg-seg" role="group" aria-label="Cómo quieres darnos tu espacio">
         {[['escrito', 'Escribir medidas'], ['plano', 'Plano o foto'], ['movil', 'Medir con el móvil']].map(([k, n]) => <button key={k} type="button" aria-pressed={modo === k} onClick={() => setModo(k)}>{n}</button>)}
       </div>
-      {modo === 'plano' && <div className="hg-cap"><b>Próximamente</b><span>Subirás un plano o una foto y la herramienta leerá las medidas. Tú las confirmas antes de seguir. Una foto sola da una estimación: necesita una referencia, como una puerta o un folio A4 en el suelo.</span><span>Mientras tanto, escribe tus medidas aquí debajo.</span></div>}
+      {modo === 'plano' && (
+        <div className="hg-cap">
+          <label className="hg-upl">{lectura.estado === 'leyendo' ? 'Leyendo tu archivo…' : 'Toca para subir un plano, un PDF o una foto'}
+            <input type="file" accept="image/*,application/pdf" disabled={lectura.estado === 'leyendo'} onChange={e => { leeEspacio(e.target.files && e.target.files[0]); e.target.value = ''; }} />
+          </label>
+          {lectura.vista && <img className="hg-prev" src={lectura.vista} alt="Archivo que has subido" />}
+          {lectura.estado === 'error' && <p className="hg-msg err">{lectura.error}</p>}
+          {lectura.estado === 'ok' && lectura.datos && (
+            <div className="hg-lect" role="status">
+              <b>{lectura.datos.tipo === 'plano' ? 'Hemos leído tu plano' : lectura.datos.tipo === 'foto' ? 'Hemos mirado tu foto' : 'No parece una sala ni un plano'} · {ETIQ_CONF[lectura.datos.confianza]}</b>
+              <span>Largo: {lectura.datos.largo ? mt(lectura.datos.largo * 100) + ' m' : 'no se ha podido leer'} · Ancho: {lectura.datos.ancho ? mt(lectura.datos.ancho * 100) + ' m' : 'no se ha podido leer'} · Techo: {lectura.datos.alto ? mt(lectura.datos.alto * 100) + ' m' : 'no se ha podido leer'}</span>
+              {lectura.datos.nota && <span className="hg-note">{lectura.datos.nota}</span>}
+              {!lectura.datos.formaRegular && <span className="hg-warn">La sala no es un rectángulo: usamos el rectángulo que la contiene.</span>}
+              {lectura.datos.confianza === 'baja' && <span className="hg-warn">Es una estimación poco fiable. Confirma las medidas con un metro.</span>}
+              {!lectura.datos.largo && !lectura.datos.ancho && <span className="hg-warn">No hemos podido sacar medidas. Escríbelas aquí debajo.</span>}
+            </div>)}
+          <span className="hg-note">En un plano leemos las cotas escritas. En una foto solo estimamos si se ve algo de tamaño conocido, como una puerta o un folio A4 en el suelo. <b>Revisa siempre las medidas de aquí debajo.</b></span>
+        </div>)}
       {modo === 'movil' && <div className="hg-cap"><b>Consejo para iPhone</b><span>La app <b>Medida</b>, que ya viene en tu iPhone, mide largo y ancho en segundos. Si tienes un medidor láser, aún mejor. Escribe aquí los números.</span></div>}
       <div className="hg-presets">{SALAS.map((s, i) => <button key={s.n} type="button" className="hg-preset" aria-pressed={sala === i} onClick={() => { setS(o => ({ ...o, L: s.L, W: s.W, H: s.H, door: s.door })); setSala(i); }}>{s.n}</button>)}</div>
       <Medida id="L" label="Largo" valor={S.L} min={2} max={10} paso={0.1} onChange={v => ponS({ L: v })} />

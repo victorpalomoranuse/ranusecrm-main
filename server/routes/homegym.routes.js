@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { montaGymGlb, medidasModelo } from '../utils/homegym-ar.js';
+import { callClaude } from '../utils/anthropic.js';
 
 // Home Gym Studio: la parte pública (catálogo y solicitud de equipamiento) y la del equipo (revisar solicitudes y elegir qué máquinas salen).
 const router = express.Router();
@@ -52,6 +53,49 @@ router.get('/catalogo', async (req, res) => {
   } catch (err) {
     console.error('Home Gym · catálogo:', err);
     res.status(500).json({ error: 'No se pudo cargar el catálogo' });
+  }
+});
+
+// ── Público: leer las medidas de un plano o una foto con IA (el cliente siempre las confirma antes de usarlas) ──
+const SISTEMA_LECTURA = `Eres el lector de medidas de una herramienta que distribuye gimnasios caseros. Recibes un PLANO (con cotas escritas) o una FOTO de una sala y devuelves SOLO un JSON, sin texto alrededor:
+{"tipo":"plano"|"foto"|"otro","largo_m":número|null,"ancho_m":número|null,"alto_m":número|null,"forma_regular":true|false,"confianza":"alta"|"media"|"baja","nota":"frase breve en español: qué has leído o en qué te has basado"}
+Reglas, sin excepciones:
+- NUNCA inventes una medida. Si un dato no aparece escrito (plano) o no se puede deducir con una referencia clara (foto), pon null.
+- Plano: lee las cotas escritas. largo_m es el lado MAYOR y ancho_m el menor, en metros (convierte cm o mm). Si la sala no es un rectángulo, da las medidas del rectángulo que la contiene y forma_regular=false. Si el plano tiene varias estancias y no está claro cuál es el gimnasio, devuelve null y dilo en la nota.
+- Foto: solo estima si se ve una referencia de tamaño conocido (puerta estándar de 2,03 m de alto y 0,82 m de ancho, un folio A4 de 21×29,7 cm, un enchufe, un azulejo medido, una persona de la que se dé la altura…). Aun así la confianza es "media" como máximo; sin referencia, todo null y confianza "baja". Nunca des el largo y el ancho de una foto con confianza "alta".
+- alto_m: la altura del techo, solo si está escrita en el plano o se deduce de una referencia vertical clara.
+- Si la imagen no es un plano ni una sala, tipo "otro" y todo null.`;
+const lecturas = new Map();
+function limitaLectura(req) {
+  const ip = req.ip || 'x', ahora = Date.now();
+  const lista = (lecturas.get(ip) || []).filter(t => ahora - t < 60 * 60 * 1000);
+  if (lista.length >= 8) return false;
+  lista.push(ahora); lecturas.set(ip, lista);
+  if (lecturas.size > 5000) lecturas.clear();
+  return true;
+}
+router.post('/leer-espacio', async (req, res) => {
+  try {
+    if (!limitaLectura(req)) return res.status(429).json({ error: 'Has leído varios archivos seguidos. Prueba en un rato o escribe las medidas a mano.' });
+    const tipo = String(req.body?.tipo || ''), data = String(req.body?.data || '');
+    const esPdf = tipo === 'application/pdf';
+    if (!esPdf && !/^image\/(jpeg|png|webp)$/.test(tipo)) return res.status(400).json({ error: 'Sube una imagen (JPG, PNG) o un PDF' });
+    if (!data || data.length > 8e6) return res.status(400).json({ error: 'Falta el archivo o pesa demasiado. Reduce su tamaño e inténtalo de nuevo.' });
+    const archivo = esPdf ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } } : { type: 'image', source: { type: 'base64', media_type: tipo, data } };
+    const r = await callClaude({ system: SISTEMA_LECTURA, maxTokens: 500, messages: [{ role: 'user', content: [archivo, { type: 'text', text: 'Lee las medidas de este espacio.' }] }] });
+    const txt = (r.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    const m = txt.match(/\{[\s\S]*\}/); if (!m) throw new Error('respuesta sin JSON');
+    const j = JSON.parse(m[0]);
+    const medida = (v, mn, mx) => { const n = Number(v); return Number.isFinite(n) && n >= mn && n <= mx ? Math.round(n * 100) / 100 : null; };
+    let largo = medida(j.largo_m, 1.5, 10), ancho = medida(j.ancho_m, 1.5, 8);
+    if (largo && ancho && ancho > largo) [largo, ancho] = [ancho, largo];
+    res.json({
+      tipo: ['plano', 'foto', 'otro'].includes(j.tipo) ? j.tipo : 'otro', largo, ancho, alto: medida(j.alto_m, 2, 3.5),
+      formaRegular: j.forma_regular !== false, confianza: ['alta', 'media', 'baja'].includes(j.confianza) ? j.confianza : 'baja', nota: SOLO_TEXTO(j.nota, 300),
+    });
+  } catch (err) {
+    console.error('Home Gym · leer espacio:', String(err.message || err).slice(0, 200));
+    res.status(500).json({ error: 'No se pudo leer el archivo. Escribe las medidas a mano o prueba con otra imagen.' });
   }
 });
 
