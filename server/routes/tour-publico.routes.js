@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { leerModelosBib } from '../utils/modelos-bib.js';
 import { leerVersion } from '../utils/tour-version.js';
+import { TIPOS, NOMBRE, COLOR, clave } from '../utils/lamina-zonas.js';
 
 // Tour 360° para el cliente: enlace de solo lectura con las paradas (panorámicas guardadas en la galería del plano y marcadas como «tour»).
 // La firma es un HMAC del id del plano con el secreto del servidor: no se guarda nada y solo sirve para ese plano.
@@ -117,6 +118,29 @@ router.get('/:id/:firma/catalogo', async (req, res) => {
   } catch (err) {
     console.error('tour-publico catalogo:', err);
     res.status(500).json({ error: 'No se pudo cargar el catálogo' });
+  }
+});
+
+// Clasificación de las máquinas por zonas (cardio, máquinas de pin, peso libre…) para la vista pública de Zonas (enlace para grabar contenido).
+// Solo lee lo ya guardado en el plano: no llama a la IA ni escribe nada.
+router.get('/:id/:firma/zonas', async (req, res) => {
+  try {
+    const { id, firma } = req.params, esperada = firmaTour(id);
+    if (String(firma).startsWith('v-') || firma.length !== esperada.length || !crypto.timingSafeEqual(Buffer.from(firma), Buffer.from(esperada))) return res.status(403).json({ error: 'Enlace no válido' });
+    const { data, error } = await supabase.from('mediciones').select('nombre, data').eq('id', id).maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Plano no encontrado' });
+    const d = data.data || {}, zl = d.zonasLamina || {}, clasif = zl.clasif || {}, txt = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+    const nombres = {}, cuenta = {};
+    (d.eq || []).filter(e => e.s !== 'dem').forEach(e => { const k = clave(e); if (!nombres[k]) nombres[k] = txt(e.nm, 100) || k; cuenta[k] = (cuenta[k] || 0) + 1; });
+    const tipos = [...TIPOS.map(tid => ({ id: tid, nombre: NOMBRE[tid], color: COLOR[tid] })), ...(zl.tipos || [])];
+    const grupos = [...new Set(Object.values(clasif).map(c => c.grupo).filter(Boolean))];
+    res.set('Cache-Control', 'no-store');
+    res.json({ titulo: txt(zl.titulo, 80) || (data.nombre || 'Distribución') + ' · zonas', subtitulo: txt(zl.subtitulo, 120), plano: data.nombre, tipos, grupos,
+      maquinas: Object.keys(nombres).map(k => ({ clave: k, nombre: nombres[k], cantidad: cuenta[k] || 0, tipo: clasif[k]?.tipo || 'otro', grupo: clasif[k]?.grupo || 'Otros' })) });
+  } catch (err) {
+    console.error('tour-publico zonas:', err);
+    res.status(500).json({ error: 'No se pudo cargar la vista de zonas' });
   }
 });
 

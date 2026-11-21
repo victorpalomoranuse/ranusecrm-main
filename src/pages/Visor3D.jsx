@@ -44,7 +44,7 @@ import { planosEspejo } from '../components/espejosPlanos3d';
 let api = apiReal;
 const crearApiCliente = (id, firma) => {
   const no = () => Promise.reject(new Error('Modo cliente: solo lectura'));
-  return { get: u => (u === '/medicion/' + id ? apiReal.get('/tour-publico/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma) + '/plano') : u === '/medicion/catalogos' ? apiReal.get('/tour-publico/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma) + '/catalogo') : no()), post: no, put: no, patch: no, delete: no };
+  return { get: u => (u === '/medicion/' + id ? apiReal.get('/tour-publico/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma) + '/plano') : u === '/lamina-zonas/' + id ? apiReal.get('/tour-publico/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma) + '/zonas') : u === '/medicion/catalogos' ? apiReal.get('/tour-publico/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma) + '/catalogo') : no()), post: no, put: no, patch: no, delete: no };
 };
 const esMovil = () => { try { return window.matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent); } catch { return false; } };
 // Recorrido a pie: los muros frenan al visitante (se desliza por ellos), se pasa por los huecos de suelo a techo (puertas) y no se sale del interior:
@@ -2262,7 +2262,7 @@ class SombrasDeContacto extends SSAOPass {
     super.dispose();
   }
 }
-export default function Visor3D({ cliente = false }) {
+export default function Visor3D({ cliente = false, zonasPub = false }) {
   const { id, firma } = useParams();
   if (cliente) api = crearApiCliente(id, firma);
   const navigate = useNavigate();
@@ -6247,6 +6247,84 @@ export default function Visor3D({ cliente = false }) {
   };
   const cambiaZon = (clave, k, v) => { const d = zonDatos.current; if (!d) return; d.maquinas = d.maquinas.map(m => (m.clave === clave ? { ...m, [k]: v } : m)); setZonRev(x => x + 1); clearTimeout(window.__zonT); window.__zonT = setTimeout(() => api.put('/lamina-zonas/' + id, { maquinas: zonDatos.current.maquinas }).catch(() => setAviso('No se pudo guardar la corrección')), 700); };
   const entrarZonas = () => { if (!axo) entrarAxo(); setCargarModelos(true); setCargarPesados(true); setLimiteTri(1e12); setZon({ on: true, corte: true }); if (realista) { zonRealPrev.current = true; setRealista(false); } };
+  // Enlace público «solo Zonas» (para grabar contenido): al abrir se entra directamente en la vista de zonas y hay un muñeco que se mueve por la maqueta
+  const yaZon = useRef(false), [muneco, setMuneco] = useState({ ver: true, k: 1.5 }), munecoK = useRef(1.5); munecoK.current = muneco.k;
+  useEffect(() => {
+    if (!zonasPub || estado !== 'listo' || axo || yaZon.current) return;
+    const tm = setTimeout(() => { yaZon.current = true; try { entrarZonas(); } catch (e) { console.warn('zonas', e); } }, 500);
+    return () => clearTimeout(tm);
+  }, [zonasPub, estado, axo]); // eslint-disable-line react-hooks/exhaustive-deps
+  const copiarEnlaceZonas = async () => {
+    try {
+      const fz = (await api.get('/medicion/' + id + '/tour-firma')).data.firma, u = window.location.origin + '/zonas/' + encodeURIComponent(id) + '/' + fz;
+      try { await navigator.clipboard.writeText(u); setAviso('Enlace de Zonas copiado: ' + u); } catch { window.prompt('Copia el enlace de Zonas:', u); }
+    } catch { setAviso('No se pudo crear el enlace'); }
+  };
+  useEffect(() => {
+    const a = api3d.current;
+    if (!zonasPub || estado !== 'listo' || !a.scene || !a.modelo || !axo || !zon.on || !muneco.ver) return;
+    const plantas = a.modelo.plantas || [a.modelo], p0 = plantas[0] || {}, [ox0, oy0] = (a.offsPl || [])[0] || [0, 0], baseY = (p0.z || 0) * CM + 0.02;
+    const sala0 = (p0.salas || []).find(s => s.pts && s.pts.length >= 3);
+    const ini = a.munecoPos || (sala0 ? new THREE.Vector3(((sala0.pts.reduce((q, p) => q + p[0], 0) / sala0.pts.length) + ox0) * CM, baseY, ((sala0.pts.reduce((q, p) => q + p[1], 0) / sala0.pts.length) + oy0) * CM) : (a.centro ? new THREE.Vector3(a.centro.x, baseY, a.centro.z) : new THREE.Vector3(0, baseY, 0)));
+    // figura estilizada: pies, piernas, torso, brazos y cabeza (naranja Ranuse), con un aro en el suelo para verla bien desde arriba
+    const G = new THREE.Group(), cuerpo = new THREE.MeshStandardMaterial({ color: '#e4572e', roughness: 0.5 }), piel = new THREE.MeshStandardMaterial({ color: '#f4e9dc', roughness: 0.6 }), pant = new THREE.MeshStandardMaterial({ color: '#2b2723', roughness: 0.6 });
+    const pieza = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; m.userData.hit = false; return m; };
+    const legL = new THREE.Group(), legR = new THREE.Group(), armL = new THREE.Group(), armR = new THREE.Group();
+    legL.position.set(-0.09, 0.78, 0); legR.position.set(0.09, 0.78, 0); legL.add(pieza(new THREE.CapsuleGeometry(0.06, 0.62, 6, 10), pant, 0, -0.37, 0)); legR.add(pieza(new THREE.CapsuleGeometry(0.06, 0.62, 6, 10), pant, 0, -0.37, 0));
+    armL.position.set(-0.23, 1.38, 0); armR.position.set(0.23, 1.38, 0); armL.add(pieza(new THREE.CapsuleGeometry(0.045, 0.5, 6, 10), cuerpo, 0, -0.3, 0)); armR.add(pieza(new THREE.CapsuleGeometry(0.045, 0.5, 6, 10), cuerpo, 0, -0.3, 0));
+    const torso = pieza(new THREE.CapsuleGeometry(0.17, 0.5, 8, 14), cuerpo, 0, 1.15, 0), cab = pieza(new THREE.SphereGeometry(0.13, 20, 16), piel, 0, 1.68, 0);
+    const aro = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.42, 40), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
+    aro.rotation.x = -Math.PI / 2; aro.position.y = 0.02; aro.renderOrder = 3; aro.userData.esAro = true; aro.raycast = () => {};
+    const disco = new THREE.Mesh(new THREE.CircleGeometry(0.34, 32), new THREE.MeshBasicMaterial({ color: '#e4572e', transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false })); disco.rotation.x = -Math.PI / 2; disco.position.y = 0.015; disco.renderOrder = 3; disco.raycast = () => {};
+    G.add(legL, legR, armL, armR, torso, cab, aro, disco); G.position.copy(ini); G.scale.setScalar(munecoK.current); a.scene.add(G); a.muneco = G;
+    const cuerpoHit = [torso, cab, legL.children[0], legR.children[0], armL.children[0], armR.children[0]];
+    const dom = a.renderer.domElement, ray = new THREE.Raycaster(), p2m = new THREE.Vector2(), plano = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), pt = new THREE.Vector3();
+    let arrastra = false, dx0 = 0, dz0 = 0, anim = 0, raf = 0, ult = 0; const teclas = new Set();
+    const cabe = (x, z) => { try { return dentroDelEspacio(a.modelo, x, z, a.offsPl); } catch { return true; } };
+    const coloca = (x, z) => { if (cabe(x, z)) { G.position.x = x; G.position.z = z; return true; } if (cabe(x, G.position.z)) { G.position.x = x; return true; } if (cabe(G.position.x, z)) { G.position.z = z; return true; } return false; };
+    const rayo = e => { const rc = dom.getBoundingClientRect(); p2m.set(((e.clientX - rc.left) / rc.width) * 2 - 1, -((e.clientY - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(p2m, a.cam); };
+    const alAbajo = e => {
+      if (e.button !== 0) return; rayo(e);
+      if (ray.intersectObjects(cuerpoHit, false).length || ray.intersectObject(disco, false).length) {
+        plano.constant = -G.position.y; if (ray.ray.intersectPlane(plano, pt)) { dx0 = G.position.x - pt.x; dz0 = G.position.z - pt.z; }
+        arrastra = true; a.ctrl.enabled = false; e.stopImmediatePropagation(); e.preventDefault();
+      }
+    };
+    const alMover = e => {
+      if (!arrastra) return; rayo(e); plano.constant = -G.position.y;
+      if (ray.ray.intersectPlane(plano, pt)) { const nx = pt.x + dx0, nz = pt.z + dz0, ddx = nx - G.position.x, ddz = nz - G.position.z; if (Math.hypot(ddx, ddz) > 0.01) { G.rotation.y = Math.atan2(ddx, ddz); anim = 0.25; } coloca(nx, nz); a.munecoPos = G.position.clone(); a.despertar?.(); arranca(); }
+    };
+    const alSoltar = () => { if (arrastra) { arrastra = false; a.ctrl.enabled = true; } };
+    const clave = e => ({ w: 'w', s: 's', a: 'a', d: 'd', arrowup: 'w', arrowdown: 's', arrowleft: 'a', arrowright: 'd' })[String(e.key).toLowerCase()];
+    const alTecla = (e, abajo) => {
+      const tg = (e.target?.tagName || '').toLowerCase(); if (tg === 'input' || tg === 'textarea' || tg === 'select' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = clave(e); if (!k) return; e.preventDefault(); e.stopImmediatePropagation();
+      if (abajo) { teclas.add(k); arranca(); } else teclas.delete(k);
+    };
+    const kd = e => alTecla(e, true), ku = e => alTecla(e, false);
+    const paso = (ts) => {
+      raf = 0; const dt = Math.min(0.1, (ts - (ult || ts)) / 1000); ult = ts;
+      const fw = new THREE.Vector3(); a.cam.getWorldDirection(fw); fw.y = 0; if (fw.lengthSq() < 1e-6) fw.set(0, 0, -1); fw.normalize(); const der = new THREE.Vector3(-fw.z, 0, fw.x);
+      const mv = new THREE.Vector3(); if (teclas.has('w')) mv.add(fw); if (teclas.has('s')) mv.sub(fw); if (teclas.has('d')) mv.add(der); if (teclas.has('a')) mv.sub(der);
+      if (mv.lengthSq() > 0) { mv.normalize(); const v = 1.6 * munecoK.current; G.rotation.y = Math.atan2(mv.x, mv.z); coloca(G.position.x + mv.x * v * dt, G.position.z + mv.z * v * dt); a.munecoPos = G.position.clone(); anim = 0.25; }
+      // paso al caminar: balanceo de piernas y brazos, y un pequeño rebote
+      if (anim > 0) { anim -= dt; const w = performance.now() / 110; legL.rotation.x = Math.sin(w) * 0.6; legR.rotation.x = -Math.sin(w) * 0.6; armL.rotation.x = -Math.sin(w) * 0.5; armR.rotation.x = Math.sin(w) * 0.5; torso.position.y = 1.15 + Math.abs(Math.sin(w)) * 0.025; cab.position.y = 1.68 + Math.abs(Math.sin(w)) * 0.025; }
+      else { legL.rotation.x = legR.rotation.x = armL.rotation.x = armR.rotation.x = 0; torso.position.y = 1.15; cab.position.y = 1.68; }
+      aro.scale.setScalar(1 + Math.sin(performance.now() / 400) * 0.06);
+      a.despertar?.();
+      if (teclas.size > 0 || anim > 0 || arrastra) raf = requestAnimationFrame(paso); else ult = 0;
+    };
+    const arranca = () => { if (!raf) raf = requestAnimationFrame(paso); };
+    dom.addEventListener('pointerdown', alAbajo, true); window.addEventListener('pointermove', alMover); window.addEventListener('pointerup', alSoltar);
+    window.addEventListener('keydown', kd, true); window.addEventListener('keyup', ku, true);
+    a.despertar?.();
+    return () => {
+      dom.removeEventListener('pointerdown', alAbajo, true); window.removeEventListener('pointermove', alMover); window.removeEventListener('pointerup', alSoltar);
+      window.removeEventListener('keydown', kd, true); window.removeEventListener('keyup', ku, true); if (raf) cancelAnimationFrame(raf);
+      a.scene.remove(G); a.muneco = null; G.traverse(o => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); a.ctrl.enabled = true; a.despertar?.();
+    };
+  }, [zonasPub, estado, !!axo, zon.on, muneco.ver]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const g = api3d.current.muneco; if (g) { g.scale.setScalar(muneco.k); api3d.current.despertar?.(); } }, [muneco.k]);
   const apagaZonas = () => { setZon(z => ({ ...z, on: false })); if (zonRealPrev.current) { zonRealPrev.current = false; setRealista(true); } };
   useEffect(() => {
     const a = api3d.current; if (!a.scene || !a.raiz) return;
@@ -6599,6 +6677,7 @@ export default function Visor3D({ cliente = false }) {
     a.click();
   };
 
+  const btnZ = { background: '#fff', color: '#2b2723', border: '1px solid #d8d2c8', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 15, fontWeight: 700 };
   const btn = { background: '#2c2824', color: '#fff', border: '1px solid #4a443f', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 };
   // ── interfaz común: barra superior, carril de herramientas y menús
   const bTop = { background: '#302f2e', color: '#f3f0ed', border: '1px solid #464441', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' };
@@ -6783,6 +6862,7 @@ export default function Visor3D({ cliente = false }) {
       {!cliente && <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" checked={zon.on} onChange={e => (e.target.checked ? entrarZonas() : apagaZonas())} />Zonas</label>}
       {zon.on && !zonInfo && <span style={{ opacity: 0.7 }}>Leyendo las máquinas…</span>}
       {zon.on && zonInfo && <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" checked={zonGrupos} onChange={e => setZonGrupos(e.target.checked)} />Rótulos de grupos</label>}
+      {zon.on && zonInfo && !cliente && <button style={bTop} onClick={copiarEnlaceZonas} title="Enlace público solo de la vista Zonas, limpio y con un muñeco que se mueve: para grabar contenido en pantalla dividida">🔗 Enlace para grabar</button>}
       {zon.on && zonInfo && <button style={bTop} onClick={exportaZonas} title="Prepara una lámina con la marca (imagen, leyenda y títulos), la guarda en la galería y te deja publicarla en la historia del cliente">📤 Lámina para el cliente</button>}
       {zon.on && zonInfo && <button style={bTop} onClick={() => setZonEditar(v => !v)} title="Cambia el tipo o el grupo de una máquina si la IA se ha equivocado">Editar / añadir zonas</button>}
       {zon.on && zonInfo && zonInfo.map(z => <span key={z.tipo} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><i style={{ width: 10, height: 10, borderRadius: 3, background: z.color, display: 'inline-block' }} />{z.nombre} · {z.n}</span>)}
@@ -7162,7 +7242,34 @@ export default function Visor3D({ cliente = false }) {
           <button style={{ ...btn, padding: '1px 8px' }} onClick={() => setVelPersona(3)} title="Rápido, para recorrer espacios grandes">Rápido</button>
         </div>
       )}
-      {cliente && (
+      {zonasPub && (
+        <div data-vista="1" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', fontFamily: 'Montserrat, system-ui, sans-serif', color: '#2b2723' }}>
+          <div style={{ position: 'absolute', left: 22, top: 18, maxWidth: '60%' }}>
+            <div style={{ fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', color: '#b98b5e', fontWeight: 700 }}>Ranuse Design</div>
+            <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.15, marginTop: 4 }}>{(zonDatos.current && zonDatos.current.titulo) || titulo}</div>
+            {zonDatos.current && zonDatos.current.subtitulo && <div style={{ fontSize: 14, opacity: 0.7, marginTop: 4 }}>{zonDatos.current.subtitulo}</div>}
+          </div>
+          {zonInfo && <div style={{ position: 'absolute', left: 22, bottom: 20, display: 'flex', flexDirection: 'column', gap: 6, background: 'rgba(255,255,255,0.82)', borderRadius: 14, padding: '12px 16px', boxShadow: '0 4px 18px rgba(0,0,0,.12)' }}>
+            {zonInfo.map(z => <span key={z.tipo} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600 }}><i style={{ width: 14, height: 14, borderRadius: 4, background: z.color, display: 'inline-block' }} />{z.nombre} <b style={{ opacity: 0.55, fontWeight: 600 }}>· {z.n}</b></span>)}
+          </div>}
+          {(estado === 'cargando' || !zonInfo) && estado !== 'error' && <div style={{ position: 'absolute', left: 0, right: 0, top: '45%', textAlign: 'center', fontSize: 15, opacity: 0.7 }}>Preparando la maqueta…</div>}
+          {estado === 'error' && <div style={{ position: 'absolute', left: 0, right: 0, top: '45%', textAlign: 'center', fontSize: 15 }}>No se pudo cargar esta vista. Pide un enlace nuevo.</div>}
+          <div style={{ position: 'absolute', right: 20, bottom: 20, display: 'flex', gap: 8, alignItems: 'center', pointerEvents: 'auto', background: 'rgba(255,255,255,0.86)', borderRadius: 14, padding: '8px 12px', boxShadow: '0 4px 18px rgba(0,0,0,.12)', fontSize: 13, fontWeight: 600 }}>
+            <button style={{ ...btnZ }} onClick={() => axo && girarAxo(-45)} title="Girar la maqueta">⟲</button>
+            <button style={{ ...btnZ }} onClick={() => axo && girarAxo(45)} title="Girar la maqueta">⟳</button>
+            <span style={{ opacity: 0.35 }}>|</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={muneco.ver} onChange={e => setMuneco(m => ({ ...m, ver: e.target.checked }))} /> Muñeco</label>
+            {muneco.ver && <>
+              <input type="range" min="0.8" max="3" step="0.1" value={muneco.k} onChange={e => setMuneco(m => ({ ...m, k: parseFloat(e.target.value) }))} title="Tamaño del muñeco" style={{ width: 70 }} />
+              <button style={{ ...btnZ }} onClick={() => { api3d.current.munecoPos = null; setMuneco(m => ({ ...m, ver: false })); setTimeout(() => setMuneco(m => ({ ...m, ver: true })), 60); }} title="Devolver el muñeco al centro">↺</button>
+            </>}
+            <span style={{ opacity: 0.35 }}>|</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={zonGrupos} onChange={e => setZonGrupos(e.target.checked)} /> Grupos</label>
+          </div>
+          {muneco.ver && zonInfo && <div style={{ position: 'absolute', right: 22, top: 20, fontSize: 12, opacity: 0.6, textAlign: 'right' }}>Arrastra el muñeco o muévelo con W A S D</div>}
+        </div>
+      )}
+      {cliente && !zonasPub && (
         <div data-vista="1" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', color: '#fff', fontFamily: 'system-ui, sans-serif', textShadow: '0 1px 6px rgba(0,0,0,0.7)' }}>
           <div style={{ position: 'absolute', left: 16, top: 14, right: 16 }}>
             <div style={{ fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', color: '#c9a46c' }}>Ranuse Design</div>
