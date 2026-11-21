@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 const fondo = new THREE.Color('#c9cdd1');
 // A modeling frame uses its own studio. Restore all authored render settings afterwards.
-export function dibujarModelar(renderer, scene, camera, sol, hemi, estudio) {
+export function dibujarModelar(renderer, scene, camera, sol, hemi, estudio, opc) {
   const luces = [], materiales = [], vistos = new Set();
   const anterior = { environment: scene.environment, environmentIntensity: scene.environmentIntensity, background: scene.background, backgroundIntensity: scene.backgroundIntensity, environmentRotation: scene.environmentRotation.clone(), exposure: renderer.toneMappingExposure, tone: renderer.toneMapping };
   scene.traverse(o => {
@@ -12,12 +12,12 @@ export function dibujarModelar(renderer, scene, camera, sol, hemi, estudio) {
       if (!m || vistos.has(m)) continue; vistos.add(m);
       materiales.push([m, m.emissiveIntensity, m.envMap, m.envMapIntensity]);
       if (m.emissive) m.emissiveIntensity = 0;
-      if (m.envMap) { m.envMap = estudio; m.envMapIntensity = 0.35; }
+      if (m.envMap) { m.envMap = estudio; m.envMapIntensity = (opc && opc.env) || 0.35; }
     }
   });
   try {
-    scene.environment = estudio; scene.environmentIntensity = 0.35; scene.environmentRotation.set(0, 0, 0);
-    scene.background = fondo; scene.backgroundIntensity = 1;
+    scene.environment = estudio; scene.environmentIntensity = (opc && opc.env) || 0.35; scene.environmentRotation.set(0, 0, 0);
+    scene.background = (opc && opc.fondo) ? new THREE.Color(opc.fondo) : fondo; scene.backgroundIntensity = 1;
     renderer.toneMappingExposure = 1; renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.render(scene, camera);
   } finally {

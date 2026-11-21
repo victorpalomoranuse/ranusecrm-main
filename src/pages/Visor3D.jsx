@@ -2893,7 +2893,7 @@ export default function Visor3D({ cliente = false }) {
       a0.reposo = !!refinar; renderer.info.reset();
 
       if (!modoRenderRef.current && !cliente) {
-        dibujarModelar(renderer, scene, cam, sol, hemi, envEstudio);
+        dibujarModelar(renderer, scene, cam, sol, hemi, envEstudio, zonasOnRef.current ? { fondo: '#efeae2', env: 0.8 } : undefined); // vista de zonas: luz de estudio más cálida y suave
       } else if (a0.composer) {
         const sz = renderer.getSize(vR2); if (a0.compW !== sz.x || a0.compH !== sz.y || a0.compPr !== renderer.getPixelRatio()) { a0.compW = sz.x; a0.compH = sz.y; a0.compPr = renderer.getPixelRatio(); a0.composer.setPixelRatio(a0.compPr); a0.composer.setSize(sz.x, sz.y); }
         if (a0.contacto) a0.contacto.enabled = !movi || !!a0.pedirFoto;
@@ -6246,7 +6246,7 @@ export default function Visor3D({ cliente = false }) {
     } catch (e) { setAviso('No se pudo preparar la lámina: ' + (e.message || '')); }
   };
   const cambiaZon = (clave, k, v) => { const d = zonDatos.current; if (!d) return; d.maquinas = d.maquinas.map(m => (m.clave === clave ? { ...m, [k]: v } : m)); setZonRev(x => x + 1); clearTimeout(window.__zonT); window.__zonT = setTimeout(() => api.put('/lamina-zonas/' + id, { maquinas: zonDatos.current.maquinas }).catch(() => setAviso('No se pudo guardar la corrección')), 700); };
-  const entrarZonas = () => { if (!axo) entrarAxo(); setZon({ on: true, corte: true }); if (realista) { zonRealPrev.current = true; setRealista(false); } };
+  const entrarZonas = () => { if (!axo) entrarAxo(); setCargarModelos(true); setCargarPesados(true); setLimiteTri(1e12); setZon({ on: true, corte: true }); if (realista) { zonRealPrev.current = true; setRealista(false); } };
   const apagaZonas = () => { setZon(z => ({ ...z, on: false })); if (zonRealPrev.current) { zonRealPrev.current = false; setRealista(true); } };
   useEffect(() => {
     const a = api3d.current; if (!a.scene || !a.raiz) return;
@@ -6255,21 +6255,27 @@ export default function Visor3D({ cliente = false }) {
       if (L.timer) { clearInterval(L.timer); L.timer = null; }
       L.vivoEtq = false; if (L.raf) cancelAnimationFrame(L.raf); if (L.cont) L.cont.remove(); L.cont = null; a.zonLayout = null;
       L.vis.forEach(([o, v]) => { o.visible = v; }); L.vis = [];
-      L.muros.forEach(([m, sy]) => { m.scale.y = sy; }); L.mats.forEach(([m, mt]) => { m.material = mt; });
+      L.muros.forEach(([m, sy, py]) => { m.scale.y = sy; if (py !== undefined) m.position.y = py; }); L.mats.forEach(([m, mt]) => { m.material = mt; });
       L.extras.forEach(o => { a.scene.remove(o); o.geometry?.dispose?.(); o.material?.map?.dispose?.(); o.material?.dispose?.(); });
       L.muros = []; L.mats = []; L.extras = []; if (a.renderer?.shadowMap) a.renderer.shadowMap.needsUpdate = true;
     };
     const cortar = !!axo && zon.corte, zonas = !!axo && zon.on;
+    const verEnZonas = o => { const ob = objsRef.current.find(x => x.id === o.userData.oid); return !!ob && ['bloque', 'mueble', 'sauna', 'rack', 'escalera', 'deco', 'caja'].includes(ob.tipo); }; // lo que se ve en la vista de zonas: mobiliario y muebles reales
     if (!cortar && !zonas) { setZonInfo(null); return; }
     let vivo = true;
     if (cortar) a.raiz.traverse(o => {
-      if (!o.isMesh || o.userData.capa !== 'muros' || !o.userData.muroId || o.userData.overlay || String(o.userData.muroId).startsWith('rc-') || (o.parent && o.parent.userData && o.parent.userData.muroId)) return;
+      if (!o.isMesh || o.userData.capa !== 'muros' || !o.userData.muroId || o.userData.overlay || (o.parent && o.parent.userData && o.parent.userData.muroId)) return;
       if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); const hm = o.geometry.boundingBox.max.y - o.geometry.boundingBox.min.y;
       if (hm > 1.3) { L.muros.push([o, o.scale.y]); o.scale.y = o.scale.y * 1.1 / hm; }
     });
-    if (zonas) { // vista de zonas: solo las máquinas; fuera paneles, logos, textos, mobiliario y luminarias
-      [...(a.esc ? a.esc.children : []), a.luzG].forEach(o => { if (o) { L.vis.push([o, o.visible]); o.visible = false; } });
-      a.raiz.traverse(o => { if (o.isMesh && o.userData.muroId && String(o.userData.muroId).startsWith('rc-') && o.visible) { L.vis.push([o, true]); o.visible = false; } });
+    if (cortar) { // hojas de las puertas, tapetas y pilares también se cortan a la altura del resto
+      const baja = (o) => { const b0 = new THREE.Box3().setFromObject(o), hm = b0.max.y - b0.min.y; if (b0.isEmpty() || hm <= 1.3) return; const py = o.position.y; L.muros.push([o, o.scale.y, py]); o.scale.y *= 1.1 / hm; o.updateWorldMatrix(true, false); const b1 = new THREE.Box3().setFromObject(o); o.position.y += b0.min.y - b1.min.y; };
+      [a.hojaG, a.tapG].forEach(G => G && G.children.forEach(h => { if (h.visible) baja(h); }));
+      a.raiz.traverse(o => { if (o.isMesh && o.userData.pilarId && !o.userData.overlay && o.visible) baja(o); });
+    }
+    if (zonas) { // vista de zonas: las máquinas coloreadas y el mobiliario y los muebles tal cual; fuera paneles, logos, textos y luminarias
+      [...(a.esc ? a.esc.children : [])].forEach(o => { if (o && !verEnZonas(o)) { L.vis.push([o, o.visible]); o.visible = false; } });
+      if (a.luzG) { L.vis.push([a.luzG, a.luzG.visible]); a.luzG.visible = false; }
     }
     if (a.renderer?.shadowMap) a.renderer.shadowMap.needsUpdate = true;
     if (zonas) (async () => {
@@ -6324,7 +6330,7 @@ export default function Visor3D({ cliente = false }) {
         const bucle = () => {
           if (!L.vivoEtq) return;
           const W = padreEl.clientWidth, H = padreEl.clientHeight, cajas = [];
-          [...(a.esc ? a.esc.children : []), a.luzG].forEach(o => { if (o && o.visible) { o.visible = false; if (!L.vis.some(p => p[0] === o)) L.vis.push([o, true]); } }); // lo que aparezca de nuevo (objetos recién creados) se vuelve a ocultar
+          [...(a.esc ? a.esc.children : []), a.luzG].forEach(o => { if (o && o.visible && !(o !== a.luzG && verEnZonas(o))) { o.visible = false; if (!L.vis.some(p => p[0] === o)) L.vis.push([o, true]); } }); // lo que aparezca de nuevo (objetos recién creados) se vuelve a ocultar, salvo el mobiliario
           L.etq.forEach((q, i) => { v.copy(q.pos).project(a.cam); const w = els[i].offsetWidth, h = els[i].offsetHeight; cajas.push({ i, ok: v.z > -1 && v.z < 1, x: (v.x * 0.5 + 0.5) * W - w / 2, y: (-v.y * 0.5 + 0.5) * H - h / 2, w, h }); });
           const vis = cajas.filter(c => c.ok).sort((p, q) => p.y - q.y);
           for (let it = 0; it < 4; it++) for (let a1 = 0; a1 < vis.length; a1++) for (let b1 = a1 + 1; b1 < vis.length; b1++) { const A = vis[a1], B = vis[b1]; if (A.x < B.x + B.w + 4 && B.x < A.x + A.w + 4 && A.y < B.y + B.h + 2 && B.y < A.y + A.h + 2) B.y = A.y + A.h + 3; }
