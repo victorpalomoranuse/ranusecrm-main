@@ -2289,7 +2289,7 @@ export default function Visor3D({ cliente = false }) {
   LED_HDR.k = 1;
   const modelado = espacio === 'modelado' && !cliente; // espacio «Modelar»: dibujar, extruir y mover como en SketchUp; lo que se hace aquí queda bloqueado en 3D y en Render
   const espacioRef = useRef(espacio); espacioRef.current = modelado ? 'modelado' : espacio;
-  const puedeMoverObj = o => !!o && o.modelado === true && espacioRef.current === 'modelado'; // solo se mueven y deforman las formas modeladas, y solo en el espacio Modelar
+  const puedeMoverObj = o => !!o && (o.modelado === true ? espacioRef.current === 'modelado' : espacioRef.current !== 'render'); // lo modelado solo se mueve en Modelar; lo demás (mobiliario, zonas, máquinas) se mueve en Modelar y en 3D; en Render todo está bloqueado
   const modelando = !cliente && !modoRender;
   const [realistaEdicion, setRealistaEdicion] = useState(false);
   const [realistaSalida, setRealistaSalida] = useState(true);
@@ -3469,7 +3469,7 @@ export default function Visor3D({ cliente = false }) {
       }
       {
         const ngG = api3d.current.nodoG;
-        if (ngG && espacioRef.current === 'modelado') {
+        if (ngG && espacioRef.current !== 'render') {
           const r = dom.getBoundingClientRect();
           p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
           rayo.setFromCamera(p2, cam);
@@ -3484,7 +3484,7 @@ export default function Visor3D({ cliente = false }) {
           p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
           rayo.setFromCamera(p2, cam);
           const hg = rayo.intersectObjects(gzG.children, true)[0], ob0 = objsRef.current.find(x => x.id === selObjRef.current), eqp = !ob0 ? seleccionRef.current : null;
-          if (hg && eqp && espacioRef.current === 'modelado' && false) {
+          if (hg && eqp && espacioRef.current !== 'render') {
             let g3p = null; raiz.traverse(o => { if (o.userData.equipo && o.userData.equipo.id === eqp.id) g3p = o; });
             if (g3p) { ctrl.enabled = false; eje3 = { plan: true, eqId: eqp.id, g3: g3p, eje: hg.object.userData.eje, rot0: eqp.rot || 0, cx0: eqp.cx, cy0: eqp.cy, z00: eqp.z0 || 0, y0: e.clientY, p0: sueloRaw(e), nuevo: {} }; e.stopPropagation(); return; }
           }
@@ -4297,7 +4297,7 @@ export default function Visor3D({ cliente = false }) {
       a.scene.add(g); a.cotasG = g;
     }
     const gz = (dx && ob ? { ...ob, cx: dx.cx, cy: dx.cy, z0: dx.z0, alto: dx.alto, w: dx.w, d: dx.d } : ob) || (seleccion ? { cx: seleccion.cx, cy: seleccion.cy, z0: 0, alto: seleccion.alto || 110, w: seleccion.w || seleccion.largo, d: seleccion.d || seleccion.fondo, plan: true } : null);
-    if (gz && !(gz.tipo === 'zona' && gz.plano === 'pared') && gz.tipo !== 'falsotecho' && ob && puedeMoverObj(ob)) {
+    if (gz && !(gz.tipo === 'zona' && gz.plano === 'pared') && gz.tipo !== 'falsotecho' && (ob ? puedeMoverObj(ob) : espacioRef.current !== 'render')) {
       const G = new THREE.Group(); G.position.set((gz.cx + (ob ? 0 : offE[0])) * CM, ((gz.z0 || 0) + (ob ? 0 : offE[2])) * CM + (gz.alto * CM) / 2, (gz.cy + (ob ? 0 : offE[1])) * CM);
       const L = Math.max(0.5, Math.max(gz.w, gz.d, gz.alto) * CM * 0.6 + 0.25);
       const flecha = (col, eje) => {
@@ -4323,7 +4323,7 @@ export default function Visor3D({ cliente = false }) {
   useEffect(() => {
     const a = api3d.current; if (!a.scene) return;
     if (a.nodoG) { a.scene.remove(a.nodoG); a.nodoG.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); a.nodoG = null; }
-    if (!selAcab || selAcab.tipo !== 'muro' || !a.modelo || espacioRef.current !== 'modelado') return;
+    if (!selAcab || selAcab.tipo !== 'muro' || !a.modelo || espacioRef.current === 'render') return;
     const mu = (a.modelo.plantas || [a.modelo]).flatMap(p => p.muros || []).find(m => m.id === selAcab.id); if (!mu) return;
     const g = new THREE.Group();
     [['a', mu.a], ['b', mu.b]].forEach(([k, p]) => {
