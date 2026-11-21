@@ -163,3 +163,10 @@
 .hg-lect{display:flex;flex-direction:column;gap:6px;border:1px solid var(--accent);padding:12px;font-size:13px}
 .hg-lect b{font-size:12px;letter-spacing:.06em;color:var(--accent)}
 .hg-warn{color:var(--bad);font-size:12px}
+
+/* Dibujar la sala y medir en pasos */
+.hg .hg-handle{cursor:grab;touch-action:none}
+.hg .hg-handle:active{cursor:grabbing}
+.hg-pasos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.hg-pasos label{display:flex;flex-direction:column;gap:4px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.hg-pasos input{width:100%;font:inherit;font-size:16px;color:var(--ink);background:transparent;border:1px solid var(--line);padding:10px;border-radius:0;text-transform:none;letter-spacing:0}

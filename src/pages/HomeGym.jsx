@@ -124,6 +124,55 @@ function VistaPlanta({ S, items, anim, malos, sel, onSel, onMove, editable }) {
   );
 }
 
+/* ---------- Dibujar la sala con el dedo: se arrastran las esquinas y se mueve la puerta por las paredes ---------- */
+function VistaSala({ S, onChange }) {
+  const { L, W } = S, ref = useRef(null), arr = useRef(null);
+  const aCm = e => { const svg = ref.current, pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const p = pt.matrixTransform(svg.getScreenCTM().inverse()); return [p.x, p.y]; };
+  const empieza = (e, t) => { arr.current = t; e.currentTarget.setPointerCapture(e.pointerId); e.preventDefault(); };
+  const mueve = e => {
+    const t = arr.current; if (!t) return;
+    const [x, y] = aCm(e), snap = v => Math.round(v / 10) * 10;
+    if (t === 'puerta') {
+      const d = { arriba: Math.abs(y), abajo: Math.abs(y - W), izq: Math.abs(x), der: Math.abs(x - L) };
+      onChange({ door: Object.entries(d).sort((a, b) => a[1] - b[1])[0][0] });
+      return;
+    }
+    const c = {};
+    if (t === 'x' || t === 'xy') c.L = entre(snap(x), 200, 1000);
+    if (t === 'y' || t === 'xy') c.W = entre(snap(y), 200, 800);
+    onChange(c);
+  };
+  const suelta = () => { arr.current = null; };
+  const pd = { abajo: [L / 2, W], arriba: [L / 2, 0], izq: [0, W / 2], der: [L, W / 2] }[S.door];
+  const lineas = [];
+  for (let i = 100; i <= 1000; i += 100) lineas.push(<line key={'a' + i} x1={i} y1={0} x2={i} y2={800} stroke="var(--grid)" strokeWidth="2" />);
+  for (let j = 100; j <= 800; j += 100) lineas.push(<line key={'b' + j} x1={0} y1={j} x2={1000} y2={j} stroke="var(--grid)" strokeWidth="2" />);
+  const asa = (x, y, t, etiqueta) => (
+    <g className="hg-handle" onPointerDown={e => empieza(e, t)} onPointerMove={mueve} onPointerUp={suelta} onPointerCancel={suelta} role="slider" aria-label={etiqueta}>
+      <circle cx={x} cy={y} r="85" fill="transparent" />
+      <circle cx={x} cy={y} r="34" fill="var(--accent)" stroke="var(--bg)" strokeWidth="8" />
+    </g>
+  );
+  return (
+    <svg ref={ref} viewBox="-100 -120 1300 1040" role="img" aria-label="Dibujo de tu sala. Arrastra los puntos para cambiar su tamaño.">
+      <rect x="0" y="0" width="1000" height="800" fill="none" stroke="var(--line)" strokeWidth="3" strokeDasharray="14 12" />
+      {lineas}
+      <rect x="0" y="0" width={L} height={W} fill="var(--wall)" stroke="var(--ink)" strokeWidth="8" />
+      <text className="dimt" x={L / 2} y="-52" fontSize="44">{mt(L)} m</text>
+      <text className="dimt" transform={`translate(-52 ${W / 2}) rotate(-90)`} fontSize="44">{mt(W)} m</text>
+      <text className="dimt" x={L / 2} y={W / 2} fontSize="40" style={{ opacity: 0.55 }}>{((L * W) / 10000).toLocaleString('es-ES', { maximumFractionDigits: 1 })} m²</text>
+      <g className="hg-handle" onPointerDown={e => empieza(e, 'puerta')} onPointerMove={mueve} onPointerUp={suelta} onPointerCancel={suelta} role="slider" aria-label="Puerta: arrástrala hasta la pared por donde se entra">
+        <circle cx={pd[0]} cy={pd[1]} r="85" fill="transparent" />
+        <rect x={pd[0] - 55} y={pd[1] - 18} width="110" height="36" rx="6" fill="var(--bg)" stroke="var(--accent)" strokeWidth="6" />
+        <text x={pd[0]} y={pd[1]} fontSize="26" textAnchor="middle" dominantBaseline="middle" fill="var(--accent)" style={{ fontWeight: 700, letterSpacing: '.1em' }} pointerEvents="none">PUERTA</text>
+      </g>
+      {asa(L, W * 0.2, 'x', 'Largo de la sala')}
+      {asa(L * 0.2, W, 'y', 'Ancho de la sala')}
+      {asa(L, W, 'xy', 'Largo y ancho de la sala')}
+    </svg>
+  );
+}
+
 /* ---------- Subir un plano o una foto: se reduce en el móvil antes de enviarlo (más rápido y más barato) ---------- */
 const aBase64 = blob => new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = () => ko(new Error('No se pudo leer el archivo.')); r.readAsDataURL(blob); });
 async function preparaArchivo(file) {
@@ -165,11 +214,12 @@ export function HomeGym() {
   const [paso, setPaso] = useState(0);
   const [S, setS] = useState({ ...SALAS[1], goal: 'mixto', people: 1, budget: 2500 });
   const [sala, setSala] = useState(1);
-  const [modo, setModo] = useState('escrito');
+  const [modo, setModo] = useState('dibujar');
+  const [pasos, setPasos] = useState({ l: '', a: '', p: 70 });
   const [nivel, setNivel] = useState(0);
   const [lay, setLay] = useState([]); // la distribución que se ve y que el cliente puede cambiar
   const [sel, setSel] = useState(null);
-  const [vista, setVista] = useState('3d');
+  const [vista, setVista] = useState('sala');
   const [ar, setAr] = useState(false);
   const [anim, setAnim] = useState(false);
   const [productos, setProductos] = useState(null);
@@ -201,6 +251,8 @@ export function HomeGym() {
       if (n === 2) setVista('pl'); // en la planta se pueden mover las máquinas
       setAnim(true);
     }
+    if (n === 0) setVista('sala');
+    else if (n === 1 && vista === 'sala') setVista('3d');
     setPaso(n);
     window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion:reduce)').matches ? 'auto' : 'smooth' });
   };
@@ -258,9 +310,9 @@ export function HomeGym() {
   /* ---------- Paneles ---------- */
   const p0 = (
     <>
-      <div><span className="hg-kicker">Paso 1 de 4</span><h1>¿Dónde vas a montar tu gym?</h1><p className="hg-lead">Escribe tus medidas, o elige un ejemplo. Lo ves a la vez en el visor.</p></div>
+      <div><span className="hg-kicker">Paso 1 de 4</span><h1>¿Dónde vas a montar tu gym?</h1><p className="hg-lead">Dibújala con el dedo, sube un plano o una foto, o mídela. Lo ves a la vez en el visor.</p></div>
       <div className="hg-seg" role="group" aria-label="Cómo quieres darnos tu espacio">
-        {[['escrito', 'Escribir medidas'], ['plano', 'Plano o foto'], ['movil', 'Medir con el móvil']].map(([k, n]) => <button key={k} type="button" aria-pressed={modo === k} onClick={() => setModo(k)}>{n}</button>)}
+        {[['dibujar', 'Dibujar'], ['plano', 'Plano o foto'], ['movil', 'Medir']].map(([k, n]) => <button key={k} type="button" aria-pressed={modo === k} onClick={() => { setModo(k); if (k === 'dibujar') setVista('sala'); }}>{n}</button>)}
       </div>
       {modo === 'plano' && (
         <div className="hg-cap">
@@ -280,7 +332,21 @@ export function HomeGym() {
             </div>)}
           <span className="hg-note">En un plano leemos las cotas escritas. En una foto solo estimamos si se ve algo de tamaño conocido, como una puerta o un folio A4 en el suelo. <b>Revisa siempre las medidas de aquí debajo.</b></span>
         </div>)}
-      {modo === 'movil' && <div className="hg-cap"><b>Consejo para iPhone</b><span>La app <b>Medida</b>, que ya viene en tu iPhone, mide largo y ancho en segundos. Si tienes un medidor láser, aún mejor. Escribe aquí los números.</span></div>}
+      {modo === 'dibujar' && <div className="hg-cap"><span><b>Arrastra los puntos</b> de la sala en el visor para hacerla más grande o más pequeña. Mueve el cuadro <b>PUERTA</b> hasta la pared por donde se entra.</span></div>}
+      {modo === 'movil' && (
+        <div className="hg-cap">
+          <b>Medir con el móvil</b>
+          <span><b>iPhone:</b> abre la app <b>Medida</b> (ya viene instalada), toca los extremos de cada pared y escribe los números aquí debajo.</span>
+          <span><b>Sin metro ni app:</b> camina pegado a la pared contando pasos normales.</span>
+          <div className="hg-pasos">
+            <label>Pasos de largo<input type="number" inputMode="numeric" min="1" max="40" value={pasos.l} onChange={e => setPasos(p => ({ ...p, l: e.target.value }))} /></label>
+            <label>Pasos de ancho<input type="number" inputMode="numeric" min="1" max="40" value={pasos.a} onChange={e => setPasos(p => ({ ...p, a: e.target.value }))} /></label>
+            <label>Tu paso (cm)<input type="number" inputMode="numeric" min="40" max="100" value={pasos.p} onChange={e => setPasos(p => ({ ...p, p: e.target.value }))} /></label>
+          </div>
+          <button type="button" className="hg-ghost" disabled={!(+pasos.l > 0 && +pasos.a > 0 && +pasos.p > 0)}
+            onClick={() => { ponS({ L: entre(Math.round(+pasos.l * +pasos.p / 10) * 10, 200, 1000), W: entre(Math.round(+pasos.a * +pasos.p / 10) * 10, 200, 800) }); setVista('sala'); }}>Usar estas medidas</button>
+          <span className="hg-note">Es aproximado: un paso mide unos 70 cm. Para mayor precisión usa un metro.</span>
+        </div>)}
       <div className="hg-presets">{SALAS.map((s, i) => <button key={s.n} type="button" className="hg-preset" aria-pressed={sala === i} onClick={() => { setS(o => ({ ...o, L: s.L, W: s.W, H: s.H, door: s.door })); setSala(i); }}>{s.n}</button>)}</div>
       <Medida id="L" label="Largo" valor={S.L} min={2} max={10} paso={0.1} onChange={v => ponS({ L: v })} />
       <Medida id="W" label="Ancho" valor={S.W} min={2} max={8} paso={0.1} onChange={v => ponS({ W: v })} />
@@ -384,15 +450,19 @@ export function HomeGym() {
           <div className="hg-brand"><b>RANUSE DESIGN</b><span>Home Gym Studio</span></div>
           <nav className="hg-prog" aria-label="Pasos">{nombres.map((n, i) => <button key={n} type="button" className={i <= paso ? 'on' : ''} disabled={i > paso} onClick={() => ir(i)}><span>{n}</span><i /></button>)}</nav>
         </header>
-        <div className="hg-vwrap">{vista === '3d'
-          ? <VistaIso S={S} items={activos} anim={anim} />
-          : <VistaPlanta S={S} items={activos} anim={anim} malos={paso === 2 ? rev.malos : null} sel={sel} onSel={setSel} onMove={mover} editable={editable} />}</div>
+        <div className="hg-vwrap">{vista === 'sala'
+          ? <VistaSala S={S} onChange={ponS} />
+          : vista === '3d'
+            ? <VistaIso S={S} items={activos} anim={anim} />
+            : <VistaPlanta S={S} items={activos} anim={anim} malos={paso === 2 ? rev.malos : null} sel={sel} onSel={setSel} onMove={mover} editable={editable} />}</div>
         <div className="hg-vtools">
           <div className="hg-tabs" role="tablist">
+            {paso === 0 && <button type="button" role="tab" aria-selected={vista === 'sala'} onClick={() => setVista('sala')}>Dibujo</button>}
             <button type="button" role="tab" aria-selected={vista === '3d'} onClick={() => setVista('3d')}>3D</button>
-            <button type="button" role="tab" aria-selected={vista === 'pl'} onClick={() => setVista('pl')}>Planta</button>
+            {paso > 0 && <button type="button" role="tab" aria-selected={vista === 'pl'} onClick={() => setVista('pl')}>Planta</button>}
           </div>
           <div className="hg-chips">
+            {vista === 'sala' && paso === 0 && <span className="hg-chip hl">Arrastra los puntos</span>}
             {editable && <span className="hg-chip hl">Arrastra para mover</span>}
             <span className="hg-chip">{mt(S.L)} × {mt(S.W)} m</span>
             <span className="hg-chip">{(area / 10000).toLocaleString('es-ES', { maximumFractionDigits: 1 })} m²</span>

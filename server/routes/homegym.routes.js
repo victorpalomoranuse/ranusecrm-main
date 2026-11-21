@@ -130,7 +130,7 @@ router.post('/solicitud', async (req, res) => {
       puerta: ['arriba', 'abajo', 'izq', 'der'].includes(e.door) ? e.door : 'abajo',
       objetivo: ['fuerza', 'cardio', 'mixto', 'func'].includes(e.goal) ? e.goal : 'mixto',
       personas: num(e.people, 1, 1, 3), presupuesto: num(e.budget, 0, 0, 100000),
-      origen: ['escrito', 'plano', 'movil'].includes(e.mode) ? e.mode : 'escrito',
+      origen: ['dibujar', 'escrito', 'plano', 'movil'].includes(e.mode) ? e.mode : 'escrito',
     };
     const ref = 'HG-' + crypto.randomBytes(3).toString('hex').toUpperCase();
 
