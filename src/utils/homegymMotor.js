@@ -119,3 +119,27 @@ export function razones(s, nivel, fmtM, fmtEur) {
   out.push(c <= s.budget ? `Total ${fmtEur(c)}: dentro de tu presupuesto.` : `Total ${fmtEur(c)}: ${fmtEur(c - s.budget)} por encima de tu presupuesto. Prueba un nivel inferior.`);
   return out;
 }
+
+/* ---------- Distribución editable: colocar una máquina nueva y revisar que todo está bien ---------- */
+export const sitioPara = (it, s, colocados) => buscaSitio(it, s, colocados);
+
+// Revisa una distribución cualquiera (la sugerida o la que el cliente ha movido a mano).
+// Devuelve { estado: 'ok' | 'aviso' | 'mal', problemas: [{ nivel, texto }], malos: Set de ids con problema, libre: % de suelo libre }
+export function revisa(s, lay) {
+  const malos = new Set(), problemas = [], puerta = rectPuerta(s), area = s.L * s.W;
+  const marca = (a, nivel, texto) => { malos.add(a.it.id); problemas.push({ nivel, texto }); };
+  lay.forEach(a => {
+    if (a.x < 0 || a.y < 0 || a.x + a.w > s.L || a.y + a.d > s.W) marca(a, 'mal', `${a.it.nombre} se sale de la sala.`);
+    if (a.it.h > s.H - 5) marca(a, 'mal', `${a.it.nombre} no cabe por altura (mide ${(a.it.h / 100).toLocaleString('es-ES')} m y tu techo ${(s.H / 100).toLocaleString('es-ES')} m).`);
+    if (choca(a.x, a.y, a.w, a.d, { ...puerta, g: 0 })) marca(a, 'mal', `${a.it.nombre} tapa la puerta.`);
+  });
+  for (let i = 0; i < lay.length; i++) for (let j = i + 1; j < lay.length; j++) {
+    const a = lay[i], b = lay[j], r = { x: b.x, y: b.y, w: b.w, d: b.d };
+    if (choca(a.x, a.y, a.w, a.d, { ...r, g: 0 })) { malos.add(a.it.id); malos.add(b.it.id); problemas.push({ nivel: 'mal', texto: `${a.it.nombre} y ${b.it.nombre} se pisan.` }); }
+    else if (choca(a.x, a.y, a.w, a.d, { ...r, g: 25 })) { malos.add(a.it.id); malos.add(b.it.id); problemas.push({ nivel: 'aviso', texto: `Entre ${a.it.nombre} y ${b.it.nombre} quedan menos de 25 cm para pasar.` }); }
+  }
+  const usado = lay.reduce((t, a) => t + a.w * a.d, 0), libre = area ? Math.round((1 - usado / area) * 100) : 0;
+  if (lay.length && libre < Math.round((LIBRE_MIN[s.people] || 0.2) * 100)) problemas.push({ nivel: 'aviso', texto: `Solo queda un ${libre} % de suelo libre para moverte.` });
+  const estado = problemas.some(p => p.nivel === 'mal') ? 'mal' : problemas.length ? 'aviso' : 'ok';
+  return { estado, problemas, malos, libre };
+}

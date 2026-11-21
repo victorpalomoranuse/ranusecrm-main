@@ -79,6 +79,7 @@ router.post('/solicitud', async (req, res) => {
     const total = items.reduce((a, i) => a + i.precio, 0);
     const comisionEst = items.reduce((a, i) => a + (i.comision_pct != null ? i.precio * i.comision_pct / 100 : 0), 0);
 
+    const mensaje = SOLO_TEXTO(req.body?.mensaje, 500);
     const e = req.body?.espacio || {};
     const espacio = {
       largo: num(e.L, 0, 100, 2000), ancho: num(e.W, 0, 100, 2000), alto: num(e.H, 0, 180, 500),
@@ -96,7 +97,7 @@ router.post('/solicitud', async (req, res) => {
       objetivo: `Home Gym Studio · ${espacio.objetivo}, ${espacio.personas} persona(s), presupuesto ${espacio.presupuesto || '—'} €`,
       medidas: `${(espacio.largo / 100).toFixed(1)} × ${(espacio.ancho / 100).toFixed(1)} m, techo ${(espacio.alto / 100).toFixed(2)} m`,
       maquinarias: resumen.slice(0, 1500),
-      notas: `Solicitud ${ref} desde Home Gym Studio. Total equipos ${Math.round(total)} €.`,
+      notas: `Solicitud ${ref} desde Home Gym Studio${req.body?.videollamada ? ' — QUIERE VIDEOLLAMADA' : ''}. Total equipos ${Math.round(total)} €.${mensaje ? ' Mensaje: ' + mensaje : ''}`,
     }).select('id').single();
 
     // 2) Detalle completo de la solicitud (si la migración v94 aún no está aplicada, el lead de arriba ya basta)
