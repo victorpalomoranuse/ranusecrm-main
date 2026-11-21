@@ -199,3 +199,8 @@
 .hg-play{flex:none;width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--accent);color:var(--accent-ink);font-size:12px;padding-left:2px}
 .hg-video{position:relative;aspect-ratio:16/9;background:#000}
 .hg-video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+
+/* Zonas y elegir modelo */
+.hg-it .zona{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600}
+.hg-card.sel{border-color:var(--accent);background:var(--accent-soft)}
+.hg-acc button:disabled{opacity:.35;cursor:not-allowed}

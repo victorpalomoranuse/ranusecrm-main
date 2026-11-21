@@ -4,6 +4,7 @@ import api from '../services/api';
 import { OBJETIVOS, SALAS, DESCUENTO, CATALOGO_DEMO, construyeHuecos, recomienda, nivelRecomendado, razones, revisa, sitioPara } from '../utils/homegymMotor';
 import './HomeGym.css';
 const HomeGymAR = lazy(() => import('../components/HomeGymAR')); // el visor AR solo se descarga al abrirlo
+const HomeGymVisor3D = lazy(() => import('../components/HomeGymVisor3D')); // el 3D real (three.js) tampoco pesa hasta que hace falta
 
 // Home Gym Studio (público): la herramienta propone una distribución y el cliente la cambia a su gusto (arrastrar, girar, quitar, añadir).
 // Una revisión automática le dice si está bien. Ranuse queda como soporte: si quiere cambiar algo o tiene dudas, pide una videollamada.
@@ -221,9 +222,11 @@ export function HomeGym() {
   const [sel, setSel] = useState(null);
   const [vista, setVista] = useState('sala');
   const [ar, setAr] = useState(false);
-  const [picker, setPicker] = useState(false);
+  const [picker, setPicker] = useState(false); // «Añadir una zona»
+  const [cambio, setCambio] = useState(null); // id de la zona cuyo modelo se está cambiando
   const [videos, setVideos] = useState([]);
   const [verVideo, setVerVideo] = useState(null);
+  const [sinWebgl, setSinWebgl] = useState(false);
   const [anim, setAnim] = useState(false);
   const [productos, setProductos] = useState(null);
   const [contacto, setContacto] = useState({ nombre: '', email: '', telefono: '', mensaje: '', acepto: false, web: '' });
@@ -239,7 +242,6 @@ export function HomeGym() {
 
   const demo = productos !== null && productos.length === 0;
   const huecos = useMemo(() => construyeHuecos(productos === null ? [] : demo ? CATALOGO_DEMO : productos), [productos, demo]);
-  const todos = useMemo(() => Object.values(huecos).flat().sort((a, b) => a.nombre.localeCompare(b.nombre)), [huecos]);
   const R = useMemo(() => (paso >= 2 ? recomienda(S, huecos) : null), [paso, S.L, S.W, S.H, S.door, S.goal, S.people, huecos]); // eslint-disable-line react-hooks/exhaustive-deps
   const niv = R && R.niveles.length ? R.niveles[Math.min(nivel, R.niveles.length - 1)] : null;
 
@@ -256,6 +258,8 @@ export function HomeGym() {
     }
     if (n === 0) setVista('sala');
     else if (n === 1 && vista === 'sala') setVista('3d');
+    else if (n === 3) setVista('3d'); // al elegir máquinas se ve el gym real
+    else if (n === 4 && vista === 'pl') setVista('3d');
     setPaso(n);
     window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion:reduce)').matches ? 'auto' : 'smooth' });
   };
@@ -287,10 +291,21 @@ export function HomeGym() {
     return { ...a, w: a.d, d: a.w, x: entre(Math.round(cx - a.d / 2), 0, Math.max(0, S.L - a.d)), y: entre(Math.round(cy - a.w / 2), 0, Math.max(0, S.W - a.w)) };
   }));
   const quitar = id => { setLay(l => l.filter(a => a.it.id !== id)); setSel(s => (s === id ? null : s)); };
-  const anadir = idProd => {
-    const it = todos.find(t => t.id === idProd); if (!it) return;
+  // Añadir una zona: se coloca la primera máquina disponible de ese tipo (la zona es de su tamaño; el modelo concreto se elige luego)
+  const anadirZona = tipo => {
+    const it = (huecos[tipo] || []).find(o => !lay.some(a => a.it.id === o.id)); if (!it) return;
     const pos = sitioPara(it, S, lay) || { x: 0, y: 0, w: it.w, d: it.d }; // si no hay sitio, entra igualmente y la revisión avisa
     setLay(l => [...l, { it, x: pos.x, y: pos.y, w: pos.w, d: pos.d }]); setSel(it.id);
+  };
+  // Cambiar el modelo de una zona: ocupa el mismo sitio (centrado), con su orientación; la revisión dice si ya no cabe
+  const cambiarModelo = (idActual, p) => {
+    setLay(l => l.map(a => {
+      if (a.it.id !== idActual) return a;
+      const girada = Math.abs(a.w - a.it.w) > 1 && Math.abs(a.w - a.it.d) <= 1;
+      const w = girada ? p.d : p.w, d = girada ? p.w : p.d, cx = a.x + a.w / 2, cy = a.y + a.d / 2;
+      return { it: p, w, d, x: entre(Math.round(cx - w / 2), 0, Math.max(0, S.L - w)), y: entre(Math.round(cy - d / 2), 0, Math.max(0, S.W - d)) };
+    }));
+    setSel(p.id); setCambio(null);
   };
 
   const area = S.L * S.W, total = activos.reduce((a, c) => a + c.it.precio, 0), dto = total * DESCUENTO;
@@ -310,7 +325,9 @@ export function HomeGym() {
     api.get('/homegym/videos', { params: { etiquetas } }).then(r => { if (vivo) setVideos(r.data?.videos || []); }).catch(() => { if (vivo) setVideos([]); });
     return () => { vivo = false; };
   }, [paso >= 2, etiquetas]); // eslint-disable-line react-hooks/exhaustive-deps
-  const nombres = ['Tu sala', 'Tu objetivo', 'Tu gym', 'Guardar'];
+  const nombres = ['Tu sala', 'Tu objetivo', 'Tu espacio', 'Tus máquinas', 'Guardar'];
+  // En «Tu espacio» todavía no hay máquinas concretas: el 3D enseña cajas del tamaño de cada zona. Los modelos reales salen al elegirlas.
+  const items3d = useMemo(() => (paso === 2 ? activos.map(a => ({ ...a, it: { ...a.it, modelo3d: null } })) : activos), [paso, activos]); // eslint-disable-line react-hooks/exhaustive-deps
   const itSel = activos.find(a => a.it.id === sel);
 
   // Guarda el plano como imagen (para llevárselo, enseñarlo o mandarlo a un montador). Se dibuja aparte para que salga igual en cualquier móvil.
@@ -375,7 +392,7 @@ export function HomeGym() {
   /* ---------- Paneles ---------- */
   const p0 = (
     <>
-      <div><span className="hg-kicker">Paso 1 de 4</span><h1>¿Dónde vas a montar tu gym?</h1><p className="hg-lead">Dibújala con el dedo, sube un plano o una foto, o mídela. Lo ves a la vez en el visor.</p></div>
+      <div><span className="hg-kicker">Paso 1 de 5</span><h1>¿Dónde vas a montar tu gym?</h1><p className="hg-lead">Dibújala con el dedo, sube un plano o una foto, o mídela. Lo ves a la vez en el visor.</p></div>
       <div className="hg-seg" role="group" aria-label="Cómo quieres darnos tu espacio">
         {[['dibujar', 'Dibujar'], ['plano', 'Plano o foto'], ['movil', 'Medir']].map(([k, n]) => <button key={k} type="button" aria-pressed={modo === k} onClick={() => { setModo(k); if (k === 'dibujar') setVista('sala'); }}>{n}</button>)}
       </div>
@@ -423,17 +440,25 @@ export function HomeGym() {
   );
   const p1 = (
     <>
-      <div><span className="hg-kicker">Paso 2 de 4</span><h1>¿Qué quieres entrenar?</h1><p className="hg-lead">Con esto te proponemos una distribución de partida. Después la cambias como quieras.</p></div>
+      <div><span className="hg-kicker">Paso 2 de 5</span><h1>¿Qué quieres entrenar?</h1><p className="hg-lead">Con esto te enseñamos qué te cabe en tu sala. Las máquinas concretas las eliges al final.</p></div>
       <div className="hg-goals">{Object.entries(OBJETIVOS).map(([k, v]) => <button key={k} type="button" className="hg-goal" aria-pressed={S.goal === k} onClick={() => setS(s => ({ ...s, goal: k }))}><b>{v.n}</b><span>{v.s}</span></button>)}</div>
       <div className="hg-fld"><div className="hg-fh"><span>¿Cuántas personas entrenan a la vez?</span></div>
         <div className="hg-seg">{[1, 2, 3].map(n => <button key={n} type="button" aria-pressed={S.people === n} onClick={() => setS(s => ({ ...s, people: n }))}>{n === 3 ? '3 o más' : n}</button>)}</div></div>
       <div className="hg-fld"><div className="hg-fh"><label htmlFor="hgbud">Presupuesto en equipos</label><b>{eur(S.budget)}</b></div>
         <input id="hgbud" type="range" min="500" max="8000" step="100" value={S.budget} onChange={e => setS(s => ({ ...s, budget: +e.target.value }))} /></div>
-      <div className="hg-nav"><button type="button" className="hg-ghost" onClick={() => ir(0)}>Atrás</button><button type="button" className="hg-primary" onClick={() => ir(2)}>Ver mi propuesta</button></div>
+      <div className="hg-nav"><button type="button" className="hg-ghost" onClick={() => ir(0)}>Atrás</button><button type="button" className="hg-primary" onClick={() => ir(2)}>Ver qué me cabe</button></div>
     </>
   );
   const rec = R && R.niveles.length ? nivelRecomendado(R.niveles, S.budget) : 0;
   const enLay = new Set(activos.map(a => a.it.id));
+  const tiposLibres = Object.entries(huecos).filter(([, ops]) => ops.some(o => !enLay.has(o.id)));
+  const revUi = (
+    <div className={'hg-rev ' + rev.estado} role="status">
+      <b>{rev.estado === 'ok' ? '✓ Tu distribución está bien' : rev.estado === 'aviso' ? '! Revisa estos detalles' : '✕ Hay cosas que arreglar'}</b>
+      {rev.estado === 'ok'
+        ? <span>Todo cabe dentro de la sala, sin choques, con la puerta libre y un {rev.libre} % de suelo libre para moverte.</span>
+        : <ul>{rev.problemas.map((p, i) => <li key={i} className={p.nivel}>{p.texto}</li>)}</ul>}
+    </div>);
   const videosUi = videos.length ? (
     <div className="hg-fld">
       <h3>Vídeos para tu caso</h3>
@@ -451,45 +476,62 @@ export function HomeGym() {
     </>
   ) : (
     <>
-      <div><span className="hg-kicker">Paso 3 de 4</span><h1>Tu gym</h1><p className="hg-lead">Esta es nuestra propuesta. <b>Toca una máquina y arrástrala</b> para moverla. Si algo no encaja, te lo avisamos.</p></div>
+      <div><span className="hg-kicker">Paso 3 de 5</span><h1>Tu espacio</h1><p className="hg-lead">Antes de elegir máquinas, mira <b>qué te cabe</b>. Estas son las zonas que te proponemos. <b>Toca una y arrástrala</b> para colocarla donde quieras; si algo no encaja, te lo avisamos.</p></div>
       {demo && <div className="hg-demo">Catálogo de ejemplo. Las máquinas reales se activan desde el CRM.</div>}
-      <div className={'hg-rev ' + rev.estado} role="status">
-        <b>{rev.estado === 'ok' ? '✓ Tu distribución está bien' : rev.estado === 'aviso' ? '! Revisa estos detalles' : '✕ Hay cosas que arreglar'}</b>
-        {rev.estado === 'ok'
-          ? <span>Todo cabe dentro de la sala, sin choques, con la puerta libre y un {rev.libre} % de suelo libre para moverte.</span>
-          : <ul>{rev.problemas.map((p, i) => <li key={i} className={p.nivel}>{p.texto}</li>)}</ul>}
-      </div>
-      <div className="hg-fld"><h3>Tus máquinas · {eur(total)}</h3>
+      {revUi}
+      <div className="hg-fld"><h3>Tus zonas</h3>
         <div className="hg-items">{activos.map(c => (
           <div key={c.it.id} className={'hg-it' + (sel === c.it.id ? ' sel' : '')} onClick={() => setSel(c.it.id)}>
-            {c.it.foto ? <img className="hg-th" src={c.it.foto} alt="" loading="lazy" /> : <i className="hg-sw" style={{ background: `var(--c-${c.it.cat})` }} />}
-            <span><span className="n">{c.it.nombre}</span><span className="d">{c.it.marca ? c.it.marca + ' · ' : ''}{c.w}×{c.d}×{c.it.h} cm · {eur(c.it.precio)}</span></span>
-            <span className="hg-acc"><button type="button" aria-label={'Girar ' + c.it.nombre} onClick={e => { e.stopPropagation(); girar(c.it.id); }}>Girar</button><button type="button" aria-label={'Quitar ' + c.it.nombre} onClick={e => { e.stopPropagation(); quitar(c.it.id); }}>Quitar</button></span>
+            <i className="hg-sw" style={{ background: `var(--c-${c.it.cat})` }} />
+            <span><span className="n">{c.it.s}</span><span className="d">Zona de {c.w}×{c.d} cm</span></span>
+            <span className="hg-acc"><button type="button" aria-label={'Girar ' + c.it.s} onClick={e => { e.stopPropagation(); girar(c.it.id); }}>Girar</button><button type="button" aria-label={'Quitar ' + c.it.s} onClick={e => { e.stopPropagation(); quitar(c.it.id); }}>Quitar</button></span>
           </div>))}
-          {!activos.length && <p className="hg-note">No hay máquinas. Añade alguna aquí debajo.</p>}
+          {!activos.length && <p className="hg-note">No hay zonas. Añade alguna aquí debajo.</p>}
         </div>
-        <button type="button" className="hg-ghost hg-addbtn" onClick={() => setPicker(true)} disabled={!todos.some(t => !enLay.has(t.id))}>+ Añadir una máquina</button>
+        <button type="button" className="hg-ghost hg-addbtn" onClick={() => setPicker(true)} disabled={!tiposLibres.length}>+ Añadir una zona</button>
       </div>
       <details className="hg-more"><summary>Cambiar de propuesta</summary>
         <div className="hg-tiers">{R.niveles.map((x, i) => (
           <button key={x.nombre} type="button" className="hg-tier" aria-pressed={nivel === i} onClick={() => { setNivel(i); setAnim(true); }}>
-            {i === rec && <span className="rec">RECOMENDADO</span>}<b>{x.nombre}</b><span className="pr">{eur(x.total * (1 - DESCUENTO))}</span><small>{x.n} equipos</small>
+            {i === rec && <span className="rec">RECOMENDADO</span>}<b>{x.nombre}</b><small>{x.n} zonas</small>
           </button>))}</div>
         <p className="hg-note">Al cambiar de propuesta se pierden los cambios que hayas hecho.</p>
       </details>
       <details className="hg-more"><summary>Por qué esta propuesta</summary>{niv &&<ul className="hg-why">{razones(S, niv, mt, eur).map((t, i) => <li key={i}><span>{t}</span></li>)}</ul>}
         {R.omitidos.filter(o => niv && o.idx < niv.maxIdx).length > 0 && <div className="hg-skip"><h3>No incluido en tu sala</h3>{R.omitidos.filter(o => niv && o.idx < niv.maxIdx).map(o => <span key={o.it.id}><b>{o.it.nombre}</b>: {o.r}.</span>)}</div>}
       </details>
+      <div className="hg-nav"><button type="button" className="hg-ghost" onClick={() => ir(1)}>Atrás</button><button type="button" className="hg-primary" disabled={!activos.length || rev.estado === 'mal'} onClick={() => ir(3)}>Elegir mis máquinas</button></div>
+      {rev.estado === 'mal' && <p className="hg-note">Arregla los problemas de arriba para seguir.</p>}
+    </>
+  );
+  const p3 = !R || !R.niveles.length ? null : (
+    <>
+      <div><span className="hg-kicker">Paso 4 de 5</span><h1>Elige tus máquinas</h1><p className="hg-lead">Ya sabes qué te cabe. Ahora elige el <b>modelo</b> de cada zona. Si cambias uno por otro más grande, te avisamos si ya no cabe.</p></div>
+      {demo && <div className="hg-demo">Catálogo de ejemplo. Las máquinas reales se activan desde el CRM.</div>}
+      {revUi}
+      <div className="hg-fld"><h3>Tus máquinas · {eur(total)}</h3>
+        <div className="hg-items">{activos.map(c => {
+          const otras = (huecos[c.it.tipo] || []).filter(o => o.id !== c.it.id && !enLay.has(o.id));
+          return (
+            <div key={c.it.id} className={'hg-it' + (sel === c.it.id ? ' sel' : '')} onClick={() => setSel(c.it.id)}>
+              {c.it.foto ? <img className="hg-th" src={c.it.foto} alt="" loading="lazy" /> : <i className="hg-sw" style={{ background: `var(--c-${c.it.cat})` }} />}
+              <span><span className="zona">{c.it.s}</span><span className="n">{c.it.nombre}</span><span className="d">{c.it.marca ? c.it.marca + ' · ' : ''}{c.w}×{c.d}×{c.it.h} cm · {eur(c.it.precio)}</span></span>
+              <span className="hg-acc"><button type="button" disabled={!otras.length} aria-label={'Cambiar ' + c.it.nombre} onClick={e => { e.stopPropagation(); setCambio(c.it.id); }}>Cambiar</button><button type="button" aria-label={'Quitar ' + c.it.nombre} onClick={e => { e.stopPropagation(); quitar(c.it.id); }}>Quitar</button></span>
+            </div>);
+        })}
+          {!activos.length && <p className="hg-note">No hay máquinas. Vuelve a «Tu espacio» y añade alguna zona.</p>}
+        </div>
+      </div>
       <div className="hg-fld">
-        <button type="button" className="hg-ghost" disabled={demo || !activos.length || rev.estado === 'mal'} onClick={() => setAr(true)}>Ver mi gym en tu sala (3D real y AR)</button>
+        <button type="button" className="hg-ghost" disabled={demo || !activos.length || rev.estado === 'mal'} onClick={() => setAr(true)}>Ver mi gym en tu sala (AR)</button>
         {demo ? <p className="hg-note">Disponible cuando haya máquinas reales en el catálogo.</p> : rev.estado === 'mal' && <p className="hg-note">Arregla los problemas de arriba para poder verlo en tu sala.</p>}
       </div>
       {videosUi}
-      <div className="hg-nav"><button type="button" className="hg-ghost" onClick={() => ir(1)}>Atrás</button><button type="button" className="hg-primary" disabled={!activos.length} onClick={() => ir(3)}>Continuar</button></div>
+      <div className="hg-nav"><button type="button" className="hg-ghost" onClick={() => ir(2)}>Atrás</button><button type="button" className="hg-primary" disabled={!activos.length} onClick={() => ir(4)}>Continuar</button></div>
     </>
   );
   const puedeEnviar = contacto.nombre.trim().length > 1 && (contacto.email.trim() || contacto.telefono.trim()) && contacto.acepto && activos.length && !demo && envio.estado !== 'enviando';
-  const p3 = envio.estado === 'ok' ? (
+  const p4 = envio.estado === 'ok' ? (
     <div className="hg-done">
       <span className="hg-kicker">Recibido</span><h1>Hablamos pronto</h1>
       <span className="hg-ref">{envio.ref}</span>
@@ -497,7 +539,7 @@ export function HomeGym() {
     </div>
   ) : (
     <>
-      <div><span className="hg-kicker">Paso 4 de 4</span><h1>Tu diseño está listo</h1><p className="hg-lead">Guárdalo en tu móvil para tenerlo a mano, enseñarlo o mandarlo a quien te monte el gym.</p></div>
+      <div><span className="hg-kicker">Paso 5 de 5</span><h1>Tu diseño está listo</h1><p className="hg-lead">Guárdalo en tu móvil para tenerlo a mano, enseñarlo o mandarlo a quien te monte el gym.</p></div>
       <button type="button" className="hg-primary hg-guardar" onClick={descargaPlano} disabled={!activos.length}>Guardar mi plano (imagen)</button>
       <div className="hg-sum">
         {activos.map((c, i) => <div key={c.it.id}><span>{i + 1}. {c.it.nombre}</span><span>{eur(c.it.precio)}</span></div>)}
@@ -513,13 +555,13 @@ export function HomeGym() {
         <input className="hg-trap" type="text" tabIndex={-1} autoComplete="off" aria-hidden="true" value={contacto.web} onChange={e => setContacto(c => ({ ...c, web: e.target.value }))} />
         <label className="hg-check"><input type="checkbox" checked={contacto.acepto} onChange={e => setContacto(c => ({ ...c, acepto: e.target.checked }))} /><span>He leído y acepto la <Link to="/privacidad" target="_blank">política de privacidad</Link>.</span></label>
         <p className={'hg-msg' + (envio.estado === 'error' ? ' err' : '')} role="status">{envio.error}</p>
-        <div className="hg-nav"><button type="button" className="hg-ghost" onClick={() => ir(2)}>Atrás</button><button type="submit" className="hg-primary" disabled={!puedeEnviar}>{envio.estado === 'enviando' ? 'Enviando…' : 'Pedir videollamada'}</button></div>
+        <div className="hg-nav"><button type="button" className="hg-ghost" onClick={() => ir(3)}>Atrás</button><button type="submit" className="hg-primary" disabled={!puedeEnviar}>{envio.estado === 'enviando' ? 'Enviando…' : 'Pedir videollamada'}</button></div>
         {demo && <p className="hg-note">Catálogo de ejemplo: el envío se activa cuando haya máquinas reales marcadas en el CRM.</p>}
       </form>
     </>
   );
 
-  const editable = paso === 2 && vista === 'pl';
+  const editable = (paso === 2 || paso === 3) && vista === 'pl';
   return (
     <div className="hg">
       <div className="hg-stage">
@@ -530,11 +572,13 @@ export function HomeGym() {
         <div className="hg-vwrap">{vista === 'sala'
           ? <VistaSala S={S} onChange={ponS} />
           : vista === '3d'
-            ? <VistaIso S={S} items={activos} anim={anim} />
-            : <VistaPlanta S={S} items={activos} anim={anim} malos={paso === 2 ? rev.malos : null} sel={sel} onSel={setSel} onMove={mover} editable={editable} />}
+            ? (items3d.some(a => a.it.modelo3d && a.it.modelo3d.url) && !sinWebgl
+              ? <Suspense fallback={<VistaIso S={S} items={items3d} anim={false} />}><HomeGymVisor3D S={S} items={items3d} onError={() => setSinWebgl(true)} /></Suspense>
+              : <VistaIso S={S} items={items3d} anim={anim} />)
+            : <VistaPlanta S={S} items={activos} anim={anim} malos={paso === 2 || paso === 3 ? rev.malos : null} sel={sel} onSel={setSel} onMove={mover} editable={editable} />}
           {editable && itSel && (
             <div className="hg-selbar" role="toolbar" aria-label={'Opciones de ' + itSel.it.nombre}>
-              <span>{itSel.it.nombre}</span>
+              <span>{paso === 2 ? itSel.it.s : itSel.it.nombre}</span>
               <button type="button" onClick={() => girar(itSel.it.id)}>Girar</button>
               <button type="button" onClick={() => quitar(itSel.it.id)}>Quitar</button>
               <button type="button" onClick={() => setSel(null)} aria-label="Cerrar">✓</button>
@@ -556,7 +600,7 @@ export function HomeGym() {
           </div>
           <div className="hg-legend"><span><i style={{ background: 'var(--c-fuerza)' }} />Fuerza</span><span><i style={{ background: 'var(--c-cardio)' }} />Cardio</span><span><i style={{ background: 'var(--c-func)' }} />Funcional</span></div>
         </div>
-        <section className="hg-panel">{[p0, p1, p2, p3][paso]}</section>
+        <section className="hg-panel">{[p0, p1, p2, p3, p4][paso]}</section>
       </div>
       {verVideo && (
         <div className="hg-modal" role="dialog" aria-modal="true" aria-label={verVideo.titulo} onClick={() => setVerVideo(null)}>
@@ -567,18 +611,35 @@ export function HomeGym() {
           </div>
         </div>)}
       {picker && (
-        <div className="hg-modal" role="dialog" aria-modal="true" aria-label="Añadir una máquina" onClick={() => setPicker(false)}>
+        <div className="hg-modal" role="dialog" aria-modal="true" aria-label="Añadir una zona" onClick={() => setPicker(false)}>
           <div className="hg-modal-box" onClick={e => e.stopPropagation()}>
-            <div className="hg-modal-head"><div><span className="hg-kicker">Catálogo</span><h1>¿Qué quieres añadir?</h1></div><button type="button" className="hg-ghost" onClick={() => setPicker(false)}>Cerrar</button></div>
+            <div className="hg-modal-head"><div><span className="hg-kicker">Tu espacio</span><h1>¿Qué zona quieres añadir?</h1></div><button type="button" className="hg-ghost" onClick={() => setPicker(false)}>Cerrar</button></div>
             <div className="hg-grid">
-              {todos.filter(t => !enLay.has(t.id)).map(t => (
-                <button key={t.id} type="button" className="hg-card" onClick={() => { anadir(t.id); setPicker(false); }}>
-                  <span className="hg-card-img">{t.foto ? <img src={t.foto} alt="" loading="lazy" /> : <i className="hg-sw" style={{ background: `var(--c-${t.cat})`, width: 28, height: 28, margin: 0 }} />}</span>
-                  <b>{t.nombre}</b><small>{t.marca ? t.marca + ' · ' : ''}{t.w}×{t.d} cm</small><span className="p">{eur(t.precio)}</span>
-                </button>))}
+              {tiposLibres.map(([tipo, ops]) => { const m = ops.find(o => !enLay.has(o.id)); return (
+                <button key={tipo} type="button" className="hg-card" onClick={() => { anadirZona(tipo); setPicker(false); }}>
+                  <span className="hg-card-img"><i className="hg-sw" style={{ background: `var(--c-${m.cat})`, width: 36, height: 36, margin: 0 }} /></span>
+                  <b>{m.s}</b><small>Zona de unos {m.w}×{m.d} cm</small>
+                </button>); })}
             </div>
           </div>
         </div>)}
+      {cambio && (() => {
+        const actual = activos.find(a => a.it.id === cambio); if (!actual) return null;
+        const ops = (huecos[actual.it.tipo] || []).filter(o => o.id === cambio || !enLay.has(o.id));
+        return (
+          <div className="hg-modal" role="dialog" aria-modal="true" aria-label={'Elegir ' + actual.it.s} onClick={() => setCambio(null)}>
+            <div className="hg-modal-box" onClick={e => e.stopPropagation()}>
+              <div className="hg-modal-head"><div><span className="hg-kicker">{actual.it.s}</span><h1>Elige el modelo</h1></div><button type="button" className="hg-ghost" onClick={() => setCambio(null)}>Cerrar</button></div>
+              <div className="hg-grid">
+                {ops.map(t => (
+                  <button key={t.id} type="button" className={'hg-card' + (t.id === cambio ? ' sel' : '')} onClick={() => cambiarModelo(cambio, t)}>
+                    <span className="hg-card-img">{t.foto ? <img src={t.foto} alt="" loading="lazy" /> : <i className="hg-sw" style={{ background: `var(--c-${t.cat})`, width: 28, height: 28, margin: 0 }} />}</span>
+                    <b>{t.nombre}</b><small>{t.marca ? t.marca + ' · ' : ''}{t.w}×{t.d}×{t.h} cm</small><span className="p">{eur(t.precio)}{t.id === cambio ? ' · elegida' : ''}</span>
+                  </button>))}
+              </div>
+            </div>
+          </div>);
+      })()}
       {ar && <Suspense fallback={null}><HomeGymAR S={S} items={activos} onClose={() => setAr(false)} /></Suspense>}
     </div>
   );
