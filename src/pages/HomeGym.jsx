@@ -221,6 +221,7 @@ export function HomeGym() {
   const [sel, setSel] = useState(null);
   const [vista, setVista] = useState('sala');
   const [ar, setAr] = useState(false);
+  const [picker, setPicker] = useState(false);
   const [anim, setAnim] = useState(false);
   const [productos, setProductos] = useState(null);
   const [contacto, setContacto] = useState({ nombre: '', email: '', telefono: '', mensaje: '', acepto: false, web: '' });
@@ -291,7 +292,53 @@ export function HomeGym() {
   };
 
   const area = S.L * S.W, total = activos.reduce((a, c) => a + c.it.precio, 0), dto = total * DESCUENTO;
-  const nombres = ['Espacio', 'Objetivo', 'Distribución', 'Soporte'];
+  const nombres = ['Tu sala', 'Tu objetivo', 'Tu gym', 'Guardar'];
+  const itSel = activos.find(a => a.it.id === sel);
+
+  // Guarda el plano como imagen (para llevárselo, enseñarlo o mandarlo a un montador). Se dibuja aparte para que salga igual en cualquier móvil.
+  const descargaPlano = () => {
+    const ANCHO = 1600, mar = 110, esc = Math.min((ANCHO - mar * 2) / S.L, 900 / S.W), pw = S.L * esc, ph = S.W * esc, fila = 56;
+    const alto = Math.round(mar + ph + 150 + activos.length * fila + 190);
+    const c = document.createElement('canvas'); c.width = ANCHO; c.height = alto;
+    const g = c.getContext('2d'), ox = (ANCHO - pw) / 2, oy = mar + 40;
+    const fuente = (p, t) => { g.font = `${p}px Montserrat, system-ui, sans-serif`; g.fillStyle = t; };
+    g.fillStyle = '#0B0B0B'; g.fillRect(0, 0, ANCHO, alto);
+    fuente('600 34', '#F4F1EC'); g.textAlign = 'left'; g.fillText('RANUSE DESIGN', 60, 70);
+    fuente('500 24', '#BFB1A3'); g.fillText('Mi home gym · ' + mt(S.L) + ' × ' + mt(S.W) + ' m · techo ' + mt(S.H) + ' m', 60, 104);
+    g.fillStyle = '#22211F'; g.fillRect(ox, oy, pw, ph);
+    g.strokeStyle = '#2C2A27'; g.lineWidth = 2;
+    for (let i = 100; i < S.L; i += 100) { g.beginPath(); g.moveTo(ox + i * esc, oy); g.lineTo(ox + i * esc, oy + ph); g.stroke(); }
+    for (let j = 100; j < S.W; j += 100) { g.beginPath(); g.moveTo(ox, oy + j * esc); g.lineTo(ox + pw, oy + j * esc); g.stroke(); }
+    g.strokeStyle = '#F4F1EC'; g.lineWidth = 8; g.strokeRect(ox, oy, pw, ph);
+    // puerta
+    g.strokeStyle = '#BFB1A3'; g.lineWidth = 14; g.beginPath();
+    const pc = { arriba: [ox + pw / 2 - 45 * esc, oy, ox + pw / 2 + 45 * esc, oy], abajo: [ox + pw / 2 - 45 * esc, oy + ph, ox + pw / 2 + 45 * esc, oy + ph], izq: [ox, oy + ph / 2 - 45 * esc, ox, oy + ph / 2 + 45 * esc], der: [ox + pw, oy + ph / 2 - 45 * esc, ox + pw, oy + ph / 2 + 45 * esc] }[S.door];
+    g.moveTo(pc[0], pc[1]); g.lineTo(pc[2], pc[3]); g.stroke();
+    fuente('600 20', '#BFB1A3'); g.textAlign = 'center';
+    g.fillText('PUERTA', (pc[0] + pc[2]) / 2, S.door === 'abajo' ? pc[1] + 40 : S.door === 'arriba' ? pc[1] - 22 : pc[1] + (pc[3] - pc[1]) / 2);
+    // medidas de la sala
+    fuente('500 24', '#9A948B'); g.fillText(mt(S.L) + ' m', ox + pw / 2, oy - 22);
+    g.save(); g.translate(ox - 26, oy + ph / 2); g.rotate(-Math.PI / 2); g.fillText(mt(S.W) + ' m', 0, 0); g.restore();
+    // máquinas numeradas
+    const col = { fuerza: '#77726B', cardio: '#BFB1A3', func: '#E6E1DA' };
+    activos.forEach((a, i) => {
+      g.fillStyle = col[a.it.cat] || '#77726B'; g.fillRect(ox + a.x * esc, oy + a.y * esc, a.w * esc, a.d * esc);
+      g.strokeStyle = '#0B0B0B'; g.lineWidth = 3; g.strokeRect(ox + a.x * esc, oy + a.y * esc, a.w * esc, a.d * esc);
+      fuente('700 ' + Math.max(22, Math.min(44, a.d * esc * 0.5)), a.it.cat === 'fuerza' ? '#FFFFFF' : '#0B0B0B'); g.textAlign = 'center';
+      g.fillText(String(i + 1), ox + (a.x + a.w / 2) * esc, oy + (a.y + a.d / 2) * esc + 12);
+    });
+    // lista
+    let y = oy + ph + 90; g.textAlign = 'left';
+    fuente('700 22', '#BFB1A3'); g.fillText('MIS MÁQUINAS', 60, y); y += 46;
+    activos.forEach((a, i) => {
+      fuente('700 26', '#F4F1EC'); g.fillText(String(i + 1), 60, y);
+      fuente('500 26', '#F4F1EC'); g.fillText(a.it.nombre.length > 52 ? a.it.nombre.slice(0, 51) + '…' : a.it.nombre, 110, y);
+      fuente('500 24', '#9A948B'); g.textAlign = 'right'; g.fillText(a.w + '×' + a.d + ' cm · ' + eur(a.it.precio), ANCHO - 60, y); g.textAlign = 'left'; y += fila;
+    });
+    fuente('700 28', '#F4F1EC'); g.fillText('Total orientativo', 60, y + 14); g.textAlign = 'right'; g.fillText(eur(total), ANCHO - 60, y + 14); g.textAlign = 'left';
+    fuente('500 20', '#6E6A64'); g.fillText('Hecho con Home Gym Studio · Ranuse Design', 60, alto - 40);
+    c.toBlob(b => { if (!b) return; const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'mi-home-gym.png'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }, 'image/png');
+  };
 
   const enviar = async () => {
     setEnvio({ estado: 'enviando', ref: '', error: '' });
@@ -376,7 +423,7 @@ export function HomeGym() {
     </>
   ) : (
     <>
-      <div><span className="hg-kicker">Paso 3 de 4</span><h1>Tu distribución</h1><p className="hg-lead">Esta es nuestra propuesta. <b>Arrastra las máquinas</b> por la planta para cambiarla como quieras.</p></div>
+      <div><span className="hg-kicker">Paso 3 de 4</span><h1>Tu gym</h1><p className="hg-lead">Esta es nuestra propuesta. <b>Toca una máquina y arrástrala</b> para moverla. Si algo no encaja, te lo avisamos.</p></div>
       {demo && <div className="hg-demo">Catálogo de ejemplo. Las máquinas reales se activan desde el CRM.</div>}
       <div className={'hg-rev ' + rev.estado} role="status">
         <b>{rev.estado === 'ok' ? '✓ Tu distribución está bien' : rev.estado === 'aviso' ? '! Revisa estos detalles' : '✕ Hay cosas que arreglar'}</b>
@@ -384,27 +431,25 @@ export function HomeGym() {
           ? <span>Todo cabe dentro de la sala, sin choques, con la puerta libre y un {rev.libre} % de suelo libre para moverte.</span>
           : <ul>{rev.problemas.map((p, i) => <li key={i} className={p.nivel}>{p.texto}</li>)}</ul>}
       </div>
-      <div className="hg-fld"><h3>Partir de otra propuesta</h3>
-        <div className="hg-tiers">{R.niveles.map((x, i) => (
-          <button key={x.nombre} type="button" className="hg-tier" aria-pressed={nivel === i} onClick={() => { setNivel(i); setAnim(true); }}>
-            {i === rec && <span className="rec">RECOMENDADO</span>}<b>{x.nombre}</b><span className="pr">{eur(x.total * (1 - DESCUENTO))}</span><small>{x.n} equipos</small>
-          </button>))}</div></div>
-      <div className="hg-fld"><h3>Tus máquinas</h3>
+      <div className="hg-fld"><h3>Tus máquinas · {eur(total)}</h3>
         <div className="hg-items">{activos.map(c => (
           <div key={c.it.id} className={'hg-it' + (sel === c.it.id ? ' sel' : '')} onClick={() => setSel(c.it.id)}>
-            <i className="hg-sw" style={{ background: `var(--c-${c.it.cat})` }} />
+            {c.it.foto ? <img className="hg-th" src={c.it.foto} alt="" loading="lazy" /> : <i className="hg-sw" style={{ background: `var(--c-${c.it.cat})` }} />}
             <span><span className="n">{c.it.nombre}</span><span className="d">{c.it.marca ? c.it.marca + ' · ' : ''}{c.w}×{c.d}×{c.it.h} cm · {eur(c.it.precio)}</span></span>
             <span className="hg-acc"><button type="button" aria-label={'Girar ' + c.it.nombre} onClick={e => { e.stopPropagation(); girar(c.it.id); }}>Girar</button><button type="button" aria-label={'Quitar ' + c.it.nombre} onClick={e => { e.stopPropagation(); quitar(c.it.id); }}>Quitar</button></span>
           </div>))}
           {!activos.length && <p className="hg-note">No hay máquinas. Añade alguna aquí debajo.</p>}
         </div>
-        <label className="hg-add"><span>Añadir una máquina</span>
-          <select value="" onChange={e => { if (e.target.value) anadir(e.target.value); }} aria-label="Añadir una máquina">
-            <option value="">Elige una…</option>
-            {todos.filter(t => !enLay.has(t.id)).map(t => <option key={t.id} value={t.id}>{t.nombre}{t.marca ? ' · ' + t.marca : ''} ({t.w}×{t.d} cm)</option>)}
-          </select></label>
+        <button type="button" className="hg-ghost hg-addbtn" onClick={() => setPicker(true)} disabled={!todos.some(t => !enLay.has(t.id))}>+ Añadir una máquina</button>
       </div>
-      <details className="hg-more"><summary>Por qué esta propuesta</summary>{niv && <ul className="hg-why">{razones(S, niv, mt, eur).map((t, i) => <li key={i}><span>{t}</span></li>)}</ul>}
+      <details className="hg-more"><summary>Cambiar de propuesta</summary>
+        <div className="hg-tiers">{R.niveles.map((x, i) => (
+          <button key={x.nombre} type="button" className="hg-tier" aria-pressed={nivel === i} onClick={() => { setNivel(i); setAnim(true); }}>
+            {i === rec && <span className="rec">RECOMENDADO</span>}<b>{x.nombre}</b><span className="pr">{eur(x.total * (1 - DESCUENTO))}</span><small>{x.n} equipos</small>
+          </button>))}</div>
+        <p className="hg-note">Al cambiar de propuesta se pierden los cambios que hayas hecho.</p>
+      </details>
+      <details className="hg-more"><summary>Por qué esta propuesta</summary>{niv &&<ul className="hg-why">{razones(S, niv, mt, eur).map((t, i) => <li key={i}><span>{t}</span></li>)}</ul>}
         {R.omitidos.filter(o => niv && o.idx < niv.maxIdx).length > 0 && <div className="hg-skip"><h3>No incluido en tu sala</h3>{R.omitidos.filter(o => niv && o.idx < niv.maxIdx).map(o => <span key={o.it.id}><b>{o.it.nombre}</b>: {o.r}.</span>)}</div>}
       </details>
       <div className="hg-fld">
@@ -423,11 +468,13 @@ export function HomeGym() {
     </div>
   ) : (
     <>
-      <div><span className="hg-kicker">Paso 4 de 4</span><h1>¿Hablamos?</h1><p className="hg-lead">Tu distribución ya está hecha. Si quieres cambiar algo o tienes dudas, lo vemos juntos en una <b>videollamada</b>.</p></div>
+      <div><span className="hg-kicker">Paso 4 de 4</span><h1>Tu diseño está listo</h1><p className="hg-lead">Guárdalo en tu móvil para tenerlo a mano, enseñarlo o mandarlo a quien te monte el gym.</p></div>
+      <button type="button" className="hg-primary hg-guardar" onClick={descargaPlano} disabled={!activos.length}>Guardar mi plano (imagen)</button>
       <div className="hg-sum">
-        {activos.map(c => <div key={c.it.id}><span>{c.it.nombre}</span><span>{eur(c.it.precio)}</span></div>)}
+        {activos.map((c, i) => <div key={c.it.id}><span>{i + 1}. {c.it.nombre}</span><span>{eur(c.it.precio)}</span></div>)}
         <div className="tot"><span>Total orientativo</span><span>{eur(total - dto)}</span></div>
       </div>
+      <div><h3>¿Dudas o quieres cambiar algo?</h3><p className="hg-lead">Lo vemos juntos en una <b>videollamada</b>. Déjanos tus datos y te escribimos.</p></div>
       <form className="hg-form" onSubmit={e => { e.preventDefault(); if (puedeEnviar) enviar(); }}>
         <input type="text" placeholder="Tu nombre" autoComplete="name" value={contacto.nombre} onChange={e => setContacto(c => ({ ...c, nombre: e.target.value }))} aria-label="Tu nombre" />
         <input type="email" placeholder="Email" autoComplete="email" value={contacto.email} onChange={e => setContacto(c => ({ ...c, email: e.target.value }))} aria-label="Email" />
@@ -454,7 +501,15 @@ export function HomeGym() {
           ? <VistaSala S={S} onChange={ponS} />
           : vista === '3d'
             ? <VistaIso S={S} items={activos} anim={anim} />
-            : <VistaPlanta S={S} items={activos} anim={anim} malos={paso === 2 ? rev.malos : null} sel={sel} onSel={setSel} onMove={mover} editable={editable} />}</div>
+            : <VistaPlanta S={S} items={activos} anim={anim} malos={paso === 2 ? rev.malos : null} sel={sel} onSel={setSel} onMove={mover} editable={editable} />}
+          {editable && itSel && (
+            <div className="hg-selbar" role="toolbar" aria-label={'Opciones de ' + itSel.it.nombre}>
+              <span>{itSel.it.nombre}</span>
+              <button type="button" onClick={() => girar(itSel.it.id)}>Girar</button>
+              <button type="button" onClick={() => quitar(itSel.it.id)}>Quitar</button>
+              <button type="button" onClick={() => setSel(null)} aria-label="Cerrar">✓</button>
+            </div>)}
+        </div>
         <div className="hg-vtools">
           <div className="hg-tabs" role="tablist">
             {paso === 0 && <button type="button" role="tab" aria-selected={vista === 'sala'} onClick={() => setVista('sala')}>Dibujo</button>}
@@ -473,6 +528,19 @@ export function HomeGym() {
         </div>
         <section className="hg-panel">{[p0, p1, p2, p3][paso]}</section>
       </div>
+      {picker && (
+        <div className="hg-modal" role="dialog" aria-modal="true" aria-label="Añadir una máquina" onClick={() => setPicker(false)}>
+          <div className="hg-modal-box" onClick={e => e.stopPropagation()}>
+            <div className="hg-modal-head"><div><span className="hg-kicker">Catálogo</span><h1>¿Qué quieres añadir?</h1></div><button type="button" className="hg-ghost" onClick={() => setPicker(false)}>Cerrar</button></div>
+            <div className="hg-grid">
+              {todos.filter(t => !enLay.has(t.id)).map(t => (
+                <button key={t.id} type="button" className="hg-card" onClick={() => { anadir(t.id); setPicker(false); }}>
+                  <span className="hg-card-img">{t.foto ? <img src={t.foto} alt="" loading="lazy" /> : <i className="hg-sw" style={{ background: `var(--c-${t.cat})`, width: 28, height: 28, margin: 0 }} />}</span>
+                  <b>{t.nombre}</b><small>{t.marca ? t.marca + ' · ' : ''}{t.w}×{t.d} cm</small><span className="p">{eur(t.precio)}</span>
+                </button>))}
+            </div>
+          </div>
+        </div>)}
       {ar && <Suspense fallback={null}><HomeGymAR S={S} items={activos} onClose={() => setAr(false)} /></Suspense>}
     </div>
   );

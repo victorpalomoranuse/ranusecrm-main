@@ -170,3 +170,23 @@
 .hg-pasos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .hg-pasos label{display:flex;flex-direction:column;gap:4px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .hg-pasos input{width:100%;font:inherit;font-size:16px;color:var(--ink);background:transparent;border:1px solid var(--line);padding:10px;border-radius:0;text-transform:none;letter-spacing:0}
+
+/* Para quien no es diseñador: fotos de las máquinas, barra al tocar una, añadir con fotos y guardar el plano */
+@media (max-width:919px){.hg-vwrap{position:relative}}
+.hg-selbar{position:absolute;left:10px;right:10px;bottom:10px;display:flex;gap:8px;align-items:center;background:rgba(20,20,19,.95);border:1px solid var(--accent);padding:8px 10px}
+.hg-selbar span{flex:1;min-width:0;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hg-selbar button{border:1px solid var(--line);background:transparent;padding:8px 14px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;min-height:40px}
+.hg-selbar button:last-child{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.hg-th{width:48px;height:48px;object-fit:contain;background:#fff;border:1px solid var(--line)}
+.hg .hg-it{align-items:center}
+.hg-addbtn{width:100%;margin-top:6px}
+.hg-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media (min-width:640px){.hg-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.hg-card{display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid var(--line);background:transparent;padding:10px;cursor:pointer;min-width:0}
+.hg-card b{font-size:12px;font-weight:600;line-height:1.3}
+.hg-card small{font-size:11px;color:var(--muted)}
+.hg-card .p{font-size:13px;font-weight:600;color:var(--accent)}
+.hg-card-img{display:flex;align-items:center;justify-content:center;aspect-ratio:4/3;background:#fff;overflow:hidden}
+.hg-card-img img{width:100%;height:100%;object-fit:contain}
+.hg-guardar{width:100%;flex:none}
+@media (min-width:920px){.hg-selbar{left:12px;right:12px}}
