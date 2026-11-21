@@ -1,6 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
-import { authenticateToken } from '../middleware/auth.middleware.js';
+import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { leerJson, guardarJson } from '../utils/asistente-personal.js';
 import { callClaude } from '../utils/anthropic.js';
 import { creaTrabajoSistema, leeTrabajoSistema, contextoMaterial } from './estudio-video.routes.js';
@@ -77,7 +77,8 @@ router.get('/instagram/callback', async (req, res) => {
   } catch (e) { console.error('redes callback', e.message); return vuelta(false, 'Meta ha respondido: ' + e.message); }
 });
 
-router.use(authenticateToken);
+// el departamento de redes solo lo ve quien tenga el permiso «Departamento de redes» (o el de Estudio de vídeo, que ya lo abría) y el administrador
+router.use(authenticateToken, requirePermission(['redes', 'estudio_video']));
 
 const conexion = async () => { const c = await leerJson(RUTA_IG, null); return c && c.token ? c : null; };
 

@@ -13,6 +13,7 @@ export const PERMISOS_VALIDOS = [
   'dashboard', 'trabajos', 'leads', 'proyectos',
   'clientes', 'catalogo', 'referencias', 'recursos', 'contactos',
   'ventas', 'finanzas', 'asistente', 'presupuestos', 'estudio_video',
+  'redes', 'imagenes_ia',
 ];
 
 function sanitizePermissions(input) {

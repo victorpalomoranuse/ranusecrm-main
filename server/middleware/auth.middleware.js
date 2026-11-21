@@ -89,7 +89,9 @@ export const requireClient = (req, res, next) => {
  * Se usa para dar acceso granular a secciones como "leads" o "recursos" sin
  * convertir al empleado en admin completo.
  */
+// key puede ser una sola sección o una lista: basta con tener una de ellas
 export const requirePermission = (key) => (req, res, next) => {
+  const claves = [].concat(key);
   if (!req.user) {
     return res.status(401).json({
       error: 'Autenticación requerida'
@@ -98,7 +100,7 @@ export const requirePermission = (key) => (req, res, next) => {
 
   if (req.user.role === 'admin_superior') return next();
 
-  if (req.user.role === 'trabajador' && req.user.permissions?.[key] === true) {
+  if (req.user.role === 'trabajador' && claves.some(k => req.user.permissions?.[k] === true)) {
     return next();
   }
 

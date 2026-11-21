@@ -9,7 +9,7 @@ import { uploadProjectRender } from '../utils/storage.js';
 // a la historia de un proyecto o a la galería de un plano. Todo se guarda en el almacenamiento (crm/ia-chats y crm/ia-galeria).
 // El motor que genera las imágenes es el mismo de /api/estudio-ideas/chat.
 const router = express.Router();
-router.use(authenticateToken, requirePermission('proyectos'));
+router.use(authenticateToken, requirePermission(['imagenes_ia', 'proyectos']));
 const BUCKET = 'project-documents', CARPETA = 'crm/ia-chats', GAL = 'crm/ia-galeria';
 const uid = () => crypto.randomBytes(5).toString('hex');
 const txt = (v, n = 200) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);

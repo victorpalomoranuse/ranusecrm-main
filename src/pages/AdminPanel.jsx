@@ -2655,7 +2655,7 @@ const ETIQUETAS_PERMISOS = {
   proyectos: 'Proyectos', clientes: 'Clientes',
   catalogo: 'Catálogo', referencias: 'Referencias', recursos: 'Recursos', contactos: 'Proveedores',
   ventas: 'Ventas', finanzas: 'Finanzas', asistente: 'Asistente IA', presupuestos: 'Presupuestos (solo los suyos)',
-  estudio_video: 'Estudio de vídeo',
+  estudio_video: 'Estudio de vídeo', redes: 'Departamento de redes', imagenes_ia: 'Chat de imágenes IA',
 };
 const PERMISOS_CONFIGURABLES = Object.keys(ETIQUETAS_PERMISOS);
 // Qué secciones del menú abre cada casilla (se muestra en el editor de roles)
@@ -2673,8 +2673,16 @@ const PERMISOS_ABRE = {
   finanzas: 'Finanzas, Asistente Finanzas, Relación de obra',
   asistente: 'Solo el Asistente IA (presupuestos y crear productos del catálogo), sin abrir Ventas',
   estudio_video: 'Estudio de vídeo: subir voces o brutos, elegir recursos de Drive y música, y editar vídeos con IA',
+  redes: 'Departamento de redes: guiones, ideas, análisis de Instagram, nicho y plan de contenido',
+  imagenes_ia: 'Chat de imágenes IA: crear y retocar imágenes con la IA, guardarlas en la galería y enviarlas a un proyecto (sin abrir Proyectos)',
   presupuestos: 'Presupuestos: solo ve y edita los que crea esa persona (la numeración es la misma). Para trabajar bien también necesita Proyectos y Catálogo',
 };
+// Roles listos para usar: rellenan el nombre y las casillas, que luego se pueden cambiar
+const PLANTILLAS_ROL = [
+  { n: 'Redes sociales', p: ['redes', 'estudio_video', 'imagenes_ia'] },
+  { n: 'Diseñador', p: ['proyectos', 'catalogo', 'referencias', 'recursos', 'imagenes_ia', 'clientes'] },
+  { n: 'Comercial', p: ['leads', 'clientes', 'proyectos', 'presupuestos', 'catalogo', 'ventas'] },
+];
 const SIEMPRE_ABIERTAS = 'Todos los roles ven siempre: Inicio, Mi día y Mis Comisiones. Solo el administrador superior ve: Pedidos, Tareas, Empleados, Roles y Ajustes (no se pueden dar a un rol).';
 
 function useRoles() {
@@ -2719,7 +2727,7 @@ function RoleModal({ role, onClose, onSaved }) {
   const [name,setName]=useState(role?.name||''); const [permissions,setPermissions]=useState(()=>{const base={};PERMISOS_CONFIGURABLES.forEach(k=>{base[k]=role?.permissions?.[k]===true;});return base;}); const [loading,setLoading]=useState(false); const [error,setError]=useState('');
   const togglePerm=(key)=>setPermissions(prev=>({...prev,[key]:!prev[key]}));
   const handleSubmit=async(e)=>{e.preventDefault();if(!name.trim())return;setError('');setLoading(true);try{let data;if(isEdit){({data}=await api.put(`/roles/${role.id}`,{name,permissions}));onSaved(data.role,true);}else{({data}=await api.post('/roles',{name,permissions}));onSaved(data.role,false);}}catch(err){setError(err.response?.data?.error||`Error al ${isEdit?'guardar':'crear'} el rol`);}finally{setLoading(false);}};
-  return (<div className="ap-modal-overlay" onClick={onClose}><div className="ap-modal" onClick={e=>e.stopPropagation()}><div className="ap-modal-head"><h2>{isEdit?'Editar rol':'Nuevo rol'}</h2><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div><form onSubmit={handleSubmit} className="ap-modal-form"><div className="ap-field"><label>Nombre del rol *</label><input value={name} onChange={e=>setName(e.target.value)} placeholder="Comercial, Diseñador, Marketing..." required autoFocus/></div><div className="ap-field"><label>Secciones visibles</label><div className="ap-perms-list">{PERMISOS_CONFIGURABLES.map(key=>(<label key={key} className="ap-perm-item"><input type="checkbox" checked={permissions[key]} onChange={()=>togglePerm(key)}/><span><strong>{ETIQUETAS_PERMISOS[key]}</strong>{PERMISOS_ABRE[key]&&<small style={{display:'block',opacity:0.55,fontSize:'0.72rem',marginTop:2}}>Abre: {PERMISOS_ABRE[key]}</small>}</span></label>))}</div><p style={{fontSize:'0.72rem',opacity:0.55,marginTop:8}}>{SIEMPRE_ABIERTAS}</p></div>{error&&<p className="ap-error">{error}</p>}<div className="ap-modal-actions"><button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button><button type="submit" className="ap-btn ap-btn-primary" disabled={loading||!name.trim()}>{loading?'Guardando...':isEdit?'Guardar cambios':'Crear rol'}</button></div></form></div></div>);
+  return (<div className="ap-modal-overlay" onClick={onClose}><div className="ap-modal" onClick={e=>e.stopPropagation()}><div className="ap-modal-head"><h2>{isEdit?'Editar rol':'Nuevo rol'}</h2><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div><form onSubmit={handleSubmit} className="ap-modal-form">{!isEdit&&<div className="ap-field"><label>Empezar desde una plantilla</label><div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{PLANTILLAS_ROL.map(p=>(<button type="button" key={p.n} className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>{setName(p.n);setPermissions(()=>{const b={};PERMISOS_CONFIGURABLES.forEach(k=>{b[k]=p.p.includes(k);});return b;});}}>{p.n}</button>))}</div></div>}<div className="ap-field"><label>Nombre del rol *</label><input value={name} onChange={e=>setName(e.target.value)} placeholder="Comercial, Diseñador, Marketing..." required autoFocus/></div><div className="ap-field"><label>Secciones visibles</label><div className="ap-perms-list">{PERMISOS_CONFIGURABLES.map(key=>(<label key={key} className="ap-perm-item"><input type="checkbox" checked={permissions[key]} onChange={()=>togglePerm(key)}/><span><strong>{ETIQUETAS_PERMISOS[key]}</strong>{PERMISOS_ABRE[key]&&<small style={{display:'block',opacity:0.55,fontSize:'0.72rem',marginTop:2}}>Abre: {PERMISOS_ABRE[key]}</small>}</span></label>))}</div><p style={{fontSize:'0.72rem',opacity:0.55,marginTop:8}}>{SIEMPRE_ABIERTAS}</p></div>{error&&<p className="ap-error">{error}</p>}<div className="ap-modal-actions"><button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button><button type="submit" className="ap-btn ap-btn-primary" disabled={loading||!name.trim()}>{loading?'Guardando...':isEdit?'Guardar cambios':'Crear rol'}</button></div></form></div></div>);
 }
 
 function SectionRoles() {
@@ -2878,7 +2886,7 @@ const NAV_ITEMS = [
   { id:'proyectos', label:'Proyectos', Icon:FolderOpen, permission:'proyectos' },
   { id:'planos', label:'Planos', Icon:Ruler, permission:'proyectos' },
   { id:'asistente-diseno', label:'Asistente de diseño', Icon:Ruler, permission:'proyectos' },
-  { id:'generador-imagenes', label:'Chat de imágenes IA', Icon:Sparkles, permission:'proyectos' },
+  { id:'generador-imagenes', label:'Chat de imágenes IA', Icon:Sparkles, permissions:['imagenes_ia','proyectos'] },
   { id:'hojas', label:'Hojas', Icon:Table2 },
   { id:'clientes', label:'Clientes', Icon:UserCheck, permission:'clientes' },
   { id:'empleados', label:'Empleados', Icon:Users, adminOnly:true },
@@ -2890,7 +2898,7 @@ const NAV_ITEMS = [
   { id:'asistente-finanzas', label:'Asistente Finanzas', Icon:Wallet, permission:'finanzas' },
   { id:'asistente-personal', label:'Asistente personal', Icon:MessageSquare, adminOnly:true },
   { id:'estudio-video', label:'Estudio de vídeo', Icon:Film, permission:'estudio_video' },
-  { id:'redes', label:'Departamento de redes', Icon:TrendingUp, permission:'estudio_video' },
+  { id:'redes', label:'Departamento de redes', Icon:TrendingUp, permissions:['redes','estudio_video'] },
   { id:'obra', label:'Relación de obra', Icon:Hammer, permissions:['ventas','finanzas'] },
   { id:'tareas', label:'Tareas', Icon:CheckCircle, adminOnly:true },
   { id:'catalogo', label:'Catálogo', Icon:BookOpen, permission:'catalogo' },
