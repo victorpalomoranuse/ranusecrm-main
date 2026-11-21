@@ -2,7 +2,7 @@ import express from 'express';
 import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
-import { montaGymGlb } from '../utils/homegym-ar.js';
+import { montaGymGlb, medidasModelo } from '../utils/homegym-ar.js';
 
 // Home Gym Studio: la parte pública (catálogo y solicitud de equipamiento) y la del equipo (revisar solicitudes y elegir qué máquinas salen).
 const router = express.Router();
@@ -37,6 +37,16 @@ router.get('/catalogo', async (req, res) => {
         foto: p.photo_url || null, enlace: p.link || null, tipo: p.homegym_tipo, orden: Number(p.homegym_orden) || 0,
         modelo3d: p.bloques?.modelo3d?.url ? { url: p.bloques.modelo3d.url, tipo: p.bloques.modelo3d.tipo || 'glb', rot: Number(p.bloques.modelo3d.rot) || 0 } : null,
       }));
+    // El tamaño real de cada máquina es el de su modelo 3D escalado a la altura del catálogo (largo y ancho del catálogo no siempre coinciden con el modelo)
+    await Promise.all(productos.map(async p => {
+      if (!p.modelo3d) return;
+      try {
+        const m = await Promise.race([medidasModelo(p.modelo3d.url), new Promise((_, rej) => setTimeout(() => rej(new Error('lento')), 12000))]);
+        const k = (p.h / 100) / m.dy, giro = (p.modelo3d.rot % 180) !== 0;
+        const w = Math.round((giro ? m.dz : m.dx) * k * 100), d = Math.round((giro ? m.dx : m.dz) * k * 100);
+        if (w > 0 && d > 0) { p.catalogo = { w: p.w, d: p.d }; p.ajustado = Math.abs(w - p.w) / p.w > 0.1 || Math.abs(d - p.d) / p.d > 0.1; p.w = w; p.d = d; }
+      } catch (e) { console.error('Home Gym · medidas del modelo:', p.nombre, String(e.message || e).slice(0, 80)); }
+    }));
     res.set('Cache-Control', 'public, max-age=300');
     res.json({ productos });
   } catch (err) {
@@ -126,13 +136,17 @@ router.post('/ar', async (req, res) => {
     const { data: prods, error } = await supabase.from('catalog_products').select('id, name, longitud, ancho, altura, homegym_tipo, bloques').in('id', pedidos.map(p => p.id)).not('homegym_tipo', 'is', null);
     if (error) throw error;
     const porId = new Map((prods || []).map(p => [p.id, p]));
-    const items = pedidos.map(p => {
+    const items = (await Promise.all(pedidos.map(async p => {
       const pr = porId.get(p.id); if (!pr) return null;
-      const girada = Math.abs(p.w - Number(pr.longitud)) > 1 && Math.abs(p.w - Number(pr.ancho)) <= 1;
-      const m = pr.bloques?.modelo3d;
-      return { nombre: pr.name, x: p.x, y: p.y, w: p.w, d: p.d, h: Number(pr.altura) || 100, cat: ({ rack: 'fuerza', banco: 'fuerza', discos: 'fuerza', mancu: 'fuerza', polea: 'fuerza', cinta: 'cardio', bici: 'cardio', remo: 'cardio' })[pr.homegym_tipo] || 'func',
-        rot: (Number(m?.rot) || 0) + (girada ? 90 : 0), modelo3d: m?.url && (m.tipo || 'glb') === 'glb' ? { url: m.url } : null };
-    }).filter(Boolean);
+      const m = pr.bloques?.modelo3d, h = Number(pr.altura) || 100, rot0 = Number(m?.rot) || 0;
+      const conModelo = m?.url && (m.tipo || 'glb') === 'glb';
+      // Tamaño de referencia sin girar: el del modelo (escalado a la altura) o, si no hay modelo, el del catálogo. Sirve para saber si el motor giró la máquina.
+      let w0 = Number(pr.longitud), d0 = Number(pr.ancho);
+      if (conModelo) { try { const md = await medidasModelo(m.url), k = (h / 100) / md.dy, giro = (rot0 % 180) !== 0; w0 = (giro ? md.dz : md.dx) * k * 100; d0 = (giro ? md.dx : md.dz) * k * 100; } catch { /* se usa el catálogo */ } }
+      const girada = Math.abs(w0 - d0) > 1 && Math.abs(p.w - d0) < Math.abs(p.w - w0);
+      return { nombre: pr.name, x: p.x, y: p.y, w: p.w, d: p.d, h, cat: ({ rack: 'fuerza', banco: 'fuerza', discos: 'fuerza', mancu: 'fuerza', polea: 'fuerza', cinta: 'cardio', bici: 'cardio', remo: 'cardio' })[pr.homegym_tipo] || 'func',
+        rot: rot0 + (girada ? 90 : 0), modelo3d: conModelo ? { url: m.url } : null };
+    }))).filter(Boolean);
     if (!items.length) return res.status(400).json({ error: 'El equipamiento elegido ya no está disponible' });
 
     const hash = crypto.createHash('sha1').update(JSON.stringify([sala, items.map(i => [i.nombre, i.x, i.y, i.w, i.d, i.h, i.rot, i.modelo3d?.url || ''])])).digest('hex').slice(0, 20);

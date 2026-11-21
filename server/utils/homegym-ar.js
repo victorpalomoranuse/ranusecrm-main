@@ -51,7 +51,21 @@ function documentoCaja(w, h, d, cat, color) {
   return doc;
 }
 
-// Lee el modelo de una máquina, lo gira (yaw en grados) y lo estira a w × h × d metros, con la base en y=0 y centrado en x/z
+// Medidas reales de un modelo (metros, sin girar). Se guardan 24 h para no volver a descargarlo en cada visita.
+const cacheMedidas = new Map();
+export async function medidasModelo(url) {
+  const c = cacheMedidas.get(url);
+  if (c && Date.now() - c.t < 864e5) return c;
+  const doc = await io.readBinary(new Uint8Array(await bajaModelo(url)));
+  const scene = doc.getRoot().listScenes()[0]; if (!scene) throw new Error('sin escena');
+  const b = getBounds(scene);
+  const r = { dx: b.max[0] - b.min[0], dy: b.max[1] - b.min[1], dz: b.max[2] - b.min[2], t: Date.now() };
+  if (!(r.dx > 1e-6 && r.dy > 1e-6 && r.dz > 1e-6)) throw new Error('modelo vacío');
+  cacheMedidas.set(url, r);
+  return r;
+}
+
+// Lee el modelo de una máquina, lo gira (yaw en grados) y lo escala a la altura h (metros) sin deformarlo, con la base en y=0 y centrado en x/z
 async function documentoMaquina(item) {
   if (!item.modelo3d?.url) return documentoCaja(item.w, item.h, item.d, item.cat);
   try {
@@ -68,9 +82,10 @@ async function documentoMaquina(item) {
     const b = getBounds(scene);
     const dx = b.max[0] - b.min[0], dy = b.max[1] - b.min[1], dz = b.max[2] - b.min[2];
     if (!(dx > 1e-6 && dy > 1e-6 && dz > 1e-6)) throw new Error('modelo vacío');
-    const sx = item.w / dx, sy = item.h / dy, sz = item.d / dz;
+    // Escala UNIFORME por la altura (es el dato del catálogo que sí coincide con los modelos): así la máquina no se deforma nunca
+    const k = item.h / dy;
     const cx = (b.min[0] + b.max[0]) / 2, cz = (b.min[2] + b.max[2]) / 2;
-    exterior.setScale([sx, sy, sz]).setTranslation([-cx * sx, -b.min[1] * sy, -cz * sz]);
+    exterior.setScale([k, k, k]).setTranslation([-cx * k, -b.min[1] * k, -cz * k]);
     return doc;
   } catch (e) {
     console.error('Home Gym AR · modelo no válido, se usa una caja:', String(e.message || e).slice(0, 120));

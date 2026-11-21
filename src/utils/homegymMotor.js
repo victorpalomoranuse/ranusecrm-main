@@ -26,7 +26,8 @@ export const SALAS = [
 export const NIVELES = ['Esencial', 'Equilibrado', 'Completo'];
 export const TAM_NIVEL = [3, 5, 7];
 export const DESCUENTO = 0; // los descuentos de marca se gestionarán aparte del servicio (decisión de Víctor, nov 2026)
-const GAP = 30, EDGE = 8, LIBRE_MIN = { 1: 0.2, 2: 0.3, 3: 0.38 };
+const GAP = 30, EDGE = 20, // 20 cm de margen con las paredes: en realidad aumentada el ajuste a mano nunca es perfecto y así nada «entra» en la pared
+ LIBRE_MIN = { 1: 0.2, 2: 0.3, 3: 0.38 };
 
 // Catálogo de ejemplo: se usa solo si el catálogo real aún no tiene máquinas marcadas para Home Gym
 export const CATALOGO_DEMO = [
