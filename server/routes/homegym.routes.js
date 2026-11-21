@@ -4,6 +4,7 @@ import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { montaGymGlb, medidasModelo } from '../utils/homegym-ar.js';
 import { callClaude } from '../utils/anthropic.js';
+import { leerVideos, guardarVideos, aEmbed, ETIQUETAS } from '../utils/homegym-videos.js';
 
 // Home Gym Studio: la parte pública (catálogo y solicitud de equipamiento) y la del equipo (revisar solicitudes y elegir qué máquinas salen).
 const router = express.Router();
@@ -211,6 +212,44 @@ router.get('/ar/:hash.glb', (req, res) => {
   if (!e) return res.status(404).json({ error: 'La vista caducó. Vuelve a abrirla.' });
   res.set({ 'Content-Type': 'model/gltf-binary', 'Cache-Control': 'public, max-age=3600', 'Access-Control-Allow-Origin': '*', 'Cross-Origin-Resource-Policy': 'cross-origin' });
   res.send(e.buf);
+});
+
+// ── Público: vídeos de la guía que le tocan al cliente según su caso (sala, techo, objetivo, máquinas…) ──
+router.get('/videos', async (req, res) => {
+  try {
+    const suyas = new Set(String(req.query.etiquetas || '').split(',').map(e => e.trim()).filter(e => ETIQUETAS[e]));
+    suyas.add('siempre');
+    const lista = (await leerVideos()).filter(v => v.activo && aEmbed(v.url) && (v.etiquetas || []).some(e => suyas.has(e)))
+      .sort((a, b) => (a.orden || 0) - (b.orden || 0)).slice(0, 30)
+      .map(v => ({ id: v.id, titulo: v.titulo, descripcion: v.descripcion || '', embed: aEmbed(v.url) }));
+    res.set('Cache-Control', 'public, max-age=60');
+    res.json({ videos: lista });
+  } catch (err) {
+    console.error('Home Gym · vídeos:', err);
+    res.json({ videos: [] });
+  }
+});
+
+// ── Equipo: gestionar los vídeos de la guía ──
+router.get('/admin/videos', authenticateToken, requirePermission('leads'), async (req, res) => {
+  try { res.json({ videos: await leerVideos(), etiquetas: ETIQUETAS }); }
+  catch (err) { res.status(500).json({ error: 'No se pudieron cargar los vídeos' }); }
+});
+router.put('/admin/videos', authenticateToken, requirePermission('leads'), async (req, res) => {
+  try {
+    const lista = (Array.isArray(req.body?.videos) ? req.body.videos : []).slice(0, 80).map((v, i) => ({
+      id: SOLO_TEXTO(v.id, 20) || 'v' + Date.now() + i, titulo: SOLO_TEXTO(v.titulo, 120), descripcion: SOLO_TEXTO(v.descripcion, 300),
+      url: SOLO_TEXTO(v.url, 300), etiquetas: (Array.isArray(v.etiquetas) ? v.etiquetas : []).filter(e => ETIQUETAS[e]).slice(0, 12), orden: Math.round(num(v.orden, i + 1, 0, 999)), activo: !!v.activo,
+    }));
+    const mal = lista.find(v => v.activo && !aEmbed(v.url));
+    if (mal) return res.status(400).json({ error: `El enlace de «${mal.titulo || 'sin título'}» no vale. Usa un enlace de YouTube, Vimeo o Google Drive.` });
+    const { error } = await guardarVideos(lista);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Home Gym · guardar vídeos:', err);
+    res.status(500).json({ error: 'No se pudieron guardar los vídeos' });
+  }
 });
 
 // ── Equipo: solicitudes recibidas ──

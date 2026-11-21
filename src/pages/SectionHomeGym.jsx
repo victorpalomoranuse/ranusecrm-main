@@ -106,6 +106,51 @@ function Catalogo() {
   );
 }
 
+function Videos() {
+  const [lista, setLista] = useState(null);
+  const [etiquetas, setEtiquetas] = useState({});
+  const [msg, setMsg] = useState({ t: '', mal: false });
+  useEffect(() => { api.get('/homegym/admin/videos').then(r => { setLista(r.data.videos); setEtiquetas(r.data.etiquetas || {}); }).catch(() => { setLista([]); setMsg({ t: 'No se pudieron cargar los vídeos', mal: true }); }); }, []);
+  const cambia = (id, c) => setLista(l => l.map(v => (v.id === id ? { ...v, ...c } : v)));
+  const marca = (v, e) => cambia(v.id, { etiquetas: v.etiquetas.includes(e) ? v.etiquetas.filter(x => x !== e) : [...v.etiquetas, e] });
+  const guarda = async () => {
+    setMsg({ t: 'Guardando…', mal: false });
+    try { await api.put('/homegym/admin/videos', { videos: lista }); setMsg({ t: 'Guardado. Los clientes ya ven los vídeos activos.', mal: false }); }
+    catch (e) { setMsg({ t: e.response?.data?.error || 'No se pudo guardar', mal: true }); }
+  };
+  if (lista === null) return <p style={{ color: 'rgba(255,255,255,0.5)' }}>Cargando…</p>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+      <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.8rem', margin: 0 }}>
+        Aquí van los vídeos de la guía. Graba, súbelo a YouTube («no listado»), Vimeo o Google Drive, pega el enlace y <b>activa</b> el vídeo. Cada cliente ve solo los que le tocan según su sala, su techo, su objetivo y sus máquinas; los marcados «Para todos» los ven todos.
+        La lista de abajo es una propuesta de qué grabar: puedes cambiarla, quitar o añadir.
+      </p>
+      {lista.map(v => (
+        <div key={v.id} style={{ ...caja, opacity: v.activo ? 1 : 0.8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input value={v.titulo} onChange={e => cambia(v.id, { titulo: e.target.value })} placeholder="Título del vídeo" style={{ ...campo, flex: '1 1 260px', fontWeight: 600 }} />
+            <label style={{ fontSize: '0.8rem', color: '#fff', display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={v.activo} onChange={e => cambia(v.id, { activo: e.target.checked })} /> Activo</label>
+            <input type="number" value={v.orden} onChange={e => cambia(v.id, { orden: Number(e.target.value) })} title="Orden" style={{ ...campo, width: 64 }} />
+            <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setLista(l => l.filter(x => x.id !== v.id))}>Quitar</button>
+          </div>
+          <input value={v.url} onChange={e => cambia(v.id, { url: e.target.value })} placeholder="Enlace de YouTube, Vimeo o Google Drive" style={{ ...campo, width: '100%', marginTop: 8 }} />
+          <input value={v.descripcion} onChange={e => cambia(v.id, { descripcion: e.target.value })} placeholder="Frase corta que verá el cliente (opcional)" style={{ ...campo, width: '100%', marginTop: 8 }} />
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            {Object.entries(etiquetas).map(([k, n]) => (
+              <button key={k} type="button" onClick={() => marca(v, k)} style={{ padding: '3px 9px', borderRadius: 12, fontSize: '0.7rem', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.15)', background: v.etiquetas.includes(k) ? '#baafa5' : 'transparent', color: v.etiquetas.includes(k) ? '#0a0a0a' : 'rgba(255,255,255,0.55)' }}>{n}</button>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setLista(l => [...l, { id: 'n' + Date.now(), titulo: '', descripcion: '', url: '', etiquetas: ['siempre'], orden: l.length + 1, activo: false }])}>+ Añadir vídeo</button>
+        <button className="ap-btn ap-btn-sm" onClick={guarda} style={{ background: '#baafa5', color: '#0a0a0a' }}>Guardar cambios</button>
+        <span style={{ fontSize: '0.8rem', color: msg.mal ? '#ae8b8b' : '#8bae8f' }}>{msg.t}</span>
+      </div>
+    </div>
+  );
+}
+
 export function SectionHomeGym() {
   const [tab, setTab] = useState('solicitudes');
   return (
@@ -118,11 +163,11 @@ export function SectionHomeGym() {
         <a className="ap-btn ap-btn-ghost ap-btn-sm" href="/homegym" target="_blank" rel="noreferrer"><ExternalLink size={13} /> Abrir la herramienta</a>
       </div>
       <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 3, width: 'fit-content', marginBottom: '1rem' }}>
-        {[['solicitudes', 'Solicitudes'], ['catalogo', 'Catálogo y comisiones']].map(([k, n]) => (
+        {[['solicitudes', 'Solicitudes'], ['catalogo', 'Catálogo y comisiones'], ['videos', 'Vídeos de la guía']].map(([k, n]) => (
           <button key={k} onClick={() => setTab(k)} style={{ padding: '5px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.8rem', background: tab === k ? '#baafa5' : 'transparent', color: tab === k ? '#0a0a0a' : 'rgba(255,255,255,0.5)', fontWeight: tab === k ? 600 : 400 }}>{n}</button>
         ))}
       </div>
-      {tab === 'solicitudes' ? <Solicitudes /> : <Catalogo />}
+      {tab === 'solicitudes' ? <Solicitudes /> : tab === 'catalogo' ? <Catalogo /> : <Videos />}
     </div>
   );
 }

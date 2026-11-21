@@ -222,6 +222,8 @@ export function HomeGym() {
   const [vista, setVista] = useState('sala');
   const [ar, setAr] = useState(false);
   const [picker, setPicker] = useState(false);
+  const [videos, setVideos] = useState([]);
+  const [verVideo, setVerVideo] = useState(null);
   const [anim, setAnim] = useState(false);
   const [productos, setProductos] = useState(null);
   const [contacto, setContacto] = useState({ nombre: '', email: '', telefono: '', mensaje: '', acepto: false, web: '' });
@@ -292,6 +294,22 @@ export function HomeGym() {
   };
 
   const area = S.L * S.W, total = activos.reduce((a, c) => a + c.it.precio, 0), dto = total * DESCUENTO;
+
+  // Etiquetas del caso del cliente: con ellas el servidor elige qué vídeos de la guía le tocan
+  const etiquetas = [...new Set([
+    area / 10000 < 9 ? 'sala_pequena' : area / 10000 <= 16 ? 'sala_media' : 'sala_grande',
+    ...(S.H < 240 ? ['techo_bajo'] : []),
+    ...(sala >= 0 ? [['tipo_habitacion', 'tipo_garaje', 'tipo_garaje', 'tipo_sotano', 'tipo_trastero'][sala]] : []),
+    'objetivo_' + S.goal,
+    ...(S.people > 1 ? ['varias_personas'] : []),
+    ...activos.map(a => 'con_' + a.it.tipo),
+  ])].join(',');
+  useEffect(() => {
+    if (paso < 2) return undefined;
+    let vivo = true;
+    api.get('/homegym/videos', { params: { etiquetas } }).then(r => { if (vivo) setVideos(r.data?.videos || []); }).catch(() => { if (vivo) setVideos([]); });
+    return () => { vivo = false; };
+  }, [paso >= 2, etiquetas]); // eslint-disable-line react-hooks/exhaustive-deps
   const nombres = ['Tu sala', 'Tu objetivo', 'Tu gym', 'Guardar'];
   const itSel = activos.find(a => a.it.id === sel);
 
@@ -416,6 +434,16 @@ export function HomeGym() {
   );
   const rec = R && R.niveles.length ? nivelRecomendado(R.niveles, S.budget) : 0;
   const enLay = new Set(activos.map(a => a.it.id));
+  const videosUi = videos.length ? (
+    <div className="hg-fld">
+      <h3>Vídeos para tu caso</h3>
+      <div className="hg-vids">{videos.map(v => (
+        <button key={v.id} type="button" className="hg-vid" onClick={() => setVerVideo(v)}>
+          <span className="hg-play" aria-hidden="true">▶</span>
+          <span><b>{v.titulo}</b>{v.descripcion && <small>{v.descripcion}</small>}</span>
+        </button>))}
+      </div>
+    </div>) : null;
   const p2 = !R ? null : !R.niveles.length ? (
     <>
       <div><span className="hg-kicker">Paso 3 de 4</span><h1>Esta sala es muy justa</h1><p className="hg-lead">Con estas medidas no entra ningún equipo con espacio para moverse. Prueba con otra sala o ajusta las medidas.</p></div>
@@ -456,6 +484,7 @@ export function HomeGym() {
         <button type="button" className="hg-ghost" disabled={demo || !activos.length || rev.estado === 'mal'} onClick={() => setAr(true)}>Ver mi gym en tu sala (3D real y AR)</button>
         {demo ? <p className="hg-note">Disponible cuando haya máquinas reales en el catálogo.</p> : rev.estado === 'mal' && <p className="hg-note">Arregla los problemas de arriba para poder verlo en tu sala.</p>}
       </div>
+      {videosUi}
       <div className="hg-nav"><button type="button" className="hg-ghost" onClick={() => ir(1)}>Atrás</button><button type="button" className="hg-primary" disabled={!activos.length} onClick={() => ir(3)}>Continuar</button></div>
     </>
   );
@@ -474,6 +503,7 @@ export function HomeGym() {
         {activos.map((c, i) => <div key={c.it.id}><span>{i + 1}. {c.it.nombre}</span><span>{eur(c.it.precio)}</span></div>)}
         <div className="tot"><span>Total orientativo</span><span>{eur(total - dto)}</span></div>
       </div>
+      {videosUi}
       <div><h3>¿Dudas o quieres cambiar algo?</h3><p className="hg-lead">Lo vemos juntos en una <b>videollamada</b>. Déjanos tus datos y te escribimos.</p></div>
       <form className="hg-form" onSubmit={e => { e.preventDefault(); if (puedeEnviar) enviar(); }}>
         <input type="text" placeholder="Tu nombre" autoComplete="name" value={contacto.nombre} onChange={e => setContacto(c => ({ ...c, nombre: e.target.value }))} aria-label="Tu nombre" />
@@ -528,6 +558,14 @@ export function HomeGym() {
         </div>
         <section className="hg-panel">{[p0, p1, p2, p3][paso]}</section>
       </div>
+      {verVideo && (
+        <div className="hg-modal" role="dialog" aria-modal="true" aria-label={verVideo.titulo} onClick={() => setVerVideo(null)}>
+          <div className="hg-modal-box" onClick={e => e.stopPropagation()}>
+            <div className="hg-modal-head"><div><span className="hg-kicker">Vídeo</span><h1>{verVideo.titulo}</h1></div><button type="button" className="hg-ghost" onClick={() => setVerVideo(null)}>Cerrar</button></div>
+            <div className="hg-video"><iframe src={verVideo.embed} title={verVideo.titulo} allow="fullscreen; picture-in-picture; encrypted-media" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" /></div>
+            {verVideo.descripcion && <p className="hg-lead">{verVideo.descripcion}</p>}
+          </div>
+        </div>)}
       {picker && (
         <div className="hg-modal" role="dialog" aria-modal="true" aria-label="Añadir una máquina" onClick={() => setPicker(false)}>
           <div className="hg-modal-box" onClick={e => e.stopPropagation()}>

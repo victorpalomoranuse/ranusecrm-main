@@ -190,3 +190,12 @@
 .hg-card-img img{width:100%;height:100%;object-fit:contain}
 .hg-guardar{width:100%;flex:none}
 @media (min-width:920px){.hg-selbar{left:12px;right:12px}}
+
+/* Vídeos de la guía */
+.hg-vids{display:flex;flex-direction:column;gap:8px}
+.hg-vid{display:flex;gap:12px;align-items:center;text-align:left;border:1px solid var(--line);background:transparent;padding:12px;cursor:pointer;min-height:56px}
+.hg-vid b{display:block;font-size:13px;font-weight:600;line-height:1.35}
+.hg-vid small{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+.hg-play{flex:none;width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--accent);color:var(--accent-ink);font-size:12px;padding-left:2px}
+.hg-video{position:relative;aspect-ratio:16/9;background:#000}
+.hg-video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
