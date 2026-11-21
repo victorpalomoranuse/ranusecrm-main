@@ -39,6 +39,7 @@ import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import apiReal from '../services/api';
 import { crearModelador, geometriaExtr, dimsExtr } from '../components/modelar3d';
+import { planosEspejo } from '../components/espejosPlanos3d';
 // En modo cliente (enlace público del recorrido) el visor solo lee: el plano sale del enlace firmado y cualquier escritura se rechaza
 let api = apiReal;
 const crearApiCliente = (id, firma) => {
@@ -2431,7 +2432,7 @@ export default function Visor3D({ cliente = false }) {
   const prepararEscena = () => new Promise((ok, ko) => {
     const a = api3d.current; if (!a.raiz) return ko(new Error('No hay escena'));
     const ocultos = [];
-    [a.raiz, a.esc].forEach(g => g.traverse(o => { if (o.visible && (o.userData?.ledPerim || o.userData?.eje || o.userData?.guia || o.userData?.asa || o.isLine || o.isSprite || o.isLight || (o.isMesh && o.material && !Array.isArray(o.material) && o.material.depthTest === false) || (o.isMesh && o.material && (o.material.colorWrite === false || o.material.visible === false)))) { o.visible = false; ocultos.push(o); } }));
+    [a.raiz, a.esc].forEach(g => g.traverse(o => { if (o.visible && (o.userData?.ledPerim || o.userData?.esReflejo || o.userData?.eje || o.userData?.guia || o.userData?.asa || o.isLine || o.isSprite || o.isLight || (o.isMesh && o.material && !Array.isArray(o.material) && o.material.depthTest === false) || (o.isMesh && o.material && (o.material.colorWrite === false || o.material.visible === false)))) { o.visible = false; ocultos.push(o); } }));
     new GLTFExporter().parse([a.raiz, a.esc], buf => {
       ocultos.forEach(o => { o.visible = true; });
       try {
@@ -2829,7 +2830,7 @@ export default function Visor3D({ cliente = false }) {
       const a0 = api3d.current;
       { const lpz = api3d.current.luzPool; if (lpz && ahora - lpz.t > 250) { lpz.t = ahora; if (lpz.ult.distanceToSquared(cam.position) > 0.25) { lpz.ult.copy(cam.position); lpz.asigna(cam.position); } } }
       if (!movi && ahora - ultSombra > 500) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
-      if (espejoSucio && ahora - (a0.ultEsp || 0) > 250) { espejoSucio = false; a0.ultEsp = ahora; aplicaEspejos(scene, modoRenderRef.current || cliente); }
+      if (espejoSucio && ahora - (a0.ultEsp || 0) > 250) { espejoSucio = false; a0.ultEsp = ahora; aplicaEspejos(scene, modoRenderRef.current || cliente); try { planosEspejo(a0, scene, (modoRenderRef.current || cliente) && !!a0.composer && !GL_SOFTWARE); } catch (er) { console.warn('espejos planos', er); } }
       if (ctrl.update()) { a0.despierta = ahora + 400; }
       const quieta = !(movi || ahora < (a0.despierta || 0));
       const refinar = quieta && modoRenderRef.current && a0.composer && !a0.reposo && !GL_SOFTWARE;
@@ -4248,11 +4249,11 @@ export default function Visor3D({ cliente = false }) {
         fragmentShader: 'uniform sampler2D tDiffuse; uniform float contraste; uniform float saturacion; uniform float calidez; uniform float vineta; uniform float exposure; uniform float highlights; uniform float shadows; uniform vec3 wb; varying vec2 vUv; void main(){ vec4 c = texture2D(tDiffuse, vUv); vec3 col = c.rgb * pow(2.0, exposure) * wb; float l0 = dot(col, vec3(0.2126, 0.7152, 0.0722)); col += shadows * 0.2 * (1.0 - smoothstep(0.0, 0.5, l0)); col += highlights * 0.2 * smoothstep(0.5, 1.0, l0); col = (col - 0.5) * contraste + 0.5; float l = dot(col, vec3(0.2126, 0.7152, 0.0722)); col = mix(vec3(l), col, saturacion); col.r += calidez * 0.06; col.b -= calidez * 0.06; col *= 1.0 - vineta * smoothstep(0.35, 0.9, distance(vUv, vec2(0.5))); gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a); }' }));
       comp.addPass(new FXAAPass());
       a.gradeU = U;
-      a.composer = comp; a.compW = null;
+      a.composer = comp; a.compW = null; espejoSucio = true; // los espejos planos se ponen al activar los efectos
       return () => {
         comp.passes.forEach(pass => pass.dispose());
         comp.dispose();
-        a.bloom = null; a.composer = null;
+        a.bloom = null; a.composer = null; espejoSucio = true;
         a.contacto = null;
       };
     } catch (e) { console.warn('modo realista', e); setRealista(false); }
