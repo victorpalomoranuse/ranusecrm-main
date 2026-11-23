@@ -5,10 +5,14 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from 
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-const ORDER_STATUSES = [
-  { value: 'pendiente', label: 'Por pedir', color: 'rgba(255,255,255,0.35)' },
-  { value: 'pedido', label: 'Pedido', color: '#8b9eae' },
-  { value: 'entregado', label: 'Entregado', color: '#8bae8f' },
+// Recorrido de cada pieza, de principio a fin. «Entregado» sigue pendiente de trabajo hasta que se monta.
+export const ORDER_STATUSES = [
+  { value: 'pendiente', label: 'Por pedir', color: '#9aa0a6' },
+  { value: 'pedido', label: 'Pedido al proveedor', color: '#8b9eae' },
+  { value: 'preparacion', label: 'En preparación', color: '#e0b25a' },
+  { value: 'transito', label: 'En camino', color: '#6fb3e0' },
+  { value: 'entregado', label: 'Entregado · falta montar', color: '#c79bff' },
+  { value: 'montado', label: 'Entregado y montado', color: '#4be3a0' },
 ];
 const PAYMENT_STATUSES = [
   { value: 'pendiente', label: 'Por pagar', color: '#ae8b8b' },
@@ -35,7 +39,7 @@ function SortableLineRow({ line, onUpdate }) {
         <p style={{ margin: 0, fontSize: '0.85rem', color: '#fff', fontWeight: 500 }}>{line.name}</p>
         <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>x{line.quantity} {line.unit}</p>
       </div>
-      <select className="ap-select ap-select-sm" value={line.order_status || 'pendiente'} onChange={e => onUpdate(line, { order_status: e.target.value })}>
+      <select className="ap-select ap-select-sm" value={line.order_status || 'pendiente'} onChange={e => onUpdate(line, { order_status: e.target.value })} style={{ borderLeft: '5px solid ' + ((ORDER_STATUSES.find(x => x.value === (line.order_status || 'pendiente')) || {}).color || '#999'), minWidth: 190 }}>
         {ORDER_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
       </select>
       <select className="ap-select ap-select-sm" value={line.payment_status || 'pendiente'} onChange={e => onUpdate(line, { payment_status: e.target.value })}>
@@ -118,7 +122,7 @@ export function SectionPedidos() {
     );
   }
 
-  let visibleLines = filter === 'pendientes' ? lines.filter(l => l.order_status !== 'entregado') : lines;
+  let visibleLines = filter === 'pendientes' ? lines.filter(l => l.order_status !== 'montado') : lines;
   if (!includeFinished) visibleLines = visibleLines.filter(l => (l.project?.status || 'en_marcha') === 'en_marcha');
 
   const projectGroups = {};
