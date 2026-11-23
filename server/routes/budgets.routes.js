@@ -305,10 +305,10 @@ router.get('/', async (req, res) => {
 
 router.get('/pedidos', async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('budgets')
-      .select('id, status, budget_name, project:client_projects(id, client_name, project_name, status), items:budget_items(id, name, brand, provider, category, quantity, unit, order_status, payment_status, delivery_date, pedido_order, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)')
-      .eq('status', 'aprobado');
+    const COLS = 'id, name, brand, provider, category, quantity, unit, order_status, payment_status, delivery_date, pedido_order, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado';
+    const lee = (extra) => supabase.from('budgets').select('id, status, budget_name, project:client_projects(id, client_name, project_name, status), items:budget_items(' + COLS + extra + ')').eq('status', 'aprobado');
+    let { data, error } = await lee(', pedido_ref, pedido_fecha');
+    if (error) ({ data, error } = await lee('')); // aún sin la migración de pedidos agrupados
     if (error) throw error;
 
     const lines = [];
@@ -337,12 +337,12 @@ router.get('/pedidos/export', async (req, res) => {
   try {
     const provider = (req.query.provider || '').trim().toLowerCase();
     const projectId = (req.query.project_id || '').trim();
+    const refPedido = (req.query.ref || '').trim();
     if (!provider) return res.status(400).json({ error: 'Proveedor requerido' });
 
-    const { data, error } = await supabase
-      .from('budgets')
-      .select('id, status, project:client_projects(id, client_name, project_name), items:budget_items(id, name, brand, provider, category, quantity, unit, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, order_status, pedido_order)')
-      .eq('status', 'aprobado');
+    const leeExp = (extra) => supabase.from('budgets').select('id, status, project:client_projects(id, client_name, project_name), items:budget_items(id, name, brand, provider, category, quantity, unit, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, order_status, pedido_order' + extra + ')').eq('status', 'aprobado');
+    let { data, error } = await leeExp(', pedido_ref, pedido_fecha');
+    if (error) ({ data, error } = await leeExp(''));
     if (error) throw error;
 
     const lines = [];
@@ -351,7 +351,7 @@ router.get('/pedidos/export', async (req, res) => {
       (b.items || []).forEach(item => {
         if (item.category !== 'material' && item.category !== 'mobiliario') return;
         const effective = item.provider?.trim() || item.brand?.trim() || 'Sin proveedor';
-        if (effective.toLowerCase() === provider) lines.push({ ...item, project: b.project });
+        if (effective.toLowerCase() === provider && (!refPedido || item.pedido_ref === refPedido)) lines.push({ ...item, project: b.project });
       });
     });
     lines.sort((a, b) => (a.pedido_order ?? Infinity) - (b.pedido_order ?? Infinity));
@@ -367,7 +367,7 @@ router.get('/pedidos/export', async (req, res) => {
 
     doc.rect(0, 0, W, 70).fill(BRAND.dark);
     try { doc.image(logoPath, margin, 12, { height: 46 }); } catch {}
-    doc.fillColor('#999999').fontSize(8).font('Helvetica').text('PEDIDO', 0, 14, { align: 'right', width: W - margin });
+    doc.fillColor('#999999').fontSize(8).font('Helvetica').text(refPedido ? 'PEDIDO ' + refPedido : 'PEDIDO', 0, 14, { align: 'right', width: W - margin });
     doc.fillColor('#ffffff').fontSize(13).font('Helvetica-Bold').text(provider, 0, 27, { align: 'right', width: W - margin });
     doc.fillColor('#999999').fontSize(8).font('Helvetica').text(dateStr, 0, 46, { align: 'right', width: W - margin });
 
@@ -406,6 +406,49 @@ router.get('/pedidos/export', async (req, res) => {
     console.error('Error al exportar pedido:', err);
     if (!res.headersSent) res.status(500).json({ error: 'Error al exportar pedido' });
   }
+});
+
+// ── Pedidos agrupados: varias piezas de un mismo proveedor que se piden de una vez comparten número (PED-2026-001), fecha y estado
+const RANGO_PEDIDO = ['pendiente', 'pedido', 'preparacion', 'transito', 'entregado', 'montado'];
+const MSG_MIGRACION = 'Falta ejecutar en Supabase el archivo supabase_migration_v97.sql (pedidos agrupados).';
+router.post('/pedidos/crear', async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).filter(x => typeof x === 'string').slice(0, 500);
+    if (!ids.length) return res.status(400).json({ error: 'Elige las piezas del pedido' });
+    const entrega = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.entrega || '')) ? req.body.entrega : null;
+    const { data: filas, error: e0 } = await supabase.from('budget_items').select('id, order_status, pedido_ref').in('id', ids);
+    if (e0) return res.status(500).json({ error: /pedido_ref/.test(e0.message || '') ? MSG_MIGRACION : 'No se pudieron leer las piezas' });
+    if ((filas || []).some(f => f.pedido_ref)) return res.status(400).json({ error: 'Alguna de esas piezas ya está en un pedido' });
+    const anio = new Date().getFullYear(), pref = 'PED-' + anio + '-';
+    const { data: ex } = await supabase.from('budget_items').select('pedido_ref').like('pedido_ref', pref + '%').limit(5000);
+    const n = Math.max(0, ...(ex || []).map(x => parseInt(String(x.pedido_ref).slice(pref.length), 10) || 0)) + 1, ref = pref + String(n).padStart(3, '0');
+    const hoy = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Madrid' });
+    await Promise.all((filas || []).map(f => supabase.from('budget_items').update({ pedido_ref: ref, pedido_fecha: hoy, ...(f.order_status === 'pendiente' || !f.order_status ? { order_status: 'pedido' } : {}), ...(entrega ? { delivery_date: entrega } : {}) }).eq('id', f.id)));
+    res.status(201).json({ ok: true, ref, fecha: hoy });
+  } catch (err) { console.error('pedidos crear:', err); res.status(500).json({ error: 'No se pudo crear el pedido' }); }
+});
+router.put('/pedidos/estado', async (req, res) => {
+  try {
+    const ref = String(req.body?.ref || '').slice(0, 40), estado = String(req.body?.order_status || ''), entrega = req.body?.entrega;
+    if (!ref) return res.status(400).json({ error: 'Falta el pedido' });
+    const cambios = {};
+    if (estado) { if (!RANGO_PEDIDO.includes(estado)) return res.status(400).json({ error: 'Estado no válido' }); cambios.order_status = estado; }
+    if (entrega !== undefined) cambios.delivery_date = /^\d{4}-\d{2}-\d{2}$/.test(String(entrega || '')) ? entrega : null;
+    if (!Object.keys(cambios).length) return res.status(400).json({ error: 'Nada que cambiar' });
+    const { error } = await supabase.from('budget_items').update(cambios).eq('pedido_ref', ref);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) { console.error('pedidos estado:', err); res.status(500).json({ error: 'No se pudo cambiar el pedido' }); }
+});
+router.post('/pedidos/sacar', async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).filter(x => typeof x === 'string').slice(0, 500), ref = String(req.body?.ref || '').slice(0, 40);
+    if (!ids.length && !ref) return res.status(400).json({ error: 'Elige piezas o un pedido' });
+    let q = supabase.from('budget_items').update({ pedido_ref: null, pedido_fecha: null });
+    q = ids.length ? q.in('id', ids) : q.eq('pedido_ref', ref);
+    const { error } = await q; if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) { console.error('pedidos sacar:', err); res.status(500).json({ error: 'No se pudo sacar del pedido' }); }
 });
 
 router.put('/pedidos/reorder', async (req, res) => {
