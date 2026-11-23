@@ -659,7 +659,7 @@ async function buscarProyecto(nombreQuery) {
   if (error || !projects?.length) return { encontrado: false, mensaje: `No hay ningún proyecto que coincida con "${nombreQuery}" en el CRM.` };
 
   const ids = projects.map(p => p.id);
-  const { data: budgets } = await supabase.from('budgets').select('id, project_id, budget_number').in('project_id', ids);
+  const { data: budgets } = await supabase.from('budgets').select('id, project_id, budget_number').in('project_id', ids).order('created_at', { ascending: true }); // si un proyecto tiene varios, queda el último
   const budgetByProject = {};
   (budgets || []).forEach(b => { budgetByProject[b.project_id] = b; });
   const { data: planos } = await supabase.from('mediciones').select('project_id').in('project_id', ids);
@@ -727,7 +727,7 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items, descue
   if (!Array.isArray(items) || items.length === 0) return { creado: false, mensaje: 'No se ha indicado ningún producto para el presupuesto.' };
 
   if (proyecto_id) {
-    const { data: existente } = await supabase.from('budgets').select('id, budget_number').eq('project_id', proyecto_id).maybeSingle();
+    const { data: existente } = await supabase.from('budgets').select('id, budget_number').eq('project_id', proyecto_id).order('created_at', { ascending: false }).limit(1).maybeSingle();
     if (existente) {
       return { creado: false, ya_existe: true, budget_number: existente.budget_number, mensaje: `Este proyecto ya tiene el presupuesto ${existente.budget_number}. No se ha creado uno nuevo — hay que añadir partidas desde la sección Presupuestos.` };
     }

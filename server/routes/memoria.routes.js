@@ -115,7 +115,7 @@ async function loadProjectData(projectId) {
     supabase.from('project_material_selections').select('*').eq('project_id', projectId).order('display_order', { ascending: true, nullsFirst: false }).then(r => r.data || []),
     supabase.from('project_equipment_selections').select('*').eq('project_id', projectId).order('display_order', { ascending: true, nullsFirst: false }).then(r => r.data || []),
     supabase.from('catalog_types').select('name, slug, display_order').order('display_order', { ascending: true, nullsFirst: false }).then(r => r.data || []),
-    supabase.from('budgets').select('*, items:budget_items(*)').eq('project_id', projectId).maybeSingle().then(r => r.data),
+    supabase.from('budgets').select('*, items:budget_items(*)').eq('project_id', projectId).order('created_at', { ascending: false }).limit(1).maybeSingle().then(r => r.data),
   ]);
 
   let needsQuestions = [], needsAnswers = [], needsMeasurements = [], needsPhotos = [];
