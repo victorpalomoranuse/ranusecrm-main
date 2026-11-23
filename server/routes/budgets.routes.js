@@ -307,7 +307,7 @@ router.get('/pedidos', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('budgets')
-      .select('id, status, project:client_projects(id, client_name, project_name, status), items:budget_items(id, name, brand, provider, category, quantity, unit, order_status, payment_status, delivery_date, pedido_order, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)')
+      .select('id, status, budget_name, project:client_projects(id, client_name, project_name, status), items:budget_items(id, name, brand, provider, category, quantity, unit, order_status, payment_status, delivery_date, pedido_order, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)')
       .eq('status', 'aprobado');
     if (error) throw error;
 
@@ -319,6 +319,7 @@ router.get('/pedidos', async (req, res) => {
           ...item,
           effective_provider: item.provider?.trim() || item.brand?.trim() || 'Sin proveedor',
           budget_id: b.id,
+          budget_name: b.budget_name || null,
           project: b.project,
         });
       });

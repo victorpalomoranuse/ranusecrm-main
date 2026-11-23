@@ -125,26 +125,26 @@ export function SectionPedidos() {
   let visibleLines = filter === 'pendientes' ? lines.filter(l => l.order_status !== 'montado') : lines;
   if (!includeFinished) visibleLines = visibleLines.filter(l => (l.project?.status || 'en_marcha') === 'en_marcha');
 
-  const projectGroups = {};
+  // Cliente → proyecto (o compra suelta) → proveedor. Una compra sin proyecto se agrupa por el nombre del presupuesto (puede ser solo el nombre del cliente, sin email ni ficha).
+  const clientes = {};
   visibleLines.forEach(l => {
-    const pid = l.project?.id || 'sin-proyecto';
-    if (!projectGroups[pid]) projectGroups[pid] = { project: l.project, providers: {} };
+    const cliente = (l.project?.client_name || l.budget_name || 'Sin cliente').trim(), ck = normalizeKey(cliente);
+    const c = clientes[ck] || (clientes[ck] = { nombre: cliente, bloques: {} });
+    const bk = l.project?.id || 'suelta-' + l.budget_id;
+    const b = c.bloques[bk] || (c.bloques[bk] = { project: l.project || null, suelta: !l.project, titulo: l.project?.project_name || 'Compra suelta' + (l.budget_name ? ' · ' + l.budget_name : ''), providers: {} });
     const key = normalizeKey(l.effective_provider);
-    if (!projectGroups[pid].providers[key]) projectGroups[pid].providers[key] = { name: displayName(key), lines: [] };
-    projectGroups[pid].providers[key].lines.push(l);
+    if (!b.providers[key]) b.providers[key] = { name: displayName(key), lines: [] };
+    b.providers[key].lines.push(l);
   });
-  const projectIds = Object.keys(projectGroups).sort((a, b) => {
-    const na = projectGroups[a].project?.client_name || '';
-    const nb = projectGroups[b].project?.client_name || '';
-    return na.localeCompare(nb);
-  });
+  const clienteKeys = Object.keys(clientes).sort((a, b) => clientes[a].nombre.localeCompare(clientes[b].nombre));
+  const contar = (bl) => Object.values(bl.providers).reduce((n, p) => n + p.lines.length, 0);
 
   return (
     <div className="ap-section">
       <div className="ap-section-head">
         <div>
           <h1>Pedidos</h1>
-          <p>Qué falta por pedir de tus presupuestos aprobados, por proyecto y proveedor/marca. Arrastra las líneas para ordenarlas.</p>
+          <p>Qué falta por pedir de tus presupuestos aprobados, por cliente, y dentro de cada uno por proyecto (o compra suelta) y proveedor. Arrastra las líneas para ordenarlas.</p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}>
@@ -170,38 +170,45 @@ export function SectionPedidos() {
         </div>
       </div>
 
-      {projectIds.length === 0 ? (
+      {clienteKeys.length === 0 ? (
         <div className="ap-empty"><p>{filter === 'pendientes' ? 'Nada pendiente de pedir.' : 'No hay partidas en presupuestos aprobados.'}</p></div>
-      ) : projectIds.map(pid => {
-        const { project, providers } = projectGroups[pid];
-        const providerKeys = Object.keys(providers).sort((a, b) => providers[a].name.localeCompare(providers[b].name));
-        const totalCount = providerKeys.reduce((s, k) => s + providers[k].lines.length, 0);
+      ) : clienteKeys.map(ck => {
+        const cli = clientes[ck], bloqueKeys = Object.keys(cli.bloques), totalCli = bloqueKeys.reduce((n, k) => n + contar(cli.bloques[k]), 0);
         return (
-          <div key={pid} style={{ marginBottom: '2.5rem' }}>
-            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#fff', margin: '0 0 0.15rem' }}>
-              {project?.client_name || 'Sin proyecto'}
-            </h2>
-            <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.35)', margin: '0 0 1rem' }}>
-              {project?.project_name} · {totalCount} partida{totalCount !== 1 ? 's' : ''}
-            </p>
-
-            {providerKeys.map(key => {
-              const { name, lines: providerLines } = providers[key];
+          <div key={ck} style={{ marginBottom: '2.6rem' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, borderBottom: '1px solid rgba(186,175,165,0.25)', paddingBottom: 8, marginBottom: '1rem' }}>
+              <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#fff', margin: 0 }}>{cli.nombre}</h2>
+              <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)' }}>{totalCli} partida{totalCli !== 1 ? 's' : ''}</span>
+            </div>
+            {bloqueKeys.map(bk => {
+              const bl = cli.bloques[bk], providerKeys = Object.keys(bl.providers).sort((a, b) => bl.providers[a].name.localeCompare(bl.providers[b].name));
               return (
-                <div key={key} style={{ marginBottom: '1.5rem', paddingLeft: '1rem', borderLeft: '2px solid rgba(186,175,165,0.2)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
-                    <h3 style={{ fontSize: '0.85rem', fontWeight: 600, color: '#baafa5', margin: 0 }}>
-                      {name} <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, fontSize: '0.75rem' }}>({providerLines.length})</span>
-                    </h3>
-                    <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => handleExport(key, name, project?.id)}><Download size={13} /> Exportar PDF</button>
+                <div key={bk} style={{ marginBottom: '1.8rem', paddingLeft: '0.9rem', borderLeft: '3px solid ' + (bl.suelta ? '#e0b25a' : '#4be3a0') }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 0.9rem' }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 6, background: bl.suelta ? 'rgba(224,178,90,0.18)' : 'rgba(75,227,160,0.16)', color: bl.suelta ? '#e0b25a' : '#4be3a0' }}>{bl.suelta ? 'Compra suelta' : 'Proyecto'}</span>
+                    <b style={{ fontSize: '0.95rem' }}>{bl.suelta ? (bl.titulo.replace(/^Compra suelta( · )?/, '') || 'Sin presupuesto con nombre') : bl.titulo}</b>
+                    <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>· {contar(bl)} partida{contar(bl) !== 1 ? 's' : ''}</span>
                   </div>
-                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={e => handleReorder(providerLines, e)}>
-                    <SortableContext items={providerLines.map(l => l.id)} strategy={verticalListSortingStrategy}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {providerLines.map(line => <SortableLineRow key={line.id} line={line} onUpdate={updateLine} />)}
+                  {providerKeys.map(key => {
+                    const { name, lines: providerLines } = bl.providers[key];
+                    return (
+                      <div key={key} style={{ marginBottom: '1.4rem', paddingLeft: '0.9rem', borderLeft: '2px solid rgba(186,175,165,0.2)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+                          <h3 style={{ fontSize: '0.85rem', fontWeight: 600, color: '#baafa5', margin: 0 }}>
+                            {name} <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, fontSize: '0.75rem' }}>({providerLines.length})</span>
+                          </h3>
+                          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => handleExport(key, name, bl.project?.id)}><Download size={13} /> Exportar PDF</button>
+                        </div>
+                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={e => handleReorder(providerLines, e)}>
+                          <SortableContext items={providerLines.map(l => l.id)} strategy={verticalListSortingStrategy}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                              {providerLines.map(line => <SortableLineRow key={line.id} line={line} onUpdate={updateLine} />)}
+                            </div>
+                          </SortableContext>
+                        </DndContext>
                       </div>
-                    </SortableContext>
-                  </DndContext>
+                    );
+                  })}
                 </div>
               );
             })}
