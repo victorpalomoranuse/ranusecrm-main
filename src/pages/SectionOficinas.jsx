@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { CalendarDays, ArrowRight, Maximize2, Minimize2, ListChecks, FolderKanban, X, AlertCircle, Building2, Truck, Package, LayoutGrid, Clock } from 'lucide-react';
+import { CalendarDays, ArrowRight, Maximize2, Minimize2, ListChecks, FolderKanban, X, AlertCircle, Building2, Truck, Package, LayoutGrid, Clock, Globe2, Box } from 'lucide-react';
 import api from '../services/api';
 import { PlanificarProyecto } from '../components/PlanificarProyecto';
 import { OficinaVirtual3D } from '../components/OficinaVirtual3D';
+import { MapaProyectos } from '../components/MapaProyectos';
 
 // Oficinas: el gemelo digital de Ranuse a pantalla completa. Todo lo que hacía falta del panel está dentro: las tareas de hoy,
 // la lista de proyectos con su semáforo (al pulsar uno la cámara vuela a su gym), la ficha de lo que se toca y el planificador.
@@ -89,6 +90,7 @@ export function SectionOficinas({ ir: irFuera, renderSeccion, etiquetas }) {
   const [verHoy, setVerHoy] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth > 900));
   const [verProy, setVerProy] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth > 900));
   const [zona, setZona] = useState('todo');
+  const [vista, setVista] = useState('3d'); // '3d' = escena de la oficina; 'mapa' = obras en el mapa con sus pedidos
   const [tabs, setTabs] = useState([]);
   const [activa, setActiva] = useState(null);
   const [verPanel, setVerPanel] = useState(true);
@@ -117,7 +119,8 @@ export function SectionOficinas({ ir: irFuera, renderSeccion, etiquetas }) {
   return (
     <div ref={raiz} className="of-root" style={{ position: 'relative', height: '100vh', background: '#08080a', overflow: 'hidden' }}>
       <style>{'@media (max-width: 900px) { .of-root { height: calc(100dvh - 56px) !important; } } @media (max-width: 1300px) { .of-panel { top: 128px !important; max-height: calc(100% - 200px) !important; } }'}</style>
-      {!sinWebgl && <OficinaVirtual3D data={data} apiRef={apiRef}
+      {vista === 'mapa' && <MapaProyectos data={data} ir={ir} />}
+      {!sinWebgl && vista === '3d' && <OficinaVirtual3D data={data} apiRef={apiRef}
         cargarLogo={(url) => api.get('/oficinas/logo', { params: { url }, responseType: 'blob' }).then(r => r.data)}
         onSeleccion={(i) => { if (i?.tipo === 'error') setSinWebgl(true); else setSel(i); }} />}
       {sinWebgl && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem', padding: 20, textAlign: 'center' }}>Tu navegador no puede mostrar la oficina en 3D. Aquí tienes igualmente tus tareas y tus proyectos.</div>}
@@ -130,21 +133,26 @@ export function SectionOficinas({ ir: irFuera, renderSeccion, etiquetas }) {
           {cuenta('rojo') > 0 && <Pildora c={LUZ.rojo} titulo="Proyectos que necesitan atención">{cuenta('rojo')} atención</Pildora>}
           {cuenta('gris') > 0 && <Pildora c={LUZ.gris} titulo="Proyectos sin fecha de entrega ni plan">{cuenta('gris')} sin planificar</Pildora>}
         </div>
-        <div style={{ ...vidrio, padding: 4, display: 'flex', gap: 2, pointerEvents: 'auto', flexWrap: 'wrap' }}>
+        <div style={{ ...vidrio, padding: 4, display: 'flex', gap: 2, pointerEvents: 'auto' }}>
+          {[['3d', 'Escena 3D', <Box size={14} />], ['mapa', 'Mapa y pedidos', <Globe2 size={14} />]].map(([id, t, ic]) => (
+            <button key={id} type="button" onClick={() => { setVista(id); setSel(null); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: vista === id ? 700 : 500, background: vista === id ? '#e8c98f' : 'transparent', color: vista === id ? '#000' : 'rgba(255,255,255,0.85)' }}>{ic}{t}</button>
+          ))}
+        </div>
+        {vista === '3d' && <div style={{ ...vidrio, padding: 4, display: 'flex', gap: 2, pointerEvents: 'auto', flexWrap: 'wrap' }}>
           {[['todo', 'Todo', <LayoutGrid size={14} />], ['sede', 'Sede', <Building2 size={14} />], ['proyectos', 'Proyectos', <FolderKanban size={14} />], ['proveedores', 'Proveedores', <Truck size={14} />], ['catalogo', 'Catálogo', <Package size={14} />]].map(([id, t, ic]) => (
             <button key={id} type="button" onClick={() => ver(id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: zona === id ? 700 : 500, background: zona === id ? '#fff' : 'transparent', color: zona === id ? '#000' : 'rgba(255,255,255,0.85)' }}>{ic}{t}</button>
           ))}
-        </div>
+        </div>}
         <span style={{ flex: 1 }} />
-        <div style={{ ...vidrio, padding: 4, display: 'flex', gap: 2, pointerEvents: 'auto' }}>
+        {vista === '3d' && <div style={{ ...vidrio, padding: 4, display: 'flex', gap: 2, pointerEvents: 'auto' }}>
           <button type="button" onClick={() => setVerHoy(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: verHoy ? 700 : 500, background: verHoy ? '#fff' : 'transparent', color: verHoy ? '#000' : 'rgba(255,255,255,0.85)' }}><ListChecks size={14} /> Hoy{(data.tareasHoy || []).length ? ' (' + data.tareasHoy.length + ')' : ''}</button>
           <button type="button" onClick={() => setVerProy(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: verProy ? 700 : 500, background: verProy ? '#fff' : 'transparent', color: verProy ? '#000' : 'rgba(255,255,255,0.85)' }}><FolderKanban size={14} /> Proyectos</button>
           <button type="button" onClick={completa} aria-label="Pantalla completa" style={{ display: 'inline-flex', alignItems: 'center', padding: '7px 11px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.85)' }}>{pantalla ? <Minimize2 size={14} /> : <Maximize2 size={14} />}</button>
-        </div>
+        </div>}
       </div>
 
       {/* tareas: agrupadas en atrasadas, hoy y esta semana */}
-      {verHoy && (() => {
+      {vista === '3d' && verHoy && (() => {
         const tareas = data.tareasHoy || [], atras = tareas.filter(t => t.atrasada), hoyT = tareas.filter(t => !t.atrasada && t.fecha === data.hoy), semana = tareas.filter(t => !t.atrasada && t.fecha !== data.hoy);
         const fila = (t, c) => (
           <label key={t.id} style={{ display: 'flex', gap: 11, alignItems: 'flex-start', padding: '10px 12px', margin: '0 0 6px', borderRadius: 11, cursor: 'pointer', background: 'rgba(255,255,255,0.05)', borderLeft: '3px solid ' + c }}>
@@ -172,7 +180,7 @@ export function SectionOficinas({ ir: irFuera, renderSeccion, etiquetas }) {
       })()}
 
       {/* proyectos: un resumen arriba y debajo agrupados por cómo van */}
-      {verProy && (() => {
+      {vista === '3d' && verProy && (() => {
         const grupos = [['rojo', 'Atención'], ['ambar', 'Ojo'], ['gris', 'Sin planificar'], ['verde', 'Al día']];
         const total = Math.max(1, data.proyectos.length);
         return (

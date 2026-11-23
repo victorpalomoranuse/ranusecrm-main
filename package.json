@@ -19,6 +19,7 @@
     "axios": "^1.13.2",
     "date-fns": "^4.4.0",
     "framer-motion": "^12.34.3",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.577.0",
     "openskp": "^1.4.0",
     "opentype.js": "^2.0.0",

@@ -122,6 +122,57 @@ router.get('/', async (req, res) => {
 });
 
 // logo de la web de un proveedor (PNG), para su stand en la oficina 3D; se pide con la sesión y se guarda 12 horas
+// ── Mapa de obras: dónde está cada proyecto y cómo van sus pedidos (por pedir, preparando, en camino, entregado, montado)
+const ESTADOS_PEDIDO = ['pendiente', 'pedido', 'preparacion', 'transito', 'entregado', 'montado'];
+router.get('/mapa', async (req, res) => {
+  try {
+    const hoy = hoyMadrid();
+    let ubicaciones = true, pr = await supabase.from('client_projects').select('id, project_name, client_name, client_city, obra_ciudad, obra_pais, obra_lat, obra_lng').eq('status', 'en_marcha').eq('active', true);
+    if (pr.error) { // la migración de ubicaciones aún no se ha ejecutado: se muestra igualmente la lista, sin coordenadas
+      ubicaciones = false; pr = await supabase.from('client_projects').select('id, project_name, client_name, client_city').eq('status', 'en_marcha').eq('active', true);
+      if (pr.error) throw pr.error;
+    }
+    const bu = await supabase.from('budgets').select('id, status, project_id, items:budget_items(id, name, provider, brand, category, quantity, order_status, delivery_date)').eq('status', 'aprobado');
+    const por = {};
+    (bu.data || []).forEach(b => (b.items || []).forEach(it => {
+      if (it.category !== 'material' && it.category !== 'mobiliario') return;
+      const e = por[b.project_id] || (por[b.project_id] = { estados: Object.fromEntries(ESTADOS_PEDIDO.map(k => [k, 0])), total: 0, proximaEntrega: null, proveedores: {} });
+      const st = ESTADOS_PEDIDO.includes(it.order_status) ? it.order_status : 'pendiente', prov = (it.provider || it.brand || 'Sin proveedor').trim();
+      e.estados[st]++; e.total++;
+      if (st !== 'montado' && st !== 'entregado' && it.delivery_date && it.delivery_date >= hoy && (!e.proximaEntrega || it.delivery_date < e.proximaEntrega)) e.proximaEntrega = it.delivery_date;
+      const pv = e.proveedores[prov] || (e.proveedores[prov] = { nombre: prov, n: 0, estados: Object.fromEntries(ESTADOS_PEDIDO.map(k => [k, 0])) }); pv.n++; pv.estados[st]++;
+    }));
+    res.json({
+      ubicaciones, hoy,
+      proyectos: (pr.data || []).map(p => ({
+        id: p.id, nombre: p.project_name, cliente: p.client_name, ciudadCliente: p.client_city || '', ciudad: p.obra_ciudad || '', pais: p.obra_pais || '',
+        lat: Number.isFinite(p.obra_lat) ? p.obra_lat : null, lng: Number.isFinite(p.obra_lng) ? p.obra_lng : null,
+        pedidos: por[p.id] ? { ...por[p.id], proveedores: Object.values(por[p.id].proveedores) } : { estados: Object.fromEntries(ESTADOS_PEDIDO.map(k => [k, 0])), total: 0, proximaEntrega: null, proveedores: [] },
+      })),
+    });
+  } catch (e) { console.error('oficinas mapa:', e); res.status(500).json({ error: 'No se pudo cargar el mapa' }); }
+});
+
+// Pone la ubicación de la obra: se escribe la ciudad (y país) y se busca en OpenStreetMap (Nominatim); también vale mandar lat y lng a mano
+router.put('/ubicacion/:id', async (req, res) => {
+  try {
+    const ciudad = String(req.body?.ciudad || '').trim().slice(0, 120), pais = String(req.body?.pais || '').trim().slice(0, 80);
+    let lat = parseFloat(req.body?.lat), lng = parseFloat(req.body?.lng), nombre = ciudad;
+    if (!(Number.isFinite(lat) && Number.isFinite(lng))) {
+      if (!ciudad) return res.status(400).json({ error: 'Escribe la ciudad de la obra' });
+      const q = [ciudad, pais].filter(Boolean).join(', ');
+      const rr = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=es&q=' + encodeURIComponent(q), { headers: { 'User-Agent': 'RanuseCRM-mapa/1.0' } });
+      const j = await rr.json().catch(() => []);
+      if (!Array.isArray(j) || !j[0]) return res.status(404).json({ error: 'No he encontrado «' + q + '». Prueba con la ciudad y el país, por ejemplo «Panamá, Panamá».' });
+      lat = parseFloat(j[0].lat); lng = parseFloat(j[0].lon);
+    }
+    if (!(lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180)) return res.status(400).json({ error: 'Coordenadas no válidas' });
+    const { error } = await supabase.from('client_projects').update({ obra_ciudad: nombre || null, obra_pais: pais || null, obra_lat: lat, obra_lng: lng }).eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: /obra_/.test(error.message || '') ? 'Falta ejecutar la migración de ubicaciones en Supabase (supabase_migration_v96.sql).' : 'No se pudo guardar la ubicación' });
+    res.json({ ok: true, lat, lng, ciudad: nombre, pais });
+  } catch (e) { console.error('oficinas ubicacion:', e); res.status(500).json({ error: 'No se pudo buscar esa ubicación' }); }
+});
+
 router.get('/logo', async (req, res) => {
   try {
     const png = await logoDeSitio(req.query.url);
