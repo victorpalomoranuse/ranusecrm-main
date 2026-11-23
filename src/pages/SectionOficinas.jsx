@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { CalendarDays, ArrowRight, Maximize2, Minimize2, ListChecks, FolderKanban, X, AlertCircle } from 'lucide-react';
+import { CalendarDays, ArrowRight, Maximize2, Minimize2, ListChecks, FolderKanban, X, AlertCircle, Building2, Truck, Package, LayoutGrid, Clock } from 'lucide-react';
 import api from '../services/api';
 import { PlanificarProyecto } from '../components/PlanificarProyecto';
 import { OficinaVirtual3D } from '../components/OficinaVirtual3D';
@@ -19,6 +19,23 @@ const fmt = (iso, hoy) => {
 };
 const Luz = ({ c, t }) => <span title={t} style={{ width: 9, height: 9, borderRadius: '50%', background: LUZ[c], boxShadow: `0 0 8px ${LUZ[c]}`, flexShrink: 0, display: 'inline-block' }} />;
 const Boton = ({ children, on, ...r }) => <button {...r} style={{ background: on ? '#fff' : 'rgba(255,255,255,0.08)', color: on ? '#000' : '#fff', border: '1px solid rgba(186,175,165,0.3)', borderRadius: 999, padding: '5px 12px', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>{children}</button>;
+
+// Piezas visuales: píldoras de color, cabeceras de panel y filas con el color de su estado
+const Pildora = ({ c, children, titulo }) => <span title={titulo} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: c + '24', border: '1px solid ' + c + '66', color: c, whiteSpace: 'nowrap' }}>{children}</span>;
+const Cabecera = ({ icono, titulo, sub, derecha, color = '#baafa5' }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px 12px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+    <span style={{ width: 32, height: 32, borderRadius: 10, background: color + '24', color, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{icono}</span>
+    <span style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: '0.98rem', display: 'block' }}>{titulo}</b>{sub && <span style={mut}>{sub}</span>}</span>
+    {derecha}
+  </div>
+);
+const TITULO_GRUPO = ({ c, t, n }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '14px 4px 6px', fontSize: '0.7rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: c, fontWeight: 700 }}>
+    <span style={{ width: 8, height: 8, borderRadius: '50%', background: c, boxShadow: '0 0 8px ' + c }} />{t}<span style={{ flex: 1, height: 1, background: c + '33' }} /><span style={{ opacity: 0.8 }}>{n}</span>
+  </div>
+);
+// qué es cada ficha: color y etiqueta para distinguirlas de un vistazo
+const TIPO_FICHA = { persona: ['Persona', '#7cc4ff'], agente: ['Agente de IA', '#c79bff'], proyecto: ['Proyecto', '#4be3a0'], sala: ['Sala', '#ffb347'], almacen: ['Catálogo', '#e8c98f'], categoria: ['Catálogo', '#e8c98f'], anexo: ['Proveedores', '#ff9bb0'], proveedor: ['Proveedor', '#ff9bb0'] };
 
 // Editor del muñeco de una persona: peinado, color de pelo, barba, gafas, piel y ropa (para que se parezca a su dueño)
 const PIELES = ['#f3d2b3', '#e8b98f', '#c98f63', '#a86d45', '#7a4b2f'];
@@ -57,7 +74,8 @@ function Ficha({ info, hoy, ir, onPlanificar, onCerrar, onAvatar }) {
   else if (info.tipo === 'categoria') cuerpo = (<>{cab(info.nombre, `${info.familia} · ${info.n} producto${info.n === 1 ? '' : 's'}`)}{info.n ? lista('Productos', info.productos.map(p => [p.nombre, p.marca || ''])) : <div style={{ fontSize: '0.82rem' }}>Todavía no hay productos en esta categoría.</div>}{info.n > info.productos.length && <div style={{ ...mut, marginTop: 4 }}>y {info.n - info.productos.length} más…</div>}<div style={{ marginTop: 10 }}>{btn('Abrir catálogo', () => ir(info.ir))}</div></>);
   else if (info.tipo === 'anexo') cuerpo = (<>{cab(`Anexo · ${info.sector}`, `${info.n} proveedor${info.n === 1 ? '' : 'es'} que colaboran`)}<div style={{ fontSize: '0.82rem', lineHeight: 1.5 }}>{info.proveedores.map(p => p.nombre).join(' · ')}</div><div style={{ marginTop: 8 }}>{btn('Abrir proveedores', () => ir('contactos'))}</div></>);
   else if (info.tipo === 'proveedor') cuerpo = (<>{cab(info.nombre, `Proveedor · ${info.sector}`)}<div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>{info.url && <a className="ap-btn ap-btn-primary ap-btn-sm" href={info.url} target="_blank" rel="noreferrer">Ver su web</a>}{btn('Abrir proveedores', () => ir('contactos'), false)}</div></>);
-  return cuerpo ? <div style={{ ...vidrio, padding: '0.85rem 1rem', boxShadow: '0 10px 40px rgba(0,0,0,0.6)', maxHeight: '58vh', overflowY: 'auto' }}>{cuerpo}</div> : null;
+  const [tipoTxt, tipoCol] = TIPO_FICHA[info.tipo] || ['', '#baafa5'];
+  return cuerpo ? <div style={{ ...vidrio, padding: '1rem 1.15rem', boxShadow: '0 10px 40px rgba(0,0,0,0.6)', maxHeight: '58vh', overflowY: 'auto', borderLeft: '4px solid ' + tipoCol }}>{tipoTxt && <div style={{ marginBottom: 8 }}><Pildora c={tipoCol}>{tipoTxt}</Pildora></div>}{cuerpo}</div> : null;
 }
 
 export function SectionOficinas({ ir: irFuera, renderSeccion, etiquetas }) {
@@ -98,66 +116,103 @@ export function SectionOficinas({ ir: irFuera, renderSeccion, etiquetas }) {
   const atrasadas = (data.tareasHoy || []).filter(t => t.atrasada).length;
   return (
     <div ref={raiz} className="of-root" style={{ position: 'relative', height: '100vh', background: '#08080a', overflow: 'hidden' }}>
-      <style>{'@media (max-width: 900px) { .of-root { height: calc(100dvh - 56px) !important; } }'}</style>
+      <style>{'@media (max-width: 900px) { .of-root { height: calc(100dvh - 56px) !important; } } @media (max-width: 1300px) { .of-panel { top: 128px !important; max-height: calc(100% - 200px) !important; } }'}</style>
       {!sinWebgl && <OficinaVirtual3D data={data} apiRef={apiRef}
         cargarLogo={(url) => api.get('/oficinas/logo', { params: { url }, responseType: 'blob' }).then(r => r.data)}
         onSeleccion={(i) => { if (i?.tipo === 'error') setSinWebgl(true); else setSel(i); }} />}
       {sinWebgl && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem', padding: 20, textAlign: 'center' }}>Tu navegador no puede mostrar la oficina en 3D. Aquí tienes igualmente tus tareas y tus proyectos.</div>}
 
-      {/* barra superior */}
-      <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', pointerEvents: 'none', zIndex: 5 }}>
-        <div style={{ ...vidrio, padding: '7px 14px', display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'auto', flexWrap: 'wrap' }}>
-          <b style={{ fontSize: '0.95rem' }}>Oficinas</b>
-          <span style={mut}>{data.proyectos.length} proyectos · <span style={{ color: LUZ.rojo }}>{cuenta('rojo')} atención</span> · {cuenta('gris')} sin planificar</span>
+      {/* barra superior: a la izquierda qué es y cómo va; en el centro dónde mirar; a la derecha qué paneles ver */}
+      <div style={{ position: 'absolute', top: 14, left: 14, right: 14, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', pointerEvents: 'none', zIndex: 5 }}>
+        <div style={{ ...vidrio, padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'auto', flexWrap: 'wrap' }}>
+          <b style={{ fontSize: '1.05rem', letterSpacing: '-0.01em' }}>Oficinas</b>
+          <Pildora c="#baafa5" titulo="Proyectos en marcha">{data.proyectos.length} proyectos</Pildora>
+          {cuenta('rojo') > 0 && <Pildora c={LUZ.rojo} titulo="Proyectos que necesitan atención">{cuenta('rojo')} atención</Pildora>}
+          {cuenta('gris') > 0 && <Pildora c={LUZ.gris} titulo="Proyectos sin fecha de entrega ni plan">{cuenta('gris')} sin planificar</Pildora>}
         </div>
-        <div style={{ display: 'flex', gap: 6, pointerEvents: 'auto', flexWrap: 'wrap' }}>
-          {[['todo', 'Todo'], ['sede', 'Sede'], ['proyectos', 'Proyectos'], ['proveedores', 'Proveedores'], ['catalogo', 'Catálogo']].map(([id, t]) => <Boton key={id} on={zona === id} onClick={() => ver(id)}>{t}</Boton>)}
+        <div style={{ ...vidrio, padding: 4, display: 'flex', gap: 2, pointerEvents: 'auto', flexWrap: 'wrap' }}>
+          {[['todo', 'Todo', <LayoutGrid size={14} />], ['sede', 'Sede', <Building2 size={14} />], ['proyectos', 'Proyectos', <FolderKanban size={14} />], ['proveedores', 'Proveedores', <Truck size={14} />], ['catalogo', 'Catálogo', <Package size={14} />]].map(([id, t, ic]) => (
+            <button key={id} type="button" onClick={() => ver(id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: zona === id ? 700 : 500, background: zona === id ? '#fff' : 'transparent', color: zona === id ? '#000' : 'rgba(255,255,255,0.85)' }}>{ic}{t}</button>
+          ))}
         </div>
         <span style={{ flex: 1 }} />
-        <div style={{ display: 'flex', gap: 6, pointerEvents: 'auto' }}>
-          <Boton on={verHoy} onClick={() => setVerHoy(v => !v)}><ListChecks size={13} /> Hoy{(data.tareasHoy || []).length ? ` (${data.tareasHoy.length})` : ''}</Boton>
-          <Boton on={verProy} onClick={() => setVerProy(v => !v)}><FolderKanban size={13} /> Proyectos</Boton>
-          <Boton onClick={completa} aria-label="Pantalla completa">{pantalla ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</Boton>
+        <div style={{ ...vidrio, padding: 4, display: 'flex', gap: 2, pointerEvents: 'auto' }}>
+          <button type="button" onClick={() => setVerHoy(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: verHoy ? 700 : 500, background: verHoy ? '#fff' : 'transparent', color: verHoy ? '#000' : 'rgba(255,255,255,0.85)' }}><ListChecks size={14} /> Hoy{(data.tareasHoy || []).length ? ' (' + data.tareasHoy.length + ')' : ''}</button>
+          <button type="button" onClick={() => setVerProy(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: verProy ? 700 : 500, background: verProy ? '#fff' : 'transparent', color: verProy ? '#000' : 'rgba(255,255,255,0.85)' }}><FolderKanban size={14} /> Proyectos</button>
+          <button type="button" onClick={completa} aria-label="Pantalla completa" style={{ display: 'inline-flex', alignItems: 'center', padding: '7px 11px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.85)' }}>{pantalla ? <Minimize2 size={14} /> : <Maximize2 size={14} />}</button>
         </div>
       </div>
 
-      {/* tareas de hoy */}
-      {verHoy && (
-        <div style={{ ...vidrio, position: 'absolute', top: 62, left: 12, width: 'min(320px, calc(100% - 24px))', maxHeight: '46vh', display: 'flex', flexDirection: 'column', zIndex: 4 }}>
-          <div style={{ padding: '0.7rem 0.9rem 0.4rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <b style={{ fontSize: '0.88rem' }}>Hoy y esta semana</b><span style={{ flex: 1 }} />{atrasadas > 0 && <span style={{ color: LUZ.rojo, fontSize: '0.72rem' }}>{atrasadas} atrasada{atrasadas === 1 ? '' : 's'}</span>}
+      {/* tareas: agrupadas en atrasadas, hoy y esta semana */}
+      {verHoy && (() => {
+        const tareas = data.tareasHoy || [], atras = tareas.filter(t => t.atrasada), hoyT = tareas.filter(t => !t.atrasada && t.fecha === data.hoy), semana = tareas.filter(t => !t.atrasada && t.fecha !== data.hoy);
+        const fila = (t, c) => (
+          <label key={t.id} style={{ display: 'flex', gap: 11, alignItems: 'flex-start', padding: '10px 12px', margin: '0 0 6px', borderRadius: 11, cursor: 'pointer', background: 'rgba(255,255,255,0.05)', borderLeft: '3px solid ' + c }}>
+            <input type="checkbox" onChange={() => hecha(t)} style={{ marginTop: 3, width: 16, height: 16, accentColor: c }} aria-label={'Hecha: ' + t.titulo} />
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontSize: '0.86rem', display: 'block', lineHeight: 1.35 }}>{t.titulo}</span>
+              <span style={{ ...mut, display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}><Clock size={11} /><span style={{ color: c }}>{fmt(t.fecha, data.hoy)}</span>{t.proyecto && <span>· {t.proyecto}</span>}</span>
+            </span>
+          </label>
+        );
+        const grupo = (c, t, lista) => lista.length > 0 && <div key={t}><TITULO_GRUPO c={c} t={t} n={lista.length} />{lista.map(x => fila(x, c))}</div>;
+        return (
+          <div className="of-panel" style={{ ...vidrio, position: 'absolute', top: 76, left: 14, width: 'min(370px, calc(100% - 28px))', maxHeight: 'calc(100% - 330px)', minHeight: 140, display: 'flex', flexDirection: 'column', zIndex: 4, overflow: 'hidden' }}>
+            <Cabecera icono={<ListChecks size={17} />} titulo="Tareas" sub={tareas.length ? tareas.length + ' pendientes esta semana' : 'Todo al día'} color="#ffb347"
+              derecha={atras.length > 0 ? <Pildora c={LUZ.rojo}>{atras.length} atrasada{atras.length === 1 ? '' : 's'}</Pildora> : null} />
+            {data.tareasSinFecha > 0 && <div onClick={() => ir('tareas')} style={{ margin: '10px 12px 0', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,179,71,0.12)', border: '1px solid rgba(255,179,71,0.4)', borderRadius: 10, padding: '8px 11px', fontSize: '0.78rem' }}><AlertCircle size={14} color="#ffb347" /><span style={{ flex: 1 }}>{data.tareasSinFecha} tarea{data.tareasSinFecha === 1 ? '' : 's'} sin fecha</span><ArrowRight size={13} /></div>}
+            <div style={{ overflowY: 'auto', padding: '2px 12px 14px' }}>
+              {tareas.length === 0 && <p style={{ ...mut, padding: '14px 4px', margin: 0, fontSize: '0.8rem', lineHeight: 1.5 }}>No hay tareas para esta semana. Planifica un proyecto para repartir las suyas.</p>}
+              {grupo(LUZ.rojo, 'Atrasadas', atras)}
+              {grupo(LUZ.ambar, 'Hoy', hoyT)}
+              {grupo('#8fb8ff', 'Esta semana', semana)}
+            </div>
           </div>
-          {data.tareasSinFecha > 0 && <div onClick={() => ir('tareas')} style={{ margin: '0 0.7rem 6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,179,71,0.12)', border: '1px solid rgba(255,179,71,0.35)', borderRadius: 8, padding: '5px 8px', fontSize: '0.72rem' }}><AlertCircle size={13} style={{ color: LUZ.ambar }} /> {data.tareasSinFecha} tareas sin fecha <ArrowRight size={12} style={{ marginLeft: 'auto' }} /></div>}
-          <div style={{ overflowY: 'auto', padding: '0 0.5rem 0.6rem' }}>
-            {(data.tareasHoy || []).length === 0 && <p style={{ ...mut, padding: '4px 0.4rem 8px', margin: 0 }}>Nada para esta semana. Planifica un proyecto para repartir sus tareas.</p>}
-            {(data.tareasHoy || []).map(t => (
-              <label key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 0.4rem', borderTop: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer' }}>
-                <input type="checkbox" onChange={() => hecha(t)} style={{ marginTop: 3 }} aria-label={`Hecha: ${t.titulo}`} />
-                <span style={{ flex: 1, minWidth: 0 }}><span style={{ fontSize: '0.82rem', display: 'block' }}>{t.titulo}</span><span style={{ ...mut, color: t.atrasada ? LUZ.rojo : t.fecha === data.hoy ? LUZ.ambar : mut.color }}>{fmt(t.fecha, data.hoy)}{t.proyecto ? ` · ${t.proyecto}` : ''}</span></span>
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
-      {/* proyectos */}
-      {verProy && (
-        <div style={{ ...vidrio, position: 'absolute', top: 62, right: 12, width: 'min(300px, calc(100% - 24px))', maxHeight: '46vh', display: 'flex', flexDirection: 'column', zIndex: 4 }}>
-          <div style={{ padding: '0.7rem 0.9rem 0.4rem' }}><b style={{ fontSize: '0.88rem' }}>Proyectos en marcha</b></div>
-          <div style={{ overflowY: 'auto', padding: '0 0.5rem 0.6rem' }}>
-            {data.proyectos.map(p => (
-              <div key={p.id} onClick={() => { setZona('proyectos'); apiRef.current?.proyecto(p.id); if (window.innerWidth <= 900) setVerProy(false); }} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0.4rem', borderTop: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer' }}>
-                <Luz c={p.semaforo} t={TEXTO_LUZ[p.semaforo]} />
-                <span style={{ flex: 1, minWidth: 0 }}><span style={{ fontSize: '0.8rem', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</span><span style={{ ...mut, color: LUZ[p.semaforo] }}>{p.motivo}</span></span>
-              </div>
-            ))}
+      {/* proyectos: un resumen arriba y debajo agrupados por cómo van */}
+      {verProy && (() => {
+        const grupos = [['rojo', 'Atención'], ['ambar', 'Ojo'], ['gris', 'Sin planificar'], ['verde', 'Al día']];
+        const total = Math.max(1, data.proyectos.length);
+        return (
+          <div className="of-panel" style={{ ...vidrio, position: 'absolute', top: 76, right: 14, width: 'min(350px, calc(100% - 28px))', maxHeight: 'calc(100% - 140px)', minHeight: 160, display: 'flex', flexDirection: 'column', zIndex: 4, overflow: 'hidden' }}>
+            <Cabecera icono={<FolderKanban size={17} />} titulo="Proyectos en marcha" sub={data.proyectos.length + ' proyectos'} color="#4be3a0" />
+            <div style={{ padding: '12px 16px 4px' }}>
+              <div style={{ display: 'flex', height: 8, borderRadius: 6, overflow: 'hidden', background: 'rgba(255,255,255,0.08)' }}>{grupos.map(([k]) => { const n = cuenta(k); return n ? <div key={k} title={TEXTO_LUZ[k] + ': ' + n} style={{ width: (n / total * 100) + '%', background: LUZ[k] }} /> : null; })}</div>
+              <div style={{ display: 'flex', gap: '4px 12px', flexWrap: 'wrap', marginTop: 8 }}>{grupos.map(([k, t]) => <span key={k} style={{ ...mut, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Luz c={k} t={t} />{cuenta(k)} {t.toLowerCase()}</span>)}</div>
+            </div>
+            <div style={{ overflowY: 'auto', padding: '2px 12px 14px' }}>
+              {grupos.map(([k, t]) => {
+                const lista = data.proyectos.filter(p => p.semaforo === k); if (!lista.length) return null;
+                return (
+                  <div key={k}>
+                    <TITULO_GRUPO c={LUZ[k]} t={t} n={lista.length} />
+                    {lista.map(p => {
+                      const pct = p.tareas && p.tareas.total ? Math.round(p.tareas.hechas / p.tareas.total * 100) : null;
+                      return (
+                        <div key={p.id} onClick={() => { setZona('proyectos'); apiRef.current?.proyecto(p.id); if (window.innerWidth <= 900) setVerProy(false); }} style={{ padding: '11px 13px', margin: '0 0 7px', borderRadius: 12, cursor: 'pointer', background: 'rgba(255,255,255,0.05)', borderLeft: '3px solid ' + LUZ[k] }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <b style={{ fontSize: '0.88rem', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</b>
+                            {p.fase !== undefined && p.fase !== null && <span style={{ ...mut, border: '1px solid rgba(255,255,255,0.18)', borderRadius: 6, padding: '1px 7px', whiteSpace: 'nowrap' }}>Fase {p.fase}</span>}
+                          </div>
+                          <div style={{ ...mut, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.cliente || 'Sin cliente'}</div>
+                          {pct !== null && <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}><div style={{ flex: 1, height: 5, borderRadius: 4, background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}><div style={{ width: pct + '%', height: '100%', background: LUZ[k] }} /></div><span style={mut}>{p.tareas.hechas}/{p.tareas.total}</span></div>}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 7, fontSize: '0.72rem' }}><span style={{ color: LUZ[k] }}>{p.motivo}</span>{p.entrega && <span style={mut}>Entrega: {fmt(p.entrega, data.hoy)}</span>}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ficha de lo seleccionado */}
       {sel && sel.tipo !== 'error' && (
-        <div style={{ position: 'absolute', left: 12, bottom: 38, width: 'min(380px, calc(100% - 24px))', zIndex: 6 }}>
+        <div style={{ position: 'absolute', left: 14, bottom: 40, width: 'min(400px, calc(100% - 28px))', zIndex: 6 }}>
           <Ficha info={sel} hoy={data.hoy} ir={ir} onPlanificar={setPlan} onAvatar={guardarAvatar} onCerrar={() => { setSel(null); apiRef.current?.limpiar(); }} />
         </div>
       )}
