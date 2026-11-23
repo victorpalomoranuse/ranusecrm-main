@@ -149,6 +149,23 @@ export function MapaProyectos({ data, ir }) {
                   ))}
                 </div>
                 {actual.pedidos.proximaEntrega && <div style={{ marginTop: 10, fontSize: '0.78rem' }}>Próxima entrega: <b>{fmt(actual.pedidos.proximaEntrega, mapa.hoy)}</b></div>}
+                {(actual.pedidos.grupos || []).length > 0 && (
+                  <>
+                    <div style={{ marginTop: 14, ...mut, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>Pedidos hechos</div>
+                    {actual.pedidos.grupos.map(g => {
+                      const k = ESTADOS.slice().reverse().find(e => g.estados[e.k] === g.n) || null, rec = g.estados.entregado + g.estados.montado;
+                      const dom = k || ESTADOS.find(e => g.estados[e.k] > 0);
+                      return (
+                        <div key={g.ref} style={{ marginTop: 8, padding: '10px 12px', borderRadius: 10, background: 'rgba(255,255,255,0.05)', borderLeft: '4px solid ' + (dom ? dom.c : '#baafa5') }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '0.82rem' }}><b>{g.ref}</b><span style={{ color: dom ? dom.c : '#fff', fontWeight: 600 }}>{k ? k.t : 'Estados distintos'}</span></div>
+                          <div style={{ ...mut, marginTop: 3 }}>{g.proveedor} · {g.n} pieza{g.n === 1 ? '' : 's'} · {rec} de {g.n} entregada{rec === 1 ? '' : 's'}{g.entrega ? ' · entrega ' + fmt(g.entrega, mapa.hoy) : ''}</div>
+                          <div style={{ marginTop: 6 }}><Barra estados={g.estados} total={g.n} /></div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+                {actual.pedidos.sinPedir > 0 && <div style={{ marginTop: 10, padding: '8px 11px', borderRadius: 10, background: 'rgba(154,160,166,0.14)', fontSize: '0.78rem' }}>Sin pedir todavía: <b>{actual.pedidos.sinPedir}</b> pieza{actual.pedidos.sinPedir === 1 ? '' : 's'}</div>}
                 <div style={{ marginTop: 14, ...mut, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>Por proveedor</div>
                 {actual.pedidos.proveedores.map(pv => (
                   <div key={pv.nombre} style={{ marginTop: 8, padding: '9px 11px', borderRadius: 10, background: 'rgba(255,255,255,0.05)' }}>

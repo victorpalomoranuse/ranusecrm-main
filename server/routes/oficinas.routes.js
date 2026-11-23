@@ -132,22 +132,29 @@ router.get('/mapa', async (req, res) => {
       ubicaciones = false; pr = await supabase.from('client_projects').select('id, project_name, client_name, client_city').eq('status', 'en_marcha').eq('active', true);
       if (pr.error) throw pr.error;
     }
-    const bu = await supabase.from('budgets').select('id, status, project_id, items:budget_items(id, name, provider, brand, category, quantity, order_status, delivery_date)').eq('status', 'aprobado');
+    const leeBu = (extra) => supabase.from('budgets').select('id, status, project_id, items:budget_items(id, name, provider, brand, category, quantity, order_status, delivery_date' + extra + ')').eq('status', 'aprobado');
+    let bu = await leeBu(', pedido_ref, pedido_fecha');
+    if (bu.error) bu = await leeBu(''); // aún sin la migración de pedidos agrupados
     const por = {};
     (bu.data || []).forEach(b => (b.items || []).forEach(it => {
       if (it.category !== 'material' && it.category !== 'mobiliario') return;
-      const e = por[b.project_id] || (por[b.project_id] = { estados: Object.fromEntries(ESTADOS_PEDIDO.map(k => [k, 0])), total: 0, proximaEntrega: null, proveedores: {} });
+      const e = por[b.project_id] || (por[b.project_id] = { estados: Object.fromEntries(ESTADOS_PEDIDO.map(k => [k, 0])), total: 0, proximaEntrega: null, proveedores: {}, grupos: {}, sinPedir: 0 });
       const st = ESTADOS_PEDIDO.includes(it.order_status) ? it.order_status : 'pendiente', prov = (it.provider || it.brand || 'Sin proveedor').trim();
       e.estados[st]++; e.total++;
       if (st !== 'montado' && st !== 'entregado' && it.delivery_date && it.delivery_date >= hoy && (!e.proximaEntrega || it.delivery_date < e.proximaEntrega)) e.proximaEntrega = it.delivery_date;
       const pv = e.proveedores[prov] || (e.proveedores[prov] = { nombre: prov, n: 0, estados: Object.fromEntries(ESTADOS_PEDIDO.map(k => [k, 0])) }); pv.n++; pv.estados[st]++;
+      // pedidos agrupados (PED-2026-001): las piezas que se piden juntas a un proveedor
+      if (it.pedido_ref) {
+        const g = e.grupos[it.pedido_ref] || (e.grupos[it.pedido_ref] = { ref: it.pedido_ref, proveedor: prov, fecha: it.pedido_fecha || null, n: 0, estados: Object.fromEntries(ESTADOS_PEDIDO.map(k => [k, 0])), entrega: null });
+        g.n++; g.estados[st]++; if (it.delivery_date && (!g.entrega || it.delivery_date > g.entrega)) g.entrega = it.delivery_date;
+      } else if (st === 'pendiente') e.sinPedir++;
     }));
     res.json({
       ubicaciones, hoy,
       proyectos: (pr.data || []).map(p => ({
         id: p.id, nombre: p.project_name, cliente: p.client_name, ciudadCliente: p.client_city || '', ciudad: p.obra_ciudad || '', pais: p.obra_pais || '',
         lat: Number.isFinite(p.obra_lat) ? p.obra_lat : null, lng: Number.isFinite(p.obra_lng) ? p.obra_lng : null,
-        pedidos: por[p.id] ? { ...por[p.id], proveedores: Object.values(por[p.id].proveedores) } : { estados: Object.fromEntries(ESTADOS_PEDIDO.map(k => [k, 0])), total: 0, proximaEntrega: null, proveedores: [] },
+        pedidos: por[p.id] ? { ...por[p.id], proveedores: Object.values(por[p.id].proveedores), grupos: Object.values(por[p.id].grupos).sort((a, b) => String(a.ref).localeCompare(String(b.ref))) } : { estados: Object.fromEntries(ESTADOS_PEDIDO.map(k => [k, 0])), total: 0, proximaEntrega: null, proveedores: [], grupos: [], sinPedir: 0 },
       })),
     });
   } catch (e) { console.error('oficinas mapa:', e); res.status(500).json({ error: 'No se pudo cargar el mapa' }); }
