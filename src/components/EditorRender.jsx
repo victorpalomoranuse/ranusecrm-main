@@ -10,7 +10,7 @@ const aDataUrl = (img, ancho, alto, tipo = 'image/png', calidad) => { const c = 
 const leeArchivo = f => new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsDataURL(f); });
 
 // Ajustes de imagen sin IA (gratis y al instante): brillo, contraste, saturación, temperatura, tinte, luces altas, sombras y viñeta, sobre los píxeles de la imagen
-const AJ0 = { exp: 0, con: 1, sat: 1, temp: 0, tint: 0, luc: 0, som: 0, vig: 0 };
+const AJ0 = { exp: 0, con: 1, sat: 1, temp: 0, tint: 0, luc: 0, som: 0, vig: 0, tono: '', tonoK: 1 };
 const AJUSTES = [['exp', 'Brillo', -2, 2, 0.05], ['con', 'Contraste', 0.5, 1.8, 0.02], ['sat', 'Saturación', 0, 2, 0.02], ['temp', 'Temperatura (frío ↔ cálido)', -1, 1, 0.02], ['tint', 'Tinte (verde ↔ magenta)', -1, 1, 0.02], ['luc', 'Luces altas', -1, 1, 0.02], ['som', 'Sombras', -1, 1, 0.02], ['vig', 'Viñeta', 0, 1, 0.02]];
 const PRESETS_AJ = [['Recuperar quemada', { con: 0.9, sat: 0.88, som: 0.45, luc: -0.3 }], ['Cálido', { temp: 0.35, sat: 1.08 }], ['Frío', { temp: -0.35 }], ['Más contraste', { con: 1.2, sat: 1.05 }], ['Levantar sombras', { som: 0.5, luc: -0.2 }], ['Mate', { con: 0.88, sat: 0.92, som: 0.25 }]];
 // El brillo y los colores se aplican en luz lineal (como una cámara) y las luces altas se comprimen con un hombro suave en vez de cortarse: así subir el brillo no «quema» la imagen
@@ -20,6 +20,8 @@ const hombro = v => (v <= 0.8 ? (v < 0 ? 0 : v) : 0.8 + 0.2 * (1 - Math.exp(-(v 
 // Con máscara (zona pintada), los ajustes solo afectan a esa zona, con el borde suavizado. m = opacidad 0..1 de cada píxel
 const alfaMascara = (lienzoEl, W, H) => { if (!lienzoEl || !lienzoEl.width) return null; const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'); g.filter = 'blur(' + Math.max(1, Math.round(W / 450)) + 'px)'; g.drawImage(lienzoEl, 0, 0, W, H); const d = g.getImageData(0, 0, W, H).data, m = new Float32Array(W * H); for (let i = 0; i < m.length; i++) m[i] = d[i * 4 + 3] / 255; return m; };
 function procesaAjustes(d, W, H, a, m) {
+  // cambio de color de la superficie: se pone el color elegido conservando la luz y las sombras de la imagen (como pintar encima sin tapar el relieve)
+  const hx = /^#([0-9a-f]{6})$/i.exec(a.tono || ''), T = hx ? [parseInt(hx[1].slice(0, 2), 16) / 255, parseInt(hx[1].slice(2, 4), 16) / 255, parseInt(hx[1].slice(4, 6), 16) / 255] : null, Tl = T ? Math.max(0.04, 0.299 * T[0] + 0.587 * T[1] + 0.114 * T[2]) : 1, tk = a.tonoK == null ? 1 : a.tonoK;
   const ex = Math.pow(2, a.exp), cx = W / 2, cy = H / 2, rm = Math.hypot(cx, cy), cl = v => (v < 0 ? 0 : v > 1 ? 1 : v), mezcla = Math.max(0, Math.min(1, (ex - 1) * 2)), gam = v => DE_LIN[Math.min(4096, ((mezcla ? hombro(v) * mezcla + cl(v) * (1 - mezcla) : cl(v)) * 4096) | 0)]; // el hombro suave solo entra al subir el brillo: sin ajustes la imagen queda idéntica
   for (let i = 0, p = 0; i < d.length; i += 4, p++) {
     const mk = m ? m[p] : 1; if (mk < 0.004) continue;
@@ -30,6 +32,7 @@ function procesaAjustes(d, W, H, a, m) {
     if (a.som || a.luc) { const l0 = cl(0.299 * r + 0.587 * g + 0.114 * b), add = a.som * (1 - l0) * (1 - l0) * 0.35 + a.luc * l0 * l0 * 0.35; r += add; g += add; b += add; }
     if (a.con !== 1) { r = (r - 0.5) * a.con + 0.5; g = (g - 0.5) * a.con + 0.5; b = (b - 0.5) * a.con + 0.5; }
     if (a.sat !== 1) { const l = 0.299 * r + 0.587 * g + 0.114 * b; r = l + (r - l) * a.sat; g = l + (g - l) * a.sat; b = l + (b - l) * a.sat; }
+    if (T) { const l = 0.299 * r + 0.587 * g + 0.114 * b, k = l / Tl; r += (cl(T[0] * k) - r) * tk; g += (cl(T[1] * k) - g) * tk; b += (cl(T[2] * k) - b) * tk; }
     if (a.vig) { const x = (p % W) - cx, y = ((p / W) | 0) - cy, t = cl((Math.hypot(x, y) / rm - 0.35) / 0.65), fv = 1 - a.vig * t * t; r *= fv; g *= fv; b *= fv; }
     if (mk >= 0.996) { d[i] = cl(r) * 255; d[i + 1] = cl(g) * 255; d[i + 2] = cl(b) * 255; } else { d[i] += (cl(r) * 255 - d[i]) * mk; d[i + 1] += (cl(g) * 255 - d[i + 1]) * mk; d[i + 2] += (cl(b) * 255 - d[i + 2]) * mk; }
   }
@@ -193,6 +196,15 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
                 <input type="range" min={mn} max={mx} step={st} value={aj[k]} onChange={e => setAj(a => ({ ...a, [k]: parseFloat(e.target.value) }))} onDoubleClick={() => setAj(a => ({ ...a, [k]: AJ0[k] }))} style={{ flex: 1 }} title="Doble clic para volver a 0" />
               </label>
             ))}
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #2b2724' }}>
+              <div style={{ fontSize: 12, marginBottom: 4, opacity: 0.85 }}>🎨 Cambiar el color {pintado ? 'de la zona pintada' : 'de toda la imagen'}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="color" value={aj.tono || '#6b6159'} onChange={e => setAj(a => ({ ...a, tono: e.target.value }))} style={{ width: 46, height: 28, padding: 0, border: '1px solid #4a443f', borderRadius: 4, background: 'none', cursor: 'pointer' }} title="Elige el color" />
+                <input type="range" min="0.1" max="1" step="0.05" value={aj.tonoK} onChange={e => setAj(a => ({ ...a, tonoK: parseFloat(e.target.value), tono: a.tono || '#6b6159' }))} style={{ flex: 1 }} title="Intensidad del color" />
+                <button style={{ ...boton, padding: '2px 8px', fontSize: 11 }} disabled={!aj.tono} onClick={() => setAj(a => ({ ...a, tono: '', tonoK: 1 }))}>Quitar</button>
+              </div>
+              <div style={{ opacity: 0.5, fontSize: 11, marginTop: 3 }}>Mantiene las luces y sombras de la superficie: solo cambia el color.</div>
+            </div>
             <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
               <button style={{ ...boton, flex: 1, fontSize: 12 }} disabled={!ajActivo} onClick={() => setAj(AJ0)}>Restablecer</button>
               <button style={{ ...boton, flex: 2, fontSize: 12, background: ajActivo ? '#2f5f8a' : undefined, fontWeight: 700 }} disabled={!ajActivo || aplicandoAj || trabajando} onClick={aplicarAjustes}>{aplicandoAj ? 'Aplicando…' : '✔ Aplicar ajustes'}</button>
