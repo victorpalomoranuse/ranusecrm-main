@@ -17,9 +17,12 @@ const PRESETS_AJ = [['Cálido', { temp: 0.35, sat: 1.08 }], ['Frío', { temp: -0
 const A_LIN = new Float32Array(256); for (let i = 0; i < 256; i++) { const v = i / 255; A_LIN[i] = v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
 const DE_LIN = new Float32Array(4097); for (let i = 0; i <= 4096; i++) { const v = i / 4096; DE_LIN[i] = v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055; }
 const hombro = v => (v <= 0.8 ? (v < 0 ? 0 : v) : 0.8 + 0.2 * (1 - Math.exp(-(v - 0.8) / 0.2)));
-function procesaAjustes(d, W, H, a) {
+// Con máscara (zona pintada), los ajustes solo afectan a esa zona, con el borde suavizado. m = opacidad 0..1 de cada píxel
+const alfaMascara = (lienzoEl, W, H) => { if (!lienzoEl || !lienzoEl.width) return null; const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'); g.filter = 'blur(' + Math.max(1, Math.round(W / 450)) + 'px)'; g.drawImage(lienzoEl, 0, 0, W, H); const d = g.getImageData(0, 0, W, H).data, m = new Float32Array(W * H); for (let i = 0; i < m.length; i++) m[i] = d[i * 4 + 3] / 255; return m; };
+function procesaAjustes(d, W, H, a, m) {
   const ex = Math.pow(2, a.exp), cx = W / 2, cy = H / 2, rm = Math.hypot(cx, cy), cl = v => (v < 0 ? 0 : v > 1 ? 1 : v), mezcla = Math.max(0, Math.min(1, (ex - 1) * 2)), gam = v => DE_LIN[Math.min(4096, ((mezcla ? hombro(v) * mezcla + cl(v) * (1 - mezcla) : cl(v)) * 4096) | 0)]; // el hombro suave solo entra al subir el brillo: sin ajustes la imagen queda idéntica
   for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    const mk = m ? m[p] : 1; if (mk < 0.004) continue;
     let r = A_LIN[d[i]] * ex, g = A_LIN[d[i + 1]] * ex, b = A_LIN[d[i + 2]] * ex;
     if (a.temp) { r *= 1 + 0.3 * a.temp; b *= 1 - 0.3 * a.temp; }
     if (a.tint) g *= 1 - 0.2 * a.tint;
@@ -28,7 +31,7 @@ function procesaAjustes(d, W, H, a) {
     if (a.con !== 1) { r = (r - 0.5) * a.con + 0.5; g = (g - 0.5) * a.con + 0.5; b = (b - 0.5) * a.con + 0.5; }
     if (a.sat !== 1) { const l = 0.299 * r + 0.587 * g + 0.114 * b; r = l + (r - l) * a.sat; g = l + (g - l) * a.sat; b = l + (b - l) * a.sat; }
     if (a.vig) { const x = (p % W) - cx, y = ((p / W) | 0) - cy, t = cl((Math.hypot(x, y) / rm - 0.35) / 0.65), fv = 1 - a.vig * t * t; r *= fv; g *= fv; b *= fv; }
-    d[i] = cl(r) * 255; d[i + 1] = cl(g) * 255; d[i + 2] = cl(b) * 255;
+    if (mk >= 0.996) { d[i] = cl(r) * 255; d[i + 1] = cl(g) * 255; d[i + 2] = cl(b) * 255; } else { d[i] += (cl(r) * 255 - d[i]) * mk; d[i + 1] += (cl(g) * 255 - d[i + 1]) * mk; d[i + 2] += (cl(b) * 255 - d[i + 2]) * mk; }
   }
 }
 export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria = [], onElegir, renderInicial, onPublicar }) {
@@ -46,7 +49,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
   const [autoGuardar, setAutoGuardar] = useState(() => { try { return localStorage.getItem('editorRenderAuto') !== '0'; } catch { return true; } });
   useEffect(() => { try { localStorage.setItem('editorRenderAuto', autoGuardar ? '1' : '0'); } catch { /* sin almacenamiento */ } }, [autoGuardar]);
   const img = useRef(null), lienzo = useRef(null), dibujando = useRef(null), prev = useRef(null), pequena = useRef(null);
-  const [aj, setAj] = useState(AJ0), [aplicandoAj, setAplicandoAj] = useState(false);
+  const [aj, setAj] = useState(AJ0), [aplicandoAj, setAplicandoAj] = useState(false), [mv, setMv] = useState(0), [verMarca, setVerMarca] = useState(true);
   const ajActivo = Object.keys(AJ0).some(k => aj[k] !== AJ0[k]);
 
   const actual = historia[idx];
@@ -60,18 +63,18 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
       }
       const { cv } = pequena.current, p = prev.current; if (!p || !vivo) return;
       p.width = cv.width; p.height = cv.height; const g = p.getContext('2d'); g.drawImage(cv, 0, 0);
-      const id = g.getImageData(0, 0, p.width, p.height); procesaAjustes(id.data, p.width, p.height, aj); g.putImageData(id, 0, 0);
+      const id = g.getImageData(0, 0, p.width, p.height); procesaAjustes(id.data, p.width, p.height, aj, pintado ? alfaMascara(lienzo.current, p.width, p.height) : null); g.putImageData(id, 0, 0);
     })().catch(() => {});
     return () => { vivo = false; };
-  }, [aj, actual.src]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [aj, actual.src, mv, pintado]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setAj(AJ0); }, [idx]);
   // aplicar los ajustes a la imagen completa: crea una versión nueva (sin gastar nada de OpenAI)
   const aplicarAjustes = async () => {
     setAplicandoAj(true); setError('');
     try {
       const im = await carga(actual.src), k = Math.min(1, 2600 / Math.max(im.naturalWidth, im.naturalHeight)), cv = document.createElement('canvas'); cv.width = Math.round(im.naturalWidth * k); cv.height = Math.round(im.naturalHeight * k);
-      const g = cv.getContext('2d'); g.drawImage(im, 0, 0, cv.width, cv.height); const id = g.getImageData(0, 0, cv.width, cv.height); procesaAjustes(id.data, cv.width, cv.height, aj); g.putImageData(id, 0, 0);
-      const url = cv.toDataURL('image/jpeg', 0.94), nombreAj = 'Ajustes de imagen';
+      const g = cv.getContext('2d'); g.drawImage(im, 0, 0, cv.width, cv.height); const id = g.getImageData(0, 0, cv.width, cv.height); procesaAjustes(id.data, cv.width, cv.height, aj, pintado ? alfaMascara(lienzo.current, cv.width, cv.height) : null); g.putImageData(id, 0, 0);
+      const url = cv.toDataURL('image/jpeg', 0.94), nombreAj = pintado ? 'Ajustes de la zona marcada' : 'Ajustes de imagen';
       setHistoria(h => [...h.slice(0, idx + 1), { src: url, guardada: false, texto: nombreAj }]); setIdx(idx + 1); setAj(AJ0);
       if (autoGuardar) { try { const rr = await onGuardar?.(url, (nombre || 'Render') + ' · v' + (idx + 2)); if (rr) setHistoria(h => h.map((v, i) => (i === idx + 1 ? { ...v, guardada: true, render: rr } : v))); } catch { /* se puede guardar a mano */ } }
     } catch (e) { setError(e.message || 'No se pudieron aplicar los ajustes'); }
@@ -79,7 +82,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
   };
   // el lienzo de pintura tiene el tamaño real de la imagen
   const ajustaLienzo = () => { const i = img.current, c = lienzo.current; if (!i || !c || !i.naturalWidth) return; if (c.width !== i.naturalWidth || c.height !== i.naturalHeight) { c.width = i.naturalWidth; c.height = i.naturalHeight; } };
-  const limpiaMascara = () => { const c = lienzo.current; if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height); setPintado(false); };
+  const limpiaMascara = () => { const c = lienzo.current; if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height); setPintado(false); setMv(x => x + 1); };
   useEffect(() => { limpiaMascara(); }, [idx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const punto = e => { const c = lienzo.current, r = c.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * c.width, ((e.clientY - r.top) / r.height) * c.height, c.width / r.width]; };
@@ -91,7 +94,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
   };
   const abajo = e => { if (trabajando) return; ajustaLienzo(); e.currentTarget.setPointerCapture(e.pointerId); const p = punto(e); dibujando.current = p; trazo(p, p, p[2]); if (!borrando) setPintado(true); };
   const mueve = e => { if (!dibujando.current) return; const p = punto(e); trazo(dibujando.current, p, p[2]); dibujando.current = p; };
-  const arriba = () => { dibujando.current = null; };
+  const arriba = () => { if (dibujando.current) setMv(x => x + 1); dibujando.current = null; };
 
   const anadirRefs = async fs => {
     const lista = Array.from(fs || []).filter(f => String(f.type).startsWith('image')).slice(0, 3 - refs.length);
@@ -159,7 +162,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
             <img ref={img} src={comparar ? historia[0].src : actual.src} alt="" crossOrigin="anonymous" onLoad={ajustaLienzo} draggable={false} style={{ maxWidth: 'calc(100vw - 360px)', maxHeight: 'calc(100vh - 150px)', display: 'block', borderRadius: 4, userSelect: 'none' }} />
             <canvas ref={prev} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', display: ajActivo && !comparar ? 'block' : 'none', borderRadius: 4 }} />
             <canvas ref={lienzo} onPointerDown={abajo} onPointerMove={mueve} onPointerUp={arriba} onPointerCancel={arriba}
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: comparar ? 0 : 0.5, cursor: trabajando ? 'wait' : 'crosshair', touchAction: 'none' }} />
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: comparar || (!verMarca && ajActivo) ? 0 : 0.5, cursor: trabajando ? 'wait' : 'crosshair', touchAction: 'none' }} />
             {trabajando && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', lineHeight: 1.4, fontSize: 15 }}>ChatGPT está editando… (puede tardar un minuto)</div>}
           </div>
         </div>
@@ -175,6 +178,8 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
         <div style={{ width: 310, borderLeft: '1px solid #2b2724', padding: 12, overflowY: 'auto', fontSize: 13 }}>
           <details style={{ marginBottom: 12, background: '#1d1a17', borderRadius: 8, padding: '8px 10px' }} open>
             <summary style={{ cursor: 'pointer', fontWeight: 700 }}>🎚 Ajustes de imagen <span style={{ fontWeight: 400, opacity: 0.6, fontSize: 11 }}>· sin IA, gratis</span></summary>
+            <div style={{ fontSize: 11, margin: '6px 0 0', color: pintado ? '#8fd19e' : '#9a9a9a' }}>{pintado ? '✔ Solo se ajusta la zona que has pintado en rojo.' : 'Sin zona pintada, se ajusta toda la imagen. Pinta una superficie abajo (paso 1) para ajustar solo esa.'}</div>
+            {pintado && <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginTop: 4, cursor: 'pointer' }}><input type="checkbox" checked={verMarca} onChange={e => setVerMarca(e.target.checked)} /> Ver la marca roja (quítala para ver el color real)</label>}
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', margin: '8px 0' }}>
               {PRESETS_AJ.map(([n, p]) => <button key={n} style={{ ...boton, padding: '2px 8px', fontSize: 11 }} onClick={() => setAj({ ...AJ0, ...p })}>{n}</button>)}
             </div>
