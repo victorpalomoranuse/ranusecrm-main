@@ -210,9 +210,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
               {galeria.map(g => (
                 <div key={g.id} style={{ position: 'relative', flex: '0 0 auto', lineHeight: 0 }}>
                   <img src={g.thumb || g.url} alt={g.nombre} title={g.nombre} onClick={() => { if (!trabajando) onElegir?.(g); }} style={{ height: 62, borderRadius: 4, cursor: 'pointer', outline: src.startsWith(g.url) ? '2px solid ' + ORO : 'none' }} />
-                  {onBorrar && <span onClick={async e => { e.stopPropagation(); if (trabajando) return; if (window.confirm('¿Borrar «' + (g.nombre || 'esta versión') + '» de la galería?' + (src.startsWith(g.url) ? '
-
-Es la imagen que estás editando: seguirás viéndola aquí, pero ya no estará guardada en la galería.' : ''))) { try { await onBorrar(g); } catch { setError('No se pudo borrar'); } } }} title="Borrar de la galería" style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(122,43,43,0.92)', color: '#fff', borderRadius: 9, width: 18, height: 18, display: 'grid', placeItems: 'center', fontSize: 11, lineHeight: 1, cursor: 'pointer' }}>✕</span>}
+                  {onBorrar && <span onClick={async e => { e.stopPropagation(); if (trabajando) return; if (window.confirm('¿Borrar «' + (g.nombre || 'esta versión') + '» de la galería?' + (src.startsWith(g.url) ? ' Es la imagen que estás editando: seguirás viéndola aquí, pero ya no estará guardada en la galería.' : ''))) { try { await onBorrar(g); } catch { setError('No se pudo borrar'); } } }} title="Borrar de la galería" style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(122,43,43,0.92)', color: '#fff', borderRadius: 9, width: 18, height: 18, display: 'grid', placeItems: 'center', fontSize: 11, lineHeight: 1, cursor: 'pointer' }}>✕</span>}
                 </div>
               ))}
             </div>
