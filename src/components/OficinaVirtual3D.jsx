@@ -381,19 +381,27 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
     });
     const PXP = 9.2, PZP = 8.8, Z0 = -12;
     const faseDe = p => Math.min(5, Math.max(0, Number(p.fase) || 0));
-    const porFaseP = [[], [], [], [], [], []]; data.proyectos.slice(0, 24).forEach(p => porFaseP[faseDe(p)].push(p));
+    // Los proyectos se agrupan por LUGAR (país, y en España por ciudad): cada grupo es una parcela con su cartel y su color, separada de las demás.
+    // La fase de cada proyecto sigue viéndose en su etiqueta (F2) y en lo que ocurre dentro de su gym.
+    const grupoDe = p => { const pais = String(p.pais || '').trim(), ciudad = String(p.ciudad || '').trim(); if (!pais && !ciudad) return 'Sin ubicar'; if (!pais) return ciudad; return /^espa[ñn]a$/i.test(pais) && ciudad ? 'España · ' + ciudad : pais; };
+    const mapaGrupos = {}; data.proyectos.slice(0, 24).forEach(p => { const g = grupoDe(p); (mapaGrupos[g] = mapaGrupos[g] || []).push(p); });
+    const grupos = Object.entries(mapaGrupos).sort((a, b) => (a[0] === 'Sin ubicar') - (b[0] === 'Sin ubicar') || b[1].length - a[1].length || a[0].localeCompare(b[0]));
+    const GCOL = ['#e8c98f', '#8db4c4', '#b4a3c4', '#9ad0a8', '#ff8fa3', '#ffc978', '#7fd1c4', '#d6a0b8'];
     const colsP = []; let cur = 52;
-    porFaseP.forEach(lista => { const sub = lista.length ? Math.ceil(lista.length / 4) : 0, ancho = sub ? sub * PXP : 5; colsP.push({ x0: cur, ancho }); cur += ancho + 1.2; });
+    grupos.forEach(([, lista]) => { const sub = Math.ceil(lista.length / 4), ancho = Math.max(sub * PXP, 8); colsP.push({ x0: cur, ancho }); cur += ancho + 4.5; });
     centroProy = (52 + cur) / 2; distProy = Math.max(48, (cur - 52) * 0.85);
-    const lugar = {}; porFaseP.forEach((lista, f) => lista.forEach((p, k) => { lugar[p.id] = [colsP[f].x0 + (Math.floor(k / 4) + 0.5) * PXP, Z0 + (k % 4) * PZP]; }));
-    colsP.forEach((c, f) => {
-      const cx = c.x0 + c.ancho / 2, zona = new THREE.Mesh(new THREE.PlaneGeometry(c.ancho - 0.4, 38), new THREE.MeshBasicMaterial({ color: FCOL[f], transparent: true, opacity: 0.05, depthWrite: false })); zona.rotation.x = -Math.PI / 2; zona.position.set(cx, 0.07, 1.6); raiz.add(zona);
-      caja3(c.ancho - 0.4, 0.05, 1.1, ME(FCOL[f], 1.3), cx, 0.14, -16.6, raiz, null, false);
-      rotulo(f + ' · ' + FASES_L[f] + ' · ' + porFaseP[f].length, cx, f % 2 ? 6.4 : 1.7, -16.6, { fs: 22, punto: FCOL[f] }, 125);
+    const lugar = {}; grupos.forEach(([, lista], gi) => lista.forEach((p, k) => { lugar[p.id] = [colsP[gi].x0 + (Math.floor(k / 4) + 0.5) * PXP, Z0 + (k % 4) * PZP]; }));
+    grupos.forEach(([nombre, lista], gi) => {
+      const c = colsP[gi], col = nombre === 'Sin ubicar' ? '#8f8a85' : GCOL[gi % GCOL.length], cx = c.x0 + c.ancho / 2;
+      const filas = Math.min(4, lista.length), prof = filas * PZP + 4, zc = Z0 + ((filas - 1) * PZP) / 2 + 0.4, zFin = zc + prof / 2;
+      const zona = new THREE.Mesh(new THREE.PlaneGeometry(c.ancho + 1.6, prof), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.1, depthWrite: false })); zona.rotation.x = -Math.PI / 2; zona.position.set(cx, 0.07, zc); raiz.add(zona);
+      caja3(c.ancho + 1.6, 0.05, 1.3, ME(col, 1.3), cx, 0.14, Z0 - 5.4, raiz, null, false);
+      caja3(c.ancho + 1.6, 0.05, 0.25, ME(col, 0.9), cx, 0.14, zFin, raiz, null, false);
+      rotulo(nombre + ' · ' + lista.length + (lista.length === 1 ? ' obra' : ' obras'), cx, 7.4, Z0 - 5.4, { fs: 34, punto: col, borde: 'rgba(60,50,40,0.2)' }, 170);
     });
     camino([[-40, 19.5], [49, 19.5], [49, -19.5], [cur - 1, -19.5]]);
-    rotulo('5 · Sale a obra', 49, 2.2, 12, { fs: 22, color: '#7a5a1f' }, 100);
-    porFaseP.flat().forEach((p, i) => {
+    rotulo('Sale a obra', 49, 2.2, 12, { fs: 22, color: '#7a5a1f' }, 100);
+    grupos.flatMap(g => g[1]).forEach((p, i) => {
       const [gx, gz] = lugar[p.id], comercial = p.tipo === 'comercial', W = comercial ? 7.4 : 6, D = comercial ? 6.2 : 5, col = LUZ[p.semaforo];
       posProy[p.id] = new THREE.Vector3(gx, 0, gz);
       const gg = new THREE.Group(); gg.position.set(gx, 0, gz); mundo.add(gg);
@@ -405,6 +413,7 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
       const esp = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.62, 1.9), M('#b9c5cd', { metalness: 0.5, roughness: 0.22 })); esp.position.set(0, 1.5, -D / 2 + 0.15); gg.add(esp);
       escenaFase(faseDe(p), gg, W, D, p.id, comercial);
       const etq = rotulo(corto(p.nombre, 22) + ' · F' + (Number(p.fase) || 0), gx, 5.0, gz, { fs: 24, borde: 'rgba(60,50,40,0.14)', punto: col }, 80);
+      if (p.pedidos && p.pedidos.total > 0) { const tot = W * 0.86; let xx = -tot / 2; [['pendiente', '#9aa0a6'], ['pedido', '#8b9eae'], ['preparacion', '#e0b25a'], ['transito', '#6fb3e0'], ['entregado', '#c79bff'], ['montado', '#4be3a0']].forEach(([k, cc]) => { const n = p.pedidos.estados[k] || 0; if (!n) return; const w = tot * n / p.pedidos.total; caja3(Math.max(0.1, w - 0.05), 0.34, 0.34, ME(cc, 1.3), xx + w / 2, 4.15, D / 2 + 0.3, gg, null, false); xx += w; }); }
       marcar(gg, { tipo: 'proyecto', ...p }); gg.userData.proy = p.id; gg.scale.y = 0.001; subidas.push({ g: gg, retardo: 0.4 + i * 0.12 });
       (p.deps || ['diseno']).forEach(dp => {
         const A = anclas[dp]; if (!A) return; const B = new THREE.Vector3(gx, 4.6, gz), dx = B.x - A.x, dz = B.z - A.z;

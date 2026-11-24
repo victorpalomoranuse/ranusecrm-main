@@ -53,6 +53,12 @@ router.get('/', async (req, res) => {
     });
     const orden = { rojo: 0, ambar: 1, gris: 2, verde: 3 };
     proyectos.sort((a, b) => orden[a.semaforo] - orden[b.semaforo] || String(a.entrega || '9999').localeCompare(String(b.entrega || '9999')));
+    // dónde está cada obra y cómo van sus pedidos (si aún no se han ejecutado las migraciones, simplemente no salen)
+    try {
+      const porPed = await pedidosPorProyecto(hoy), { data: ub, error: eub } = await supabase.from('client_projects').select('id, obra_ciudad, obra_pais').in('id', proyectos.map(p => p.id)), mu = {};
+      if (!eub) (ub || []).forEach(u => { mu[u.id] = u; });
+      proyectos.forEach(p => { p.ciudad = mu[p.id]?.obra_ciudad || ''; p.pais = mu[p.id]?.obra_pais || ''; const e = porPed[p.id]; p.pedidos = e ? { estados: e.estados, total: e.total } : { estados: {}, total: 0 }; });
+    } catch { /* sin ubicaciones ni pedidos */ }
 
     // láminas que el asistente de diseño ha ido guardando en cada proyecto (solo se leen los proyectos que tienen archivo)
     const lamPor = {};
@@ -124,14 +130,7 @@ router.get('/', async (req, res) => {
 // logo de la web de un proveedor (PNG), para su stand en la oficina 3D; se pide con la sesión y se guarda 12 horas
 // ── Mapa de obras: dónde está cada proyecto y cómo van sus pedidos (por pedir, preparando, en camino, entregado, montado)
 const ESTADOS_PEDIDO = ['pendiente', 'pedido', 'preparacion', 'transito', 'entregado', 'montado'];
-router.get('/mapa', async (req, res) => {
-  try {
-    const hoy = hoyMadrid();
-    let ubicaciones = true, pr = await supabase.from('client_projects').select('id, project_name, client_name, client_city, obra_ciudad, obra_pais, obra_lat, obra_lng').eq('status', 'en_marcha').eq('active', true);
-    if (pr.error) { // la migración de ubicaciones aún no se ha ejecutado: se muestra igualmente la lista, sin coordenadas
-      ubicaciones = false; pr = await supabase.from('client_projects').select('id, project_name, client_name, client_city').eq('status', 'en_marcha').eq('active', true);
-      if (pr.error) throw pr.error;
-    }
+async function pedidosPorProyecto(hoy) {
     const leeBu = (extra) => supabase.from('budgets').select('id, status, project_id, items:budget_items(id, name, provider, brand, category, quantity, order_status, delivery_date' + extra + ')').eq('status', 'aprobado');
     let bu = await leeBu(', pedido_ref, pedido_fecha');
     if (bu.error) bu = await leeBu(''); // aún sin la migración de pedidos agrupados
@@ -149,6 +148,17 @@ router.get('/mapa', async (req, res) => {
         g.n++; g.estados[st]++; if (it.delivery_date && (!g.entrega || it.delivery_date > g.entrega)) g.entrega = it.delivery_date;
       } else if (st === 'pendiente') e.sinPedir++;
     }));
+    return por;
+}
+router.get('/mapa', async (req, res) => {
+  try {
+    const hoy = hoyMadrid();
+    let ubicaciones = true, pr = await supabase.from('client_projects').select('id, project_name, client_name, client_city, obra_ciudad, obra_pais, obra_lat, obra_lng').eq('status', 'en_marcha').eq('active', true);
+    if (pr.error) { // la migración de ubicaciones aún no se ha ejecutado: se muestra igualmente la lista, sin coordenadas
+      ubicaciones = false; pr = await supabase.from('client_projects').select('id, project_name, client_name, client_city').eq('status', 'en_marcha').eq('active', true);
+      if (pr.error) throw pr.error;
+    }
+    const por = await pedidosPorProyecto(hoy);
     res.json({
       ubicaciones, hoy,
       proyectos: (pr.data || []).map(p => ({
