@@ -86,6 +86,8 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
   };
   // el lienzo de pintura tiene el tamaño real de la imagen
   const ajustaLienzo = () => { const i = img.current, c = lienzo.current; if (!i || !c || !i.naturalWidth) return; if (c.width !== i.naturalWidth || c.height !== i.naturalHeight) { c.width = i.naturalWidth; c.height = i.naturalHeight; } };
+  // Invertir: lo pintado pasa a ser lo protegido (se queda idéntico) y todo lo demás pasa a ser la zona que se edita
+  const invertirMascara = () => { ajustaLienzo(); const c = lienzo.current; if (!c || !c.width) return; const t = document.createElement('canvas'); t.width = c.width; t.height = c.height; t.getContext('2d').drawImage(c, 0, 0); const g = c.getContext('2d'); g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, c.width, c.height); g.fillStyle = '#ff3b3b'; g.fillRect(0, 0, c.width, c.height); g.globalCompositeOperation = 'destination-out'; g.drawImage(t, 0, 0); g.globalCompositeOperation = 'source-over'; setPintado(true); setMv(x => x + 1); };
   const limpiaMascara = () => { const c = lienzo.current; if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height); setPintado(false); setMv(x => x + 1); };
   useEffect(() => { limpiaMascara(); }, [idx]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -146,7 +148,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
       const [tw, th] = asp > 1.25 ? [1536, 1024] : asp < 0.8 ? [1024, 1536] : [1024, 1024];
       const imagen = aDataUrl(base, tw, th);
       let mascara;
-      if (pintado && !calidadSola) {
+      if (pintado) {
         const mk = document.createElement('canvas'); mk.width = tw; mk.height = th; const g = mk.getContext('2d');
         g.fillStyle = '#000'; g.fillRect(0, 0, tw, th); g.globalCompositeOperation = 'destination-out'; g.drawImage(lienzo.current, 0, 0, tw, th);
         mascara = mk.toDataURL('image/png');
@@ -254,6 +256,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
             <button style={{ ...boton, ...(borrando ? {} : { background: ORO, color: '#000' }) }} onClick={() => setBorrando(false)}>🖌 Pintar</button>
             <button style={{ ...boton, ...(borrando ? { background: ORO, color: '#000' } : {}) }} onClick={() => setBorrando(true)}>⌫ Borrar</button>
             <button style={boton} onClick={limpiaMascara} disabled={!pintado}>Limpiar</button>
+            <button style={boton} onClick={invertirMascara} title="Lo pintado pasa a estar protegido (queda idéntico) y todo lo demás es lo que se edita. Útil para proteger las máquinas: píntalas y pulsa Invertir">↔ Invertir</button>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
             <button style={{ ...boton, flex: 1, ...(gotero ? { background: '#2f5f8a', fontWeight: 700 } : {}) }} onClick={() => setGotero(v => !v)} title="Pulsa sobre una pared o material y se selecciona entero">💧 Gotero: elegir un material</button>
@@ -261,7 +264,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
           {gotero && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 12 }}><span style={{ width: 70, opacity: 0.8 }}>Tolerancia</span><input type="range" min="8" max="90" value={tol} onChange={e => setTol(parseInt(e.target.value, 10))} style={{ flex: 1 }} title="Más alta = coge más superficie parecida" /></label>}
           {gotero && <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 6 }}>Pulsa sobre la pared o el material. Si coge de menos, sube la tolerancia; si se pasa, bájala y pulsa otra vez (Limpiar para empezar de nuevo). Puedes pulsar en varios sitios para sumarlos. Con «Borrar» activado, resta.</div>}
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>Grosor <input type="range" min="8" max="140" value={pincel} onChange={e => setPincel(parseInt(e.target.value, 10))} style={{ flex: 1 }} /></label>
-          <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 12 }}>{pintado ? 'Solo se cambiará lo pintado en rojo.' : 'Sin zona marcada, el cambio se aplica a toda la imagen.'}</div>
+          <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 12 }}>{pintado ? 'Solo se cambiará lo pintado en rojo (con «↔ Invertir», lo pintado queda protegido y se cambia el resto).' : 'Sin zona marcada, el cambio se aplica a toda la imagen.'}</div>
 
           <div style={{ fontWeight: 700, marginBottom: 6 }}>2 · Qué quieres cambiar</div>
           <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={4} placeholder="Ej.: cambia el suelo por microcemento oscuro; pon aquí el cuadro de la imagen de referencia; quita la planta…" style={{ ...boton, width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />

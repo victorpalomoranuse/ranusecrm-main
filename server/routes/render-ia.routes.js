@@ -263,7 +263,7 @@ router.post('/editar', async (req, res) => {
     // Cada edición con IA vuelve a pintar toda la imagen y tiende a subir contraste y saturación; encadenando varias, el render se «quema».
     // Se compensa: el brillo, el contraste y el color medios del resultado se acercan a los de la imagen de entrada, salvo que el cambio pedido sea de luz.
     let salida = Buffer.from(b64, 'base64'), corregida = false;
-    if (mk && soloCalidad !== true) {
+    if (mk) {
       try { salida = await fueraDeMascaraOriginal(Buffer.from(m[2], 'base64'), salida, mk[1]); corregida = true; } catch (e4) { console.error('render-ia editar (máscara):', e4.message); }
     } else if (soloCalidad === true && !coh.length) {
       try { salida = await fusionaTono(Buffer.from(m[2], 'base64'), salida); corregida = true; } catch (e3) { console.error('render-ia editar (fusión de tono):', e3.message); }
