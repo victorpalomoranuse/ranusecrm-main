@@ -1020,15 +1020,11 @@ const limpiaMeta = (m) => {
     estancia: s(m?.estancia, 80), estilo: s(m?.estilo, 120), extra: s(m?.extra, 400), libertad: ['fiel', 'equilibrado', 'creativo'].includes(m?.libertad) ? m.libertad : undefined,
   };
 };
-router.post('/:id/render', async (req, res) => {
-  try {
-    const { imagen, tipo, nombre, meta, tour, nota } = req.body || {};
-    const m = /^data:image\/(png|jpeg|webp);base64,(.+)$/.exec(String(imagen || ''));
-    if (!m) return res.status(400).json({ error: 'Falta la imagen' });
-    const buf = Buffer.from(m[2], 'base64');
-    if (buf.length > 16e6) return res.status(413).json({ error: 'La imagen es demasiado grande' });
-    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
-    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+// Guarda una imagen en la galería de renders de un plano (la usan el visor y el render en la nube, que guarda solo aunque se cierre la página)
+export async function guardaRenderGaleria(planoId, buf, { tipo, nombre, meta, tour, nota } = {}) {
+    const req = { params: { id: planoId } };
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', planoId).maybeSingle();
+    if (!fila) { const e = new Error('Plano no encontrado'); e.status = 404; throw e; }
     const t = ['ia', 'hd', '360'].includes(tipo) ? tipo : 'ia', rid = 'r' + Date.now().toString(36);
     const full = await sharp(buf).resize({ width: t === '360' ? 4096 : 2400, withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
     const thumb = await sharp(buf).resize({ width: 480, withoutEnlargement: true }).jpeg({ quality: 78 }).toBuffer();
@@ -1045,8 +1041,18 @@ router.post('/:id/render', async (req, res) => {
     const { error } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
     if (error) throw error;
     if (sobran.length) await supabase.storage.from(BUCKET_TEX).remove(sobran.flatMap(r => ['renders3d/' + req.params.id + '/' + r.id + '.jpg', 'renders3d/' + req.params.id + '/' + r.id + '-t.jpg'])).catch(() => {});
-    res.status(201).json({ render });
+    return render;
+}
+router.post('/:id/render', async (req, res) => {
+  try {
+    const { imagen, tipo, nombre, meta, tour, nota } = req.body || {};
+    const m = /^data:image\/(png|jpeg|webp);base64,(.+)$/.exec(String(imagen || ''));
+    if (!m) return res.status(400).json({ error: 'Falta la imagen' });
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.length > 16e6) return res.status(413).json({ error: 'La imagen es demasiado grande' });
+    res.status(201).json({ render: await guardaRenderGaleria(req.params.id, buf, { tipo, nombre, meta, tour, nota }) });
   } catch (err) {
+    if (err.status === 404) return res.status(404).json({ error: 'Plano no encontrado' });
     console.error('medicion render:', err);
     res.status(500).json({ error: 'No se pudo guardar en la galería' });
   }

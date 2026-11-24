@@ -2,6 +2,7 @@ import express from 'express';
 import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
+import { guardaRenderGaleria } from './medicion.routes.js';
 
 // Render realista en la nube (trazado de rayos con Blender Cycles en una GPU alquilada de RunPod).
 // Flujo: el visor sube la escena (.glb + luces .json) directamente a Supabase con una URL firmada, el servidor
@@ -62,29 +63,58 @@ router.post('/iniciar', async (req, res) => {
     const r = await rp('/run', { method: 'POST', body: JSON.stringify({ policy: { executionTimeout: (calidad === '8k' ? 40 : calidad === 'previa' ? 15 : 30) * 60 * 1000 }, input: { escena: urlEscena || await firma('escena.glb'), luces: await firma('luces.json'), subida: sube.data.signedUrl, ancho: cal.ancho, muestras: cal.muestras, exposicion: Number(req.body.exposicion) || 3 } }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.id) return res.status(502).json({ error: 'RunPod no aceptó el trabajo', detalle: j.error || r.status });
-    await supabase.storage.from(BUCKET).upload(`${BASE}/${id}/job.json`, Buffer.from(JSON.stringify({ runpod: j.id, calidad, usuario: req.user?.id || null, fecha: new Date().toISOString() })), { contentType: 'application/json', upsert: true });
+    const gal = req.body.galeria && /^[A-Za-z0-9_-]{8,64}$/.test(String(req.body.galeria.planoId || '')) ? { planoId: String(req.body.galeria.planoId), nombre: String(req.body.galeria.nombre || '').slice(0, 80), meta: req.body.galeria.meta || null } : null;
+    await supabase.storage.from(BUCKET).upload(`${BASE}/${id}/job.json`, Buffer.from(JSON.stringify({ runpod: j.id, calidad, usuario: req.user?.id || null, fecha: new Date().toISOString(), galeria: gal })), { contentType: 'application/json', upsert: true });
+    if (gal) pendientes.add(id);
     res.json({ id, runpod: j.id });
   } catch (e) { res.status(500).json({ error: 'No se pudo lanzar el render: ' + (e.message || e) }); }
 });
 
-// 3) Estado y resultado
+// 3) Estado y resultado. Si el trabajo trae destino de galería, al terminar el SERVIDOR guarda la imagen en la galería del plano (aunque se cierre la página)
+const pendientes = new Set(), guardando = new Set();
+async function consultaTrabajo(id) {
+  const job = await supabase.storage.from(BUCKET).download(`${BASE}/${id}/job.json`);
+  if (job.error) return { http: 404, error: 'No existe ese trabajo' };
+  const jd = JSON.parse(await job.data.text()), { runpod } = jd;
+  if (jd.guardado) { pendientes.delete(id); const { data } = await supabase.storage.from(BUCKET).createSignedUrl(`${BASE}/${id}/resultado.png`, 86400); return { estado: 'listo', url: data?.signedUrl || null, guardada: true, render: jd.render || null }; }
+  const r = await rp('/status/' + encodeURIComponent(runpod)), j = await r.json().catch(() => ({}));
+  const st = j.status || 'DESCONOCIDO';
+  if (st === 'COMPLETED') {
+    if (j.output?.error) { pendientes.delete(id); return { estado: 'error', mensaje: String(j.output.error).slice(0, 300) }; }
+    const { data } = await supabase.storage.from(BUCKET).createSignedUrl(`${BASE}/${id}/resultado.png`, 86400);
+    const out = { estado: 'listo', url: data?.signedUrl || null, segundos: Math.round((j.executionTime || 0) / 1000) };
+    if (jd.galeria && !guardando.has(id)) {
+      guardando.add(id);
+      try {
+        const png = await supabase.storage.from(BUCKET).download(`${BASE}/${id}/resultado.png`);
+        if (png.error) throw png.error;
+        const render = await guardaRenderGaleria(jd.galeria.planoId, Buffer.from(await png.data.arrayBuffer()), { tipo: 'hd', nombre: jd.galeria.nombre || 'Render realista', meta: jd.galeria.meta });
+        await supabase.storage.from(BUCKET).upload(`${BASE}/${id}/job.json`, Buffer.from(JSON.stringify({ ...jd, guardado: true, render })), { contentType: 'application/json', upsert: true });
+        pendientes.delete(id); return { ...out, guardada: true, render };
+      } catch (e) { console.error('render-nube galería:', e.message); }
+      finally { guardando.delete(id); }
+    }
+    return out;
+  }
+  if (st === 'FAILED' || st === 'CANCELLED' || st === 'TIMED_OUT') { pendientes.delete(id); return { estado: 'error', mensaje: String(j.error || st).slice(0, 300) }; }
+  return { estado: st === 'IN_QUEUE' ? 'en_cola' : 'renderizando' };
+}
 router.get('/estado/:id', async (req, res) => {
   if (!clave() || !endpoint()) return res.status(503).json({ error: 'El render en la nube aún no está activado.' });
   const { id } = req.params; if (!idValido(id)) return res.status(400).json({ error: 'Trabajo no válido' });
-  try {
-    const job = await supabase.storage.from(BUCKET).download(`${BASE}/${id}/job.json`);
-    if (job.error) return res.status(404).json({ error: 'No existe ese trabajo' });
-    const { runpod } = JSON.parse(await job.data.text());
-    const r = await rp('/status/' + encodeURIComponent(runpod)), j = await r.json().catch(() => ({}));
-    const st = j.status || 'DESCONOCIDO';
-    if (st === 'COMPLETED') {
-      if (j.output?.error) return res.json({ estado: 'error', mensaje: String(j.output.error).slice(0, 300) });
-      const { data } = await supabase.storage.from(BUCKET).createSignedUrl(`${BASE}/${id}/resultado.png`, 86400);
-      return res.json({ estado: 'listo', url: data?.signedUrl || null, segundos: Math.round((j.executionTime || 0) / 1000) });
-    }
-    if (st === 'FAILED' || st === 'CANCELLED' || st === 'TIMED_OUT') return res.json({ estado: 'error', mensaje: String(j.error || st).slice(0, 300) });
-    res.json({ estado: st === 'IN_QUEUE' ? 'en_cola' : 'renderizando' });
-  } catch (e) { res.status(500).json({ error: 'No se pudo consultar el render' }); }
+  try { const o = await consultaTrabajo(id); if (o.http) return res.status(o.http).json({ error: o.error }); res.json(o); }
+  catch (e) { res.status(500).json({ error: 'No se pudo consultar el render' }); }
 });
+
+// Barrido en segundo plano: cada 30 s mira los trabajos con destino de galería que aún no se han guardado (la página puede estar cerrada)
+setInterval(async () => { if (!clave() || !endpoint()) return; for (const id of [...pendientes]) { try { await consultaTrabajo(id); } catch { /* se reintenta en el siguiente barrido */ } } }, 30000).unref?.();
+// al arrancar el servidor se recuperan los trabajos recientes que quedaron a medias
+(async () => {
+  try {
+    if (!clave() || !endpoint()) return;
+    const { data: carpetas } = await supabase.storage.from(BUCKET).list(BASE, { limit: 60, sortBy: { column: 'created_at', order: 'desc' } });
+    for (const c of carpetas || []) { if (!idValido(c.name)) continue; const j = await supabase.storage.from(BUCKET).download(`${BASE}/${c.name}/job.json`); if (j.error) continue; const jd = JSON.parse(await j.data.text()); if (jd.galeria && !jd.guardado && Date.now() - new Date(jd.fecha).getTime() < 3 * 3600 * 1000) pendientes.add(c.name); }
+  } catch { /* sin recuperación */ }
+})();
 
 export default router;
