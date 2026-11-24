@@ -59,7 +59,7 @@ router.post('/iniciar', async (req, res) => {
     if (sube.error) throw sube.error;
     let urlEscena;
     if (req.body.comprimida) { const exp = Date.now() + 3 * 3600 * 1000, base = `${req.get('x-forwarded-proto') || req.protocol}://${req.get('host')}`; urlEscena = `${base}/api/render-nube/escena/${id}.glb?e=${exp}&f=${firmaEscena(id, exp)}`; }
-    const r = await rp('/run', { method: 'POST', body: JSON.stringify({ input: { escena: urlEscena || await firma('escena.glb'), luces: await firma('luces.json'), subida: sube.data.signedUrl, ancho: cal.ancho, muestras: cal.muestras, exposicion: Number(req.body.exposicion) || 3 } }) });
+    const r = await rp('/run', { method: 'POST', body: JSON.stringify({ policy: { executionTimeout: (calidad === '8k' ? 40 : calidad === 'previa' ? 15 : 30) * 60 * 1000 }, input: { escena: urlEscena || await firma('escena.glb'), luces: await firma('luces.json'), subida: sube.data.signedUrl, ancho: cal.ancho, muestras: cal.muestras, exposicion: Number(req.body.exposicion) || 3 } }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.id) return res.status(502).json({ error: 'RunPod no aceptó el trabajo', detalle: j.error || r.status });
     await supabase.storage.from(BUCKET).upload(`${BASE}/${id}/job.json`, Buffer.from(JSON.stringify({ runpod: j.id, calidad, usuario: req.user?.id || null, fecha: new Date().toISOString() })), { contentType: 'application/json', upsert: true });
