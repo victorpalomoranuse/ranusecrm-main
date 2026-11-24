@@ -44,6 +44,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
   const [borrando, setBorrando] = useState(false);
   const [texto, setTexto] = useState('');
   const [refs, setRefs] = useState([]);
+  const [coh, setCoh] = useState([]); // vistas de la galería que se mandan como contexto del resto del espacio (ids)
   const [trabajando, setTrabajando] = useState(false);
   const [error, setError] = useState('');
   const [comparar, setComparar] = useState(false);
@@ -149,7 +150,11 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
         g.fillStyle = '#000'; g.fillRect(0, 0, tw, th); g.globalCompositeOperation = 'destination-out'; g.drawImage(lienzo.current, 0, 0, tw, th);
         mascara = mk.toDataURL('image/png');
       }
-      const r = await api.post('/render-ia/editar', { imagen, mascara, instruccion: instr, referencias: calidadSola ? [] : refs, calidad: calidadSola }, { timeout: 280000 });
+      let coherencia = [];
+      if (!calidadSola && coh.length) {
+        for (const gid of coh) { const g = galeria.find(x => x.id === gid); if (!g) continue; try { const u = g.url || g.thumb, im = await carga(u + (String(u).includes('?') ? '&' : '?') + 'cors=1'), k = Math.min(1, 1024 / Math.max(im.naturalWidth, im.naturalHeight)); coherencia.push(aDataUrl(im, Math.round(im.naturalWidth * k), Math.round(im.naturalHeight * k), 'image/jpeg', 0.9)); } catch { /* esa vista no se pudo leer: se sigue sin ella */ } }
+      }
+      const r = await api.post('/render-ia/editar', { imagen, mascara, instruccion: instr, referencias: calidadSola ? [] : refs, calidad: calidadSola, coherencia }, { timeout: 280000 });
       const sal = await carga(r.data.imagen);
       const url = aDataUrl(sal, W0, H0, 'image/jpeg', 0.93);
       setHistoria(h => [...h.slice(0, idx + 1), { src: url, guardada: false, texto: calidadSola ? 'Mejora de calidad' : instr }]); setIdx(idx + 1);
@@ -260,6 +265,16 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
             {refs.length < 3 && <label style={{ ...boton, display: 'grid', placeItems: 'center', width: 64, height: 64, boxSizing: 'border-box', padding: 0, textAlign: 'center', fontSize: 11 }}>＋ Subir<input type="file" multiple accept="image/*" style={{ display: 'none' }} onChange={e => { anadirRefs(e.target.files); e.target.value = ''; }} /></label>}
           </div>
           <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 10 }}>También puedes pegar imágenes con Ctrl+V (hasta 3): un cuadro, un material, un mueble…</div>
+          {galeria.length > 1 && (
+            <details style={{ marginBottom: 10, background: '#1d1a17', borderRadius: 8, padding: '6px 8px' }} open={coh.length > 0}>
+              <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>🔗 Coherencia con otras vistas {coh.length ? '(' + coh.length + ')' : '(opcional)'}</summary>
+              <div style={{ opacity: 0.6, fontSize: 11, margin: '4px 0 6px' }}>Elige hasta 3 vistas del mismo espacio donde ya está el cambio que aprobaste. La IA lo mantendrá igual en esta imagen si esa parte se ve.</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {galeria.filter(g => !src.startsWith(g.url)).slice(0, 18).map(g => { const on = coh.includes(g.id); return <img key={g.id} src={g.thumb || g.url} alt={g.nombre} title={g.nombre} onClick={() => setCoh(c => (on ? c.filter(x => x !== g.id) : c.length >= 3 ? c : [...c, g.id]))} style={{ width: 70, height: 46, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', outline: on ? '2px solid ' + ORO : '1px solid #3a3531', opacity: on ? 1 : 0.7 }} />; })}
+              </div>
+              {coh.length > 0 && <button style={{ ...boton, padding: '2px 8px', fontSize: 11, marginTop: 6 }} onClick={() => setCoh([])}>Quitar selección</button>}
+            </details>
+          )}
           <button style={{ ...boton, width: '100%', background: ORO, color: '#000', fontWeight: 700, padding: '9px 12px', opacity: trabajando ? 0.6 : 1 }} disabled={trabajando} onClick={aplicar}>{trabajando ? 'Editando…' : '✨ Aplicar cambio'}</button>
           {error && <div style={{ color: '#ff9c8a', marginTop: 8 }}>{error}</div>}
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 12, cursor: 'pointer' }}><input type="checkbox" checked={autoGuardar} onChange={e => setAutoGuardar(e.target.checked)} /> Guardar cada versión en la galería automáticamente</label>
