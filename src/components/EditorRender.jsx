@@ -135,6 +135,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
 
   // «Mejorar calidad»: regenera la imagen igual (sin zona, sin referencias) pidiendo solo más definición y limpieza
   const TEXTO_CALIDAD = 'Regenera esta misma imagen en la máxima calidad SIN cambiar absolutamente nada: mismos objetos, composición, encuadre, colores y exactamente la misma iluminación (focos, tiras LED, brillos y sombras idénticos, sin aclarar ni oscurecer). Solo mejora la definición: elimina ruido, manchas, «aguas», bandas y artefactos de compresión, afila los bordes y deja las superficies lisas perfectamente uniformes.';
+  const TEXTO_COHERENTE = 'Mejora esta imagen en calidad, nitidez y limpieza SIN añadir objetos nuevos ni cambiar el encuadre, y hazla coherente con las otras vistas adjuntas del mismo espacio: misma iluminación y color, misma decoración y exactamente las mismas máquinas (mismo modelo, forma, color, detalles y rótulos) en lo que se vea también en esas vistas.';
   const aplicar = async (fijo) => {
     const calidadSola = typeof fijo === 'string', instr = (calidadSola ? fijo : texto).trim();
     if (!instr) { setError('Escribe qué quieres cambiar.'); return; }
@@ -151,7 +152,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
         mascara = mk.toDataURL('image/png');
       }
       let coherencia = [];
-      if (!calidadSola && coh.length) {
+      if (coh.length) {
         for (const gid of coh) { const g = galeria.find(x => x.id === gid); if (!g) continue; try { const u = g.url || g.thumb, im = await carga(u + (String(u).includes('?') ? '&' : '?') + 'cors=1'), k = Math.min(1, 1024 / Math.max(im.naturalWidth, im.naturalHeight)); coherencia.push(aDataUrl(im, Math.round(im.naturalWidth * k), Math.round(im.naturalHeight * k), 'image/jpeg', 0.9)); } catch { /* esa vista no se pudo leer: se sigue sin ella */ } }
       }
       const r = await api.post('/render-ia/editar', { imagen, mascara, instruccion: instr, referencias: calidadSola ? [] : refs, calidad: calidadSola, coherencia }, { timeout: 280000 });
@@ -247,7 +248,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
             </div>
             <div style={{ opacity: 0.5, fontSize: 11, marginTop: 5 }}>Se ve en directo. Al aplicar se crea una versión nueva, como con la IA, sin gastar nada. Doble clic en un deslizador lo pone a 0.</div>
           </details>
-          <button style={{ ...boton, width: '100%', marginBottom: 12, background: '#2f5f8a', fontWeight: 700, padding: '9px 12px', opacity: trabajando ? 0.6 : 1 }} disabled={trabajando} onClick={() => aplicar(TEXTO_CALIDAD)} title="Regenera la imagen idéntica pero más nítida y limpia, sin cambiar nada">✨ Mejorar calidad (sin cambiar nada)</button>
+          <button style={{ ...boton, width: '100%', marginBottom: 12, background: '#2f5f8a', fontWeight: 700, padding: '9px 12px', opacity: trabajando ? 0.6 : 1 }} disabled={trabajando} onClick={() => aplicar(coh.length ? TEXTO_COHERENTE : TEXTO_CALIDAD)} title="Regenera la imagen idéntica pero más nítida y limpia, sin cambiar nada">{coh.length ? '✨ Mejorar calidad y hacerla coherente (' + coh.length + ' vista' + (coh.length > 1 ? 's' : '') + ')' : '✨ Mejorar calidad (sin cambiar nada)'}</button>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>1 · Marca la zona (opcional)</div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
             <button style={{ ...boton, ...(borrando ? {} : { background: ORO, color: '#000' }) }} onClick={() => setBorrando(false)}>🖌 Pintar</button>

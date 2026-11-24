@@ -226,14 +226,14 @@ router.post('/editar', async (req, res) => {
     const mk = /^data:image\/png;base64,(.+)$/.exec(String(mascara || ''));
     const refs = (Array.isArray(referencias) ? referencias : []).slice(0, 3).map(x => DATA_IMG.exec(String(x || ''))).filter(Boolean);
     // otras vistas del MISMO espacio (ya editadas): lo que cambió en ellas debe verse igual aquí cuando esa parte salga en la imagen
-    const coh = soloCalidad === true ? [] : (Array.isArray(coherencia) ? coherencia : []).slice(0, 3).map(x => DATA_IMG.exec(String(x || ''))).filter(Boolean);
+    const coh = (Array.isArray(coherencia) ? coherencia : []).slice(0, 3).map(x => DATA_IMG.exec(String(x || ''))).filter(Boolean);
     const prompt = [
       'Eres un retocador profesional de renders de interiorismo. Edita la primera imagen aplicando SOLO este cambio: «' + texto + '».',
       mk ? 'El cambio se limita a la zona marcada con la máscara: no toques nada fuera de ella.' : 'Aplica el cambio conservando todo lo demás.',
       'Mantén exactamente la composición, la perspectiva, la iluminación, los materiales y todos los elementos que no se mencionan.',
       refs.length ? 'Las imágenes adicionales son referencias de lo que hay que incorporar (' + refs.length + '): no las pegues tal cual, intégralas con la perspectiva, la escala, la luz y las sombras de la escena.' : '',
       'Las paredes y techos de pintura lisa deben quedar perfectamente uniformes: sin manchas, nubes, «aguas», vetas, ruido ni textura añadida (un degradado suave de la luz sí es normal).',
-      coh.length ? 'Las ÚLTIMAS ' + coh.length + ' imágenes adjuntas son OTRAS VISTAS del mismo espacio, ya con los cambios aprobados. Todo lo que en ellas aparezca modificado (materiales, colores, acabados, objetos, decoración, iluminación) debe verse exactamente igual en la primera imagen cuando esa parte del espacio sea visible desde su cámara. No copies su encuadre ni su composición: mantén el de la primera imagen.' : '',
+      coh.length ? 'Las ÚLTIMAS ' + coh.length + ' imágenes adjuntas son OTRAS VISTAS del mismo espacio, ya con los cambios aprobados. La primera imagen debe quedar COHERENTE con ellas: (1) la misma iluminación (misma temperatura de color, misma intensidad y mismo efecto de los focos, las tiras LED y los halos), (2) los mismos colores y acabados de paredes, suelos, techos y materiales, (3) la misma decoración y los mismos objetos en las zonas que se vean también en esas vistas, y (4) las MISMAS MÁQUINAS: cada máquina o equipo que aparezca en alguna de esas vistas debe ser exactamente el mismo modelo (misma forma, color, acabado, detalles, rótulos y logotipos) cuando salga en la primera imagen. No inventes nada que no aparezca en la primera imagen ni en esas vistas. No copies su encuadre ni su composición: mantén el de la primera imagen.' : '',
       'RESPETA LA ILUMINACIÓN EXISTENTE: los focos y downlights, las tiras LED, las luces indirectas y su brillo, los halos, los reflejos y las sombras deben quedar exactamente como están (misma intensidad, misma posición, misma temperatura). No añadas, quites, apagues ni intensifiques ninguna luz, y no aclares ni oscurezcas la escena.',
       'No cambies la exposición, el contraste, la saturación ni el balance de color general de la imagen, salvo que el cambio pedido lo exija: el resto debe quedar con el mismo tono y brillo que la imagen original.',
       'El resultado debe parecer una fotografía real.',
@@ -265,12 +265,14 @@ router.post('/editar', async (req, res) => {
     let salida = Buffer.from(b64, 'base64'), corregida = false;
     if (mk && soloCalidad !== true) {
       try { salida = await fueraDeMascaraOriginal(Buffer.from(m[2], 'base64'), salida, mk[1]); corregida = true; } catch (e4) { console.error('render-ia editar (máscara):', e4.message); }
-    } else if (soloCalidad === true) {
+    } else if (soloCalidad === true && !coh.length) {
       try { salida = await fusionaTono(Buffer.from(m[2], 'base64'), salida); corregida = true; } catch (e3) { console.error('render-ia editar (fusión de tono):', e3.message); }
-    } else if (!/luz|ilumin|brillo|oscur|clar[oa]|exposic|hora|noche|d[ií]a|atardecer|sol|sombra|c[aá]lid|fr[ií]o|tono|color|saturaci/i.test(texto)) {
+    } else if (soloCalidad === true || !/luz|ilumin|brillo|oscur|clar[oa]|exposic|hora|noche|d[ií]a|atardecer|sol|sombra|c[aá]lid|fr[ií]o|tono|color|saturaci/i.test(texto)) {
       try {
         const base = Buffer.from(m[2], 'base64'), pequena = x => sharp(x).resize({ width: 600, withoutEnlargement: true }).removeAlpha();
-        const [a, b] = await Promise.all([pequena(base).stats(), pequena(salida).stats()]);
+        const [a0, b, ...rs] = await Promise.all([pequena(base).stats(), pequena(salida).stats(), ...coh.map(x => pequena(Buffer.from(x[2], 'base64')).stats())]);
+        // con vistas de referencia, el objetivo de brillo y contraste es mitad la imagen original y mitad la media de esas vistas (misma iluminación en todas)
+        const wc = rs.length ? 0.5 : 0, a = { channels: [0, 1, 2].map(c => ({ mean: a0.channels[c].mean * (1 - wc) + (rs.length ? rs.reduce((t, x) => t + x.channels[c].mean, 0) / rs.length : 0) * wc, stdev: a0.channels[c].stdev * (1 - wc) + (rs.length ? rs.reduce((t, x) => t + x.channels[c].stdev, 0) / rs.length : 0) * wc })) };
         const K_MEDIA = 0.85, K_CONTRASTE = 0.7, g = [], o = [];
         for (let c = 0; c < 3; c++) {
           const sd = Math.max(1, b.channels[c].stdev), ganancia = 1 + (Math.min(1.25, Math.max(0.8, a.channels[c].stdev / sd)) - 1) * K_CONTRASTE;
