@@ -7393,6 +7393,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
           ['Render realista en la nube (4K)', () => { setRenderAbierto(true); setPestanaRender('salida'); renderNube('hd'); }, nube?.estado === 'trabajando', estado !== 'listo', 'Trazado de rayos con Blender en una GPU: luz y reflejos reales'],
           ['Exportar a D5 (.glb)', exportarGLB, false, false, 'Descarga el espacio en 3D para abrirlo en D5 o Blender'],
         ], true)}
+        <button style={{ ...bTop, ...(galAbierta ? bOn : {}) }} onClick={() => setGalAbierta(v => !v)} title="Renders y panoramas guardados">🖼 Galería{renders.length ? ' (' + renders.length + ')' : ''}</button>
         <button style={{ ...bTop, ...(ayudaAbierta ? bOn : {}) }} onClick={() => setAyudaAbierta(v => !v)} title="Tutorial, preguntar cómo se hace algo y lista de atajos">? Ayuda</button>
       </div>
 
