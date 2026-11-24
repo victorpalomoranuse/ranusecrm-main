@@ -1026,7 +1026,7 @@ export async function guardaRenderGaleria(planoId, buf, { tipo, nombre, meta, to
     const { data: fila } = await supabase.from('mediciones').select('data').eq('id', planoId).maybeSingle();
     if (!fila) { const e = new Error('Plano no encontrado'); e.status = 404; throw e; }
     const t = ['ia', 'hd', '360'].includes(tipo) ? tipo : 'ia', rid = 'r' + Date.now().toString(36);
-    const full = await sharp(buf).resize({ width: t === '360' ? 4096 : 2400, withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
+    const full = await sharp(buf).resize({ width: t === '360' ? 4096 : 3840, withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
     const thumb = await sharp(buf).resize({ width: 480, withoutEnlargement: true }).jpeg({ quality: 78 }).toBuffer();
     const base = 'renders3d/' + req.params.id + '/' + rid;
     for (const [ruta, b] of [[base + '.jpg', full], [base + '-t.jpg', thumb]]) {

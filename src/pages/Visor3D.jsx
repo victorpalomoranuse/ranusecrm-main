@@ -1278,7 +1278,7 @@ function luzLedObjeto(g, o, presup, amb) {
 }
 // Tira LED: cinta luminosa que sigue un recorrido y alumbra de verdad hacia donde se le indique
 // Baja una imagen (por ejemplo el render de la nube) y la devuelve como JPEG en data-URL, de hasta 2400 px de ancho, lista para guardarla en la galería
-async function urlAJpegDataUrl(url, ancho = 2400) {
+async function urlAJpegDataUrl(url, ancho = 3840) {
   const bl = await (await fetch(url)).blob(), bm = await createImageBitmap(bl), k = Math.min(1, ancho / bm.width), cv = document.createElement('canvas');
   cv.width = Math.round(bm.width * k); cv.height = Math.round(bm.height * k); cv.getContext('2d').drawImage(bm, 0, 0, cv.width, cv.height);
   return cv.toDataURL('image/jpeg', 0.9);
@@ -7903,7 +7903,11 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
                 {rd.tipo !== '360' && <button style={{ ...btn, padding: '2px 8px', background: rd.publicado ? '#2a6b3a' : '#2f5f8a' }} onClick={() => abrirPublicar(rd)} title={rd.publicado ? 'Ya publicado en la historia del cliente. Pulsa para publicarlo otra vez en otro capítulo' : 'Publícalo en la historia del cliente sin descargarlo'}>{rd.publicado ? '📤 Publicado ✓' : '📤 Publicar'}</button>}
                 {rd.tipo !== '360' && <button style={{ ...btn, padding: '2px 8px', background: '#8c8076' }} onClick={() => setEditorRender(rd)} title="Pinta una zona, escribe qué cambiar y la IA lo retoca: cada cambio es una versión nueva">✏️ Editar con IA</button>}
                 {rd.tipo === 'ia' && <button style={{ ...btn, padding: '2px 8px' }} onClick={() => { restaurarVista(rd.meta); setIaTxt(t => ({ ...t, estancia: rd.meta?.estancia || '', estilo: rd.meta?.estilo || '', extra: rd.meta?.extra || '', libertad: rd.meta?.libertad || 'equilibrado' })); setIaForm(true); }} title="Vuelve a esa vista con los mismos textos y lo prepara para generar otro">Repetir con IA</button>}
-                <a style={{ ...btn, padding: '2px 8px', textDecoration: 'none' }} href={rd.url} download={rd.nombre + '.jpg'}>Descargar</a>
+                <a style={{ ...btn, padding: '2px 8px', textDecoration: 'none', cursor: 'pointer' }} href={rd.url} download={rd.nombre + '.jpg'} onClick={async e => { // la imagen está en otro dominio: el navegador ignora «download» y no la baja; se descarga como archivo y se guarda
+                  e.preventDefault();
+                  try { const b = await (await fetch(rd.url)).blob(), u = URL.createObjectURL(b), l = document.createElement('a'); l.href = u; l.download = String(rd.nombre || 'render').replace(/[\\/:*?"<>|]+/g, '-') + '.jpg'; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
+                  catch { window.open(rd.url, '_blank'); }
+                }}>Descargar</a>
                 <button style={{ ...btn, padding: '2px 8px', background: '#7a2b2b' }} onClick={() => { if (window.confirm('¿Borrar «' + rd.nombre + '» de la galería?')) api.delete('/medicion/' + id + '/render/' + rd.id).then(() => setRenders(x => x.filter(y => y.id !== rd.id))).catch(() => setAviso('No se pudo borrar')); }}>Borrar</button>
               </div>
             </div>

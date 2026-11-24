@@ -72,7 +72,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
   const aplicarAjustes = async () => {
     setAplicandoAj(true); setError('');
     try {
-      const im = await carga(actual.src), k = Math.min(1, 2600 / Math.max(im.naturalWidth, im.naturalHeight)), cv = document.createElement('canvas'); cv.width = Math.round(im.naturalWidth * k); cv.height = Math.round(im.naturalHeight * k);
+      const im = await carga(actual.src), k = Math.min(1, 3840 / Math.max(im.naturalWidth, im.naturalHeight)), cv = document.createElement('canvas'); cv.width = Math.round(im.naturalWidth * k); cv.height = Math.round(im.naturalHeight * k);
       const g = cv.getContext('2d'); g.drawImage(im, 0, 0, cv.width, cv.height); const id = g.getImageData(0, 0, cv.width, cv.height); procesaAjustes(id.data, cv.width, cv.height, aj, pintado ? alfaMascara(lienzo.current, cv.width, cv.height) : null); g.putImageData(id, 0, 0);
       const url = cv.toDataURL('image/jpeg', 0.94), nombreAj = pintado ? 'Ajustes de la zona marcada' : 'Ajustes de imagen';
       setHistoria(h => [...h.slice(0, idx + 1), { src: url, guardada: false, texto: nombreAj }]); setIdx(idx + 1); setAj(AJ0);
@@ -150,7 +150,11 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
         <span style={{ fontSize: 12, opacity: 0.8 }}>v{idx + 1} de {historia.length}</span>
         <button style={boton} disabled={idx >= historia.length - 1} onClick={() => setIdx(idx + 1)} title="Versión siguiente">↷</button>
         <button style={{ ...boton, ...(comparar ? { background: ORO, color: '#000' } : {}) }} disabled={idx === 0} onPointerDown={() => setComparar(true)} onPointerUp={() => setComparar(false)} onPointerLeave={() => setComparar(false)} title="Mantén pulsado para ver el original">Ver original</button>
-        <a style={{ ...boton, textDecoration: 'none' }} href={actual.src} download={(nombre || 'render') + '-v' + (idx + 1) + '.jpg'}>Descargar</a>
+        <a style={{ ...boton, textDecoration: 'none' }} href={actual.src} download={(nombre || 'render') + '-v' + (idx + 1) + '.jpg'} onClick={async e => { // imagen de otro dominio: «download» se ignora, así que se baja como archivo
+          if (actual.src.startsWith('data:')) return; e.preventDefault();
+          try { const b = await (await fetch(actual.src)).blob(), u = URL.createObjectURL(b), l = document.createElement('a'); l.href = u; l.download = String(nombre || 'render').replace(/[\\/:*?"<>|]+/g, '-') + '-v' + (idx + 1) + '.jpg'; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
+          catch { window.open(actual.src, '_blank'); }
+        }}>Descargar</a>
         <button style={{ ...boton, background: actual.guardada ? '#2a6b3a' : '#8c8076' }} disabled={guardando || actual.guardada} onClick={guardar}>{actual.guardada ? 'Guardada ✓' : '⭐ Guardar en la galería'}</button>
         {onPublicar && <button style={{ ...boton, background: '#2f5f8a' }} disabled={guardando || trabajando} onClick={publicar} title="Publica esta versión en la historia del cliente, sin descargarla">📤 Publicar en la historia</button>}
         <button style={boton} onClick={onCerrar}>Cerrar</button>
