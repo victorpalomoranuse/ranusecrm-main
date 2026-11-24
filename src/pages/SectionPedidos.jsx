@@ -92,7 +92,7 @@ export function SectionPedidos() {
   const updateLine = async (line, updates) => {
     try {
       const { data } = await api.put(`/budgets/${line.budget_id}/items/${line.id}`, updates);
-      if (updates.category && updates.category !== 'material' && updates.category !== 'mobiliario') { setLines(prev => prev.filter(l => l.id !== line.id)); return; } // ya no es una compra: sale de Pedidos
+      if (updates.category && !['material', 'mobiliario', 'equipamiento'].includes(updates.category)) { setLines(prev => prev.filter(l => l.id !== line.id)); return; } // ya no es una compra: sale de Pedidos
       setLines(prev => prev.map(l => l.id === line.id ? { ...l, ...data.item, effective_provider: data.item.provider?.trim() || data.item.brand?.trim() || 'Sin proveedor' } : l));
     } catch { /* se queda como estaba */ }
   };

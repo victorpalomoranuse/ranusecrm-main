@@ -272,7 +272,7 @@ router.get('/dashboard', async (req, res) => {
     }
     const catMap = {};
     allBudgets.forEach(b => { (b.items || []).forEach(item => { const cat = item.category || 'otro'; if (!catMap[cat]) catMap[cat] = { cost: 0, revenue: 0 }; catMap[cat].cost += (parseFloat(item.unit_cost) || 0) * (parseFloat(item.quantity) || 1); catMap[cat].revenue += (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 1); }); });
-    const CAT_LABELS = { material: 'Material', mobiliario: 'Mobiliario', instalacion: 'Instalacion', transporte: 'Transporte', otro: 'Otro' };
+    const CAT_LABELS = { material: 'Material', mobiliario: 'Mobiliario', equipamiento: 'Equipamiento', instalacion: 'Instalacion', transporte: 'Transporte', otro: 'Otro' };
     const byCategory = Object.entries(catMap).map(([cat, v]) => ({ category: cat, label: CAT_LABELS[cat] || cat, ...v }));
     const recentBudgets = [...allBudgets].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6).map(({ items: _items, ...b }) => b);
     const activeProjectsCount = allProjects.filter(p => (p.status || 'en_marcha') === 'en_marcha').length;
@@ -303,8 +303,8 @@ router.get('/', async (req, res) => {
 // Registradas antes de '/:id' para que Express no las confunda con un ID.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// partidas que son un servicio y no una compra: no salen en Pedidos aunque estén marcadas como material o mobiliario
-const ES_SERVICIO = /^\s*(instalaci[oó]n|montaje|transporte|retirada|gesti[oó]n|desplazamiento|mano de obra|honorarios|dise[ñn]o)/i;
+// categorías de presupuesto que son una compra a un proveedor y salen en Pedidos
+const CAT_PEDIDO = ['material', 'mobiliario', 'equipamiento'];
 router.get('/pedidos', async (req, res) => {
   try {
     const COLS = 'id, name, brand, provider, category, quantity, unit, order_status, payment_status, delivery_date, pedido_order, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado';
@@ -316,7 +316,7 @@ router.get('/pedidos', async (req, res) => {
     const lines = [];
     (data || []).forEach(b => {
       (b.items || []).forEach(item => {
-        if ((item.category !== 'material' && item.category !== 'mobiliario') || ES_SERVICIO.test(item.name || '')) return;
+        if (!CAT_PEDIDO.includes(item.category)) return;
         lines.push({
           ...item,
           effective_provider: item.provider?.trim() || item.brand?.trim() || 'Sin proveedor',
@@ -351,7 +351,7 @@ router.get('/pedidos/export', async (req, res) => {
     (data || []).forEach(b => {
       if (projectId && b.project?.id !== projectId) return;
       (b.items || []).forEach(item => {
-        if ((item.category !== 'material' && item.category !== 'mobiliario') || ES_SERVICIO.test(item.name || '')) return;
+        if (!CAT_PEDIDO.includes(item.category)) return;
         const effective = item.provider?.trim() || item.brand?.trim() || 'Sin proveedor';
         if (effective.toLowerCase() === provider && (!refPedido || item.pedido_ref === refPedido)) lines.push({ ...item, project: b.project });
       });

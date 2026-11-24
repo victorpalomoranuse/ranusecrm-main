@@ -10,6 +10,7 @@ import './SectionPresupuestos.css';
 const CATEGORIES = [
   { value: 'material',    label: 'Material',      color: '#baafa5' },
   { value: 'mobiliario',  label: 'Mobiliario',     color: '#8b9eae' },
+  { value: 'equipamiento', label: 'Equipamiento',  color: '#a58bae' },
   { value: 'instalacion', label: 'Instalación',    color: '#ae9e8b' },
   { value: 'reformas',    label: 'Reformas',       color: '#ae8b8b' },
   { value: 'iluminacion', label: 'Iluminación',    color: '#c9b98a' },
