@@ -12,6 +12,7 @@ import { uploadRenderFile, handleMulterError } from '../middleware/upload.middle
 import { internalAdminToken } from '../utils/internal-auth.js';
 import { computeCatalogPricing } from '../utils/pricing.js';
 import { callClaude } from '../utils/anthropic.js';
+import { generarHitos } from '../utils/cobros.js';
 import { condicionesDe, guardarDe, leerBase, guardarBase, TEXTO_BASE } from '../utils/condiciones-presupuesto.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -293,7 +294,13 @@ router.get('/', async (req, res) => {
     const ids = [...new Set((data || []).map(b => b.created_by).filter(Boolean))];
     const nombres = {};
     if (ids.length) { const { data: us } = await supabase.from('users').select('id, name').in('id', ids); (us || []).forEach(u => { nombres[u.id] = u.name; }); }
-    const budgets = (data || []).map(({ items, ...b }) => ({ ...b, creador_nombre: b.created_by ? (nombres[b.created_by] || 'Otro usuario') : 'Víctor', ...computeTotals(items || [], b.design_fee_type, b.design_fee_value, b.design_hours, b.global_discount_pct) }));
+    // cobrado / pendiente por presupuesto (si aún no existe la tabla de hitos, simplemente no salen)
+    const cobros = {};
+    try {
+      const { data: hs, error: eh } = await supabase.from('payment_milestones').select('budget_id, importe, estado');
+      if (!eh) (hs || []).forEach(h => { const c = cobros[h.budget_id] = cobros[h.budget_id] || { total: 0, cobrado: 0 }; c.total += Number(h.importe); if (h.estado === 'cobrado') c.cobrado += Number(h.importe); });
+    } catch { /* sin hitos */ }
+    const budgets = (data || []).map(({ items, ...b }) => ({ ...b, cobros: cobros[b.id] || null, creador_nombre: b.created_by ? (nombres[b.created_by] || 'Otro usuario') : 'Víctor', ...computeTotals(items || [], b.design_fee_type, b.design_fee_value, b.design_hours, b.global_discount_pct) }));
     res.json({ budgets });
   } catch (err) { res.status(500).json({ error: 'Error al listar presupuestos' }); }
 });
@@ -539,8 +546,18 @@ router.put('/:id', async (req, res) => {
         updates.payment_option_text = null;
       }
     }
+    let eraAprobado = false;
+    if (updates.status === 'aprobado') { const { data: prev } = await supabase.from('budgets').select('status').eq('id', req.params.id).maybeSingle(); eraAprobado = prev?.status === 'aprobado'; }
     const { data, error } = await supabase.from('budgets').update(updates).eq('id', req.params.id).select().single();
     if (error) throw error;
+    // al aprobar: se generan los hitos de cobro (si aún no los tiene). Si falla (p. ej. falta la migración v98) no bloquea la aprobación.
+    if (updates.status === 'aprobado' && !eraAprobado) {
+      try {
+        const { data: it } = await supabase.from('budget_items').select('*').eq('budget_id', data.id);
+        const tot = computeTotals(it || [], data.design_fee_type, data.design_fee_value, data.design_hours, data.global_discount_pct);
+        await generarHitos(data, it || [], tot.totalRevenue);
+      } catch (e) { console.error('hitos de cobro:', e.message); }
+    }
     res.json({ budget: data });
   } catch (err) { res.status(500).json({ error: 'Error al actualizar presupuesto' }); }
 });

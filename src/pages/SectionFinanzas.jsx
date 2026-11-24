@@ -211,6 +211,37 @@ const ESCENARIOS = ['pesimista', 'realista', 'optimista'];
 const ESCENARIO_LABEL = { pesimista: 'Pesimista', realista: 'Realista', optimista: 'Optimista' };
 const PERIODO_TABS = [{ tipo: 'mes', label: 'Mes' }, { tipo: 'trimestre', label: 'Trimestre' }, { tipo: 'año', label: 'Año' }];
 
+// Cobros pendientes de clientes (hitos de pago de los presupuestos aprobados)
+function PanelCobrosCliente() {
+  const [c, setC] = useState(null);
+  useEffect(() => { api.get('/cobros/resumen').then(r => setC(r.data)).catch(() => {}); }, []);
+  if (!c || (!c.porCobrar && !c.cobradoMes && !(c.avisos || []).length)) return null;
+  const caja = [['Cobrado este mes', c.cobradoMes, '#8bae8f'], ['Pendiente de facturar', c.pendienteFacturar, '#baafa5'], ['Vencido' + (c.nVencidos ? ' (' + c.nVencidos + ')' : ''), c.vencido, c.vencido > 0 ? '#e08a82' : '#baafa5'], ['Previsión a 30 días', c.prevision30, '#8b9eae'], ['Previsión a 60 días', c.prevision60, '#8b9eae']];
+  return (
+    <div className="fz-chart-card" style={{ marginBottom: 16 }}>
+      <p className="fz-chart-title">Cobros de clientes</p>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        {caja.map(([t, v, col]) => (
+          <div key={t} style={{ flex: '1 1 150px', background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '10px 12px', borderLeft: '3px solid ' + col }}>
+            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)' }}>{t}</div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 600, color: col }}>{fmt(v)}</div>
+          </div>
+        ))}
+      </div>
+      {(c.vencidos || []).length > 0 && (
+        <div style={{ marginTop: 10, fontSize: '0.78rem' }}>
+          {c.vencidos.map(v => <div key={v.id} style={{ color: '#f0b2ab' }}>● {v.proyecto} · {v.concepto} · {fmt(v.importe)} · venció el {String(v.fecha_prevista).split('-').reverse().join('/')}</div>)}
+        </div>
+      )}
+      {(c.avisos || []).length > 0 && (
+        <div style={{ marginTop: 10, fontSize: '0.78rem', color: '#f0b2ab' }}>
+          {c.avisos.map(a => <div key={a.project_id}>⚠ {a.nombre}: la obra va al {a.avance}% y solo se ha cobrado el {a.cobradoPct}% (faltan {fmt(a.pendiente)}).</div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function añoActual() { return new Date().getFullYear(); }
 
 function PanelObjetivosFinanzas() {
@@ -801,6 +832,8 @@ export function SectionFinanzas() {
           <div className="fz-stat-body"><span>Gastos totales</span><strong>{fmt(resumen?.gastosTotales)}</strong></div>
         </div>
       </div>
+
+      <PanelCobrosCliente />
 
       <PanelObjetivosFinanzas />
 

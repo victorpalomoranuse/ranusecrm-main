@@ -5,6 +5,7 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from 
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { CantidadesPlanos } from '../components/CantidadesPlanos';
+import CobrosPanel, { BarraCobro } from '../components/CobrosPanel';
 import './SectionPresupuestos.css';
 
 const CATEGORIES = [
@@ -378,7 +379,7 @@ function BudgetList({ onOpen }) {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr>
                 {thO('cliente', 'Cliente')}{thO('nombre', 'Proyecto')}{thO('estado', 'Estado')}
-                {thO('coste', 'Coste', { textAlign: 'right' })}{thO('pvp', 'PVP total', { textAlign: 'right' })}{thO('beneficio', 'Beneficio', { textAlign: 'right' })}{thO('margen', 'Margen', { textAlign: 'right' })}<th style={th}></th>
+                {thO('coste', 'Coste', { textAlign: 'right' })}{thO('pvp', 'PVP total', { textAlign: 'right' })}{thO('beneficio', 'Beneficio', { textAlign: 'right' })}{thO('margen', 'Margen', { textAlign: 'right' })}<th style={{ ...th, textAlign: 'right' }}>Cobrado</th><th style={{ ...th, textAlign: 'right' }}>Pendiente</th><th style={th}>% cobrado</th><th style={th}></th>
               </tr></thead>
               <tbody>
                 {filas.map(({ key, b, cliente, nombre }) => {
@@ -392,6 +393,9 @@ function BudgetList({ onOpen }) {
                       <td style={num}>{fmt(b.totalRevenue)}</td>
                       <td style={{ ...num, color: b.totalProfit >= 0 ? '#8bae8f' : '#ae8b8b' }}>{fmt(b.totalProfit)}</td>
                       <td style={{ ...num, color: b.margin >= 20 ? '#8bae8f' : b.margin >= 10 ? '#baafa5' : '#ae8b8b' }}>{Number(b.margin || 0).toFixed(1)}%</td>
+                      <td style={{ ...num, color: '#8bae8f' }}>{b.cobros ? fmt(b.cobros.cobrado) : '—'}</td>
+                      <td style={num}>{b.cobros ? fmt(b.cobros.total - b.cobros.cobrado) : '—'}</td>
+                      <td style={td}>{b.cobros ? <BarraCobro cobrado={b.cobros.cobrado} total={b.cobros.total} /> : '—'}</td>
                       <td style={{ ...td, textAlign: 'right' }}>
                         <button className="ap-btn-icon" onClick={e => handleDuplicate(b.id, e)} disabled={duplicatingId === b.id} title="Duplicar presupuesto"><Copy size={13}/></button>
                         <button className="ap-btn-icon" onClick={e => handleDelete(b.id, e)} disabled={deletingId === b.id} title="Eliminar"><Trash2 size={13}/></button>
@@ -1598,6 +1602,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
                   )}
                 </div>
               )}
+              {budget.status === 'aprobado' && budget.project_id && <CobrosPanel presupuestoId={budget.id} />}
               {showPdfOptions && (
                 <div style={{display:'flex',alignItems:'center',gap:'0.5rem',flexWrap:'wrap',padding:'0.4rem 0.6rem',background:'rgba(255,255,255,0.04)',borderRadius:6,border:'1px solid rgba(255,255,255,0.08)',width:'100%'}}>
                   <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',flexShrink:0}}>Nota instalación/envío</span>

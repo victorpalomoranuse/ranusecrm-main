@@ -4,6 +4,7 @@ import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
 import { Sparkles, Table2, Home, Ruler, LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu, CalendarDays, Search, Building2, Film } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
+import CobrosPanel from '../components/CobrosPanel';
 import ChatImagenes from '../components/ChatImagenes';
 import { SectionAsistenteIA } from './SectionAsistenteIA';
 import { SectionAsistenteFinanzas } from './SectionAsistenteFinanzas';
@@ -2553,6 +2554,7 @@ function ProjectManagerModal({ project, onClose }) {
         <div className="ap-mgr-tabs">{MGR_TABS.map(t=>(<button key={t.id} className={`ap-mgr-tab${tab===t.id?' active':''}`} title={t.soloSinHistoria?'Solo se muestra al cliente en proyectos SIN historia':undefined} style={t.soloSinHistoria&&project.tipo_proyecto?{opacity:0.5}:undefined} onClick={()=>setTab(t.id)}>{t.label}</button>))}</div>
         <div className="ap-mgr-body">
           {tab==='resumen'&&<ResumenProyecto project={project} onIr={setTab}/>}
+          {tab==='resumen'&&<div style={{marginTop:'1rem'}}><CobrosPanel proyectoId={project.id}/></div>}
           {tab!=='resumen'&&<GuiaProyecto/>}
           {tab==='portada'&&<TabPortada project={project} onUpdated={(url)=>{project.cover_image_url=url;}}/>}
           {tab==='fases'&&<TabCategorias projectId={project.id}/>}
