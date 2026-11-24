@@ -210,6 +210,7 @@ router.post('/editar', async (req, res) => {
       mk ? 'El cambio se limita a la zona marcada con la máscara: no toques nada fuera de ella.' : 'Aplica el cambio conservando todo lo demás.',
       'Mantén exactamente la composición, la perspectiva, la iluminación, los materiales y todos los elementos que no se mencionan.',
       refs.length ? 'Las imágenes adicionales son referencias de lo que hay que incorporar (' + refs.length + '): no las pegues tal cual, intégralas con la perspectiva, la escala, la luz y las sombras de la escena.' : '',
+      'No cambies la exposición, el contraste, la saturación ni el balance de color general de la imagen, salvo que el cambio pedido lo exija: el resto debe quedar con el mismo tono y brillo que la imagen original.',
       'El resultado debe parecer una fotografía real.',
     ].filter(Boolean).join(' ');
     let modeloO = process.env.OPENAI_IMAGE_MODEL || imagenOpenAI || 'gpt-image-1';
@@ -234,7 +235,23 @@ router.post('/editar', async (req, res) => {
     if (!rr.ok) { console.error('render-ia editar', rr.status, jj?.error?.message); return res.status(502).json({ error: 'ChatGPT no ha podido editar la imagen' + (jj?.error?.message ? ': ' + String(jj.error.message).slice(0, 220) : '') }); }
     const b64 = jj?.data?.[0]?.b64_json;
     if (!b64) return res.status(502).json({ error: 'OpenAI no ha devuelto ninguna imagen' });
-    res.json({ imagen: 'data:image/png;base64,' + b64, modelo: modeloO });
+    // Cada edición con IA vuelve a pintar toda la imagen y tiende a subir contraste y saturación; encadenando varias, el render se «quema».
+    // Se compensa: el brillo, el contraste y el color medios del resultado se acercan a los de la imagen de entrada, salvo que el cambio pedido sea de luz.
+    let salida = Buffer.from(b64, 'base64'), corregida = false;
+    if (!/luz|ilumin|brillo|oscur|clar[oa]|exposic|hora|noche|d[ií]a|atardecer|sol|sombra|c[aá]lid|fr[ií]o|tono|color|saturaci/i.test(texto)) {
+      try {
+        const base = Buffer.from(m[2], 'base64'), pequena = x => sharp(x).resize({ width: 600, withoutEnlargement: true }).removeAlpha();
+        const [a, b] = await Promise.all([pequena(base).stats(), pequena(salida).stats()]);
+        const K_MEDIA = 0.85, K_CONTRASTE = 0.7, g = [], o = [];
+        for (let c = 0; c < 3; c++) {
+          const sd = Math.max(1, b.channels[c].stdev), ganancia = 1 + (Math.min(1.25, Math.max(0.8, a.channels[c].stdev / sd)) - 1) * K_CONTRASTE;
+          const mediaObj = b.channels[c].mean + (a.channels[c].mean - b.channels[c].mean) * K_MEDIA;
+          g.push(ganancia); o.push(mediaObj - ganancia * b.channels[c].mean);
+        }
+        salida = await sharp(salida).linear(g, o).png().toBuffer(); corregida = true;
+      } catch (e2) { console.error('render-ia editar (corrección de tono):', e2.message); }
+    }
+    res.json({ imagen: 'data:image/png;base64,' + salida.toString('base64'), modelo: modeloO, corregida });
   } catch (e) {
     console.error('render-ia editar:', e);
     res.status(500).json({ error: 'No se pudo editar la imagen: ' + String(e.message || e).slice(0, 200) });
