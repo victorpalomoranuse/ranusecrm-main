@@ -52,7 +52,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
   const [autoGuardar, setAutoGuardar] = useState(() => { try { return localStorage.getItem('editorRenderAuto') !== '0'; } catch { return true; } });
   useEffect(() => { try { localStorage.setItem('editorRenderAuto', autoGuardar ? '1' : '0'); } catch { /* sin almacenamiento */ } }, [autoGuardar]);
   const img = useRef(null), lienzo = useRef(null), dibujando = useRef(null), prev = useRef(null), pequena = useRef(null);
-  const [aj, setAj] = useState(AJ0), [aplicandoAj, setAplicandoAj] = useState(false), [mv, setMv] = useState(0), [verMarca, setVerMarca] = useState(true);
+  const [aj, setAj] = useState(AJ0), [aplicandoAj, setAplicandoAj] = useState(false), [mv, setMv] = useState(0), [verMarca, setVerMarca] = useState(true), [gotero, setGotero] = useState(false), [tol, setTol] = useState(28);
   const ajActivo = Object.keys(AJ0).some(k => aj[k] !== AJ0[k]);
 
   const actual = historia[idx];
@@ -66,7 +66,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
       }
       const { cv } = pequena.current, p = prev.current; if (!p || !vivo) return;
       p.width = cv.width; p.height = cv.height; const g = p.getContext('2d'); g.drawImage(cv, 0, 0);
-      const id = g.getImageData(0, 0, p.width, p.height); procesaAjustes(id.data, p.width, p.height, aj, pintado ? alfaMascara(lienzo.current, p.width, p.height) : null); g.putImageData(id, 0, 0);
+      const id = g.getImageData(0, 0, p.width, p.height); procesaAjustes(id.data, p.width, p.height, pintado ? aj : { ...aj, tono: '' }, pintado ? alfaMascara(lienzo.current, p.width, p.height) : null); g.putImageData(id, 0, 0);
     })().catch(() => {});
     return () => { vivo = false; };
   }, [aj, actual.src, mv, pintado]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -76,7 +76,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
     setAplicandoAj(true); setError('');
     try {
       const im = await carga(actual.src), k = Math.min(1, 3840 / Math.max(im.naturalWidth, im.naturalHeight)), cv = document.createElement('canvas'); cv.width = Math.round(im.naturalWidth * k); cv.height = Math.round(im.naturalHeight * k);
-      const g = cv.getContext('2d'); g.drawImage(im, 0, 0, cv.width, cv.height); const id = g.getImageData(0, 0, cv.width, cv.height); procesaAjustes(id.data, cv.width, cv.height, aj, pintado ? alfaMascara(lienzo.current, cv.width, cv.height) : null); g.putImageData(id, 0, 0);
+      const g = cv.getContext('2d'); g.drawImage(im, 0, 0, cv.width, cv.height); const id = g.getImageData(0, 0, cv.width, cv.height); procesaAjustes(id.data, cv.width, cv.height, pintado ? aj : { ...aj, tono: '' }, pintado ? alfaMascara(lienzo.current, cv.width, cv.height) : null); g.putImageData(id, 0, 0);
       const url = cv.toDataURL('image/jpeg', 0.94), nombreAj = pintado ? 'Ajustes de la zona marcada' : 'Ajustes de imagen';
       setHistoria(h => [...h.slice(0, idx + 1), { src: url, guardada: false, texto: nombreAj }]); setIdx(idx + 1); setAj(AJ0);
       if (autoGuardar) { try { const rr = await onGuardar?.(url, (nombre || 'Render') + ' · v' + (idx + 2)); if (rr) setHistoria(h => h.map((v, i) => (i === idx + 1 ? { ...v, guardada: true, render: rr } : v))); } catch { /* se puede guardar a mano */ } }
@@ -95,7 +95,29 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
     g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
     if (a[0] === b[0] && a[1] === b[1]) { g.beginPath(); g.arc(b[0], b[1], (pincel * k) / 2, 0, Math.PI * 2); g.fill(); }
   };
-  const abajo = e => { if (trabajando) return; ajustaLienzo(); e.currentTarget.setPointerCapture(e.pointerId); const p = punto(e); dibujando.current = p; trazo(p, p, p[2]); if (!borrando) setPintado(true); };
+  // Gotero: al pulsar sobre una superficie se selecciona todo ese material (zona continua de color parecido, siguiendo los degradados de luz)
+  const seleccionaMaterial = e => {
+    const im = img.current, c = lienzo.current; if (!im || !c || !im.naturalWidth) return; ajustaLienzo(); setError('');
+    const k = Math.min(1, 900 / Math.max(im.naturalWidth, im.naturalHeight)), w = Math.round(im.naturalWidth * k), h = Math.round(im.naturalHeight * k);
+    const wc = document.createElement('canvas'); wc.width = w; wc.height = h; const g = wc.getContext('2d', { willReadFrequently: true }); g.drawImage(im, 0, 0, w, h);
+    let d; try { d = g.getImageData(0, 0, w, h).data; } catch { setError('El navegador no deja leer esta imagen para el gotero. Recarga la página e inténtalo otra vez.'); return; }
+    const rc = c.getBoundingClientRect(), sx = Math.min(w - 1, Math.max(0, Math.floor(((e.clientX - rc.left) / rc.width) * w))), sy = Math.min(h - 1, Math.max(0, Math.floor(((e.clientY - rc.top) / rc.height) * h)));
+    let sr = 0, sg = 0, sb = 0, n = 0; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const x = Math.min(w - 1, Math.max(0, sx + dx)), y = Math.min(h - 1, Math.max(0, sy + dy)), i = (y * w + x) * 4; sr += d[i]; sg += d[i + 1]; sb += d[i + 2]; n++; }
+    sr /= n; sg /= n; sb /= n;
+    const paso = Math.max(4, tol * 0.28), tope = tol * 1.6, vis = new Uint8Array(w * h), sel = new Uint8Array(w * h), pila = [sy * w + sx]; vis[pila[0]] = 1; let cuenta = 0;
+    while (pila.length) {
+      const p = pila.pop(); sel[p] = 1; cuenta++; const x = p % w, y = (p / w) | 0, i = p * 4;
+      const vecinos = [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, y > 0 ? p - w : -1, y < h - 1 ? p + w : -1];
+      for (const q of vecinos) { if (q < 0 || vis[q]) continue; vis[q] = 1; const j = q * 4; if (Math.hypot(d[j] - d[i], d[j + 1] - d[i + 1], d[j + 2] - d[i + 2]) <= paso && Math.hypot(d[j] - sr, d[j + 1] - sg, d[j + 2] - sb) <= tope) pila.push(q); }
+    }
+    if (cuenta < 20) { setError('No se ha podido seleccionar esa zona. Sube la tolerancia o pulsa en otro punto de la superficie.'); return; }
+    const mc = document.createElement('canvas'); mc.width = w; mc.height = h; const mg = mc.getContext('2d'), id = mg.createImageData(w, h);
+    for (let p = 0; p < w * h; p++) if (sel[p]) { id.data[p * 4] = 255; id.data[p * 4 + 1] = 59; id.data[p * 4 + 2] = 59; id.data[p * 4 + 3] = 255; }
+    mg.putImageData(id, 0, 0);
+    const lg = c.getContext('2d'); lg.globalCompositeOperation = borrando ? 'destination-out' : 'source-over'; lg.imageSmoothingEnabled = true; lg.drawImage(mc, 0, 0, c.width, c.height);
+    if (!borrando) setPintado(true); setMv(x => x + 1);
+  };
+  const abajo = e => { if (trabajando) return; if (gotero) { seleccionaMaterial(e); return; } ajustaLienzo(); e.currentTarget.setPointerCapture(e.pointerId); const p = punto(e); dibujando.current = p; trazo(p, p, p[2]); if (!borrando) setPintado(true); };
   const mueve = e => { if (!dibujando.current) return; const p = punto(e); trazo(dibujando.current, p, p[2]); dibujando.current = p; };
   const arriba = () => { if (dibujando.current) setMv(x => x + 1); dibujando.current = null; };
 
@@ -172,7 +194,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
             <img ref={img} src={comparar ? historia[0].src : actual.src} alt="" crossOrigin="anonymous" onLoad={ajustaLienzo} draggable={false} style={{ maxWidth: 'calc(100vw - 360px)', maxHeight: 'calc(100vh - 150px)', display: 'block', borderRadius: 4, userSelect: 'none' }} />
             <canvas ref={prev} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', display: ajActivo && !comparar ? 'block' : 'none', borderRadius: 4 }} />
             <canvas ref={lienzo} onPointerDown={abajo} onPointerMove={mueve} onPointerUp={arriba} onPointerCancel={arriba}
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: comparar || (!verMarca && ajActivo) ? 0 : 0.5, cursor: trabajando ? 'wait' : 'crosshair', touchAction: 'none' }} />
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: comparar || (!verMarca && ajActivo) ? 0 : 0.5, cursor: trabajando ? 'wait' : gotero ? 'cell' : 'crosshair', touchAction: 'none' }} />
             {trabajando && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', lineHeight: 1.4, fontSize: 15 }}>ChatGPT está editando… (puede tardar un minuto)</div>}
           </div>
         </div>
@@ -200,7 +222,8 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
               </label>
             ))}
             <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #2b2724' }}>
-              <div style={{ fontSize: 12, marginBottom: 4, opacity: 0.85 }}>🎨 Cambiar el color {pintado ? 'de la zona pintada' : 'de toda la imagen'}</div>
+              <div style={{ fontSize: 12, marginBottom: 4, opacity: 0.85 }}>🎨 Cambiar el color de la zona seleccionada</div>
+              {!pintado && <div style={{ fontSize: 11, color: '#e0b25a', marginBottom: 4 }}>Primero elige la superficie con el gotero (o píntala con el pincel). El color solo se aplica a la zona elegida.</div>}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input type="color" value={aj.tono || '#6b6159'} onChange={e => setAj(a => ({ ...a, tono: e.target.value }))} style={{ width: 46, height: 28, padding: 0, border: '1px solid #4a443f', borderRadius: 4, background: 'none', cursor: 'pointer' }} title="Elige el color" />
                 <input type="range" min="0.1" max="1" step="0.05" value={aj.tonoK} onChange={e => setAj(a => ({ ...a, tonoK: parseFloat(e.target.value), tono: a.tono || '#6b6159' }))} style={{ flex: 1 }} title="Intensidad del color" />
@@ -221,6 +244,11 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
             <button style={{ ...boton, ...(borrando ? { background: ORO, color: '#000' } : {}) }} onClick={() => setBorrando(true)}>⌫ Borrar</button>
             <button style={boton} onClick={limpiaMascara} disabled={!pintado}>Limpiar</button>
           </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+            <button style={{ ...boton, flex: 1, ...(gotero ? { background: '#2f5f8a', fontWeight: 700 } : {}) }} onClick={() => setGotero(v => !v)} title="Pulsa sobre una pared o material y se selecciona entero">💧 Gotero: elegir un material</button>
+          </div>
+          {gotero && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 12 }}><span style={{ width: 70, opacity: 0.8 }}>Tolerancia</span><input type="range" min="8" max="90" value={tol} onChange={e => setTol(parseInt(e.target.value, 10))} style={{ flex: 1 }} title="Más alta = coge más superficie parecida" /></label>}
+          {gotero && <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 6 }}>Pulsa sobre la pared o el material. Si coge de menos, sube la tolerancia; si se pasa, bájala y pulsa otra vez (Limpiar para empezar de nuevo). Puedes pulsar en varios sitios para sumarlos. Con «Borrar» activado, resta.</div>}
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>Grosor <input type="range" min="8" max="140" value={pincel} onChange={e => setPincel(parseInt(e.target.value, 10))} style={{ flex: 1 }} /></label>
           <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 12 }}>{pintado ? 'Solo se cambiará lo pintado en rojo.' : 'Sin zona marcada, el cambio se aplica a toda la imagen.'}</div>
 
