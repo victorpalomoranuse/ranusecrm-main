@@ -303,6 +303,8 @@ router.get('/', async (req, res) => {
 // Registradas antes de '/:id' para que Express no las confunda con un ID.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// partidas que son un servicio y no una compra: no salen en Pedidos aunque estén marcadas como material o mobiliario
+const ES_SERVICIO = /^\s*(instalaci[oó]n|montaje|transporte|retirada|gesti[oó]n|desplazamiento|mano de obra|honorarios|dise[ñn]o)/i;
 router.get('/pedidos', async (req, res) => {
   try {
     const COLS = 'id, name, brand, provider, category, quantity, unit, order_status, payment_status, delivery_date, pedido_order, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado';
@@ -314,7 +316,7 @@ router.get('/pedidos', async (req, res) => {
     const lines = [];
     (data || []).forEach(b => {
       (b.items || []).forEach(item => {
-        if (item.category !== 'material' && item.category !== 'mobiliario') return;
+        if ((item.category !== 'material' && item.category !== 'mobiliario') || ES_SERVICIO.test(item.name || '')) return;
         lines.push({
           ...item,
           effective_provider: item.provider?.trim() || item.brand?.trim() || 'Sin proveedor',
@@ -349,7 +351,7 @@ router.get('/pedidos/export', async (req, res) => {
     (data || []).forEach(b => {
       if (projectId && b.project?.id !== projectId) return;
       (b.items || []).forEach(item => {
-        if (item.category !== 'material' && item.category !== 'mobiliario') return;
+        if ((item.category !== 'material' && item.category !== 'mobiliario') || ES_SERVICIO.test(item.name || '')) return;
         const effective = item.provider?.trim() || item.brand?.trim() || 'Sin proveedor';
         if (effective.toLowerCase() === provider && (!refPedido || item.pedido_ref === refPedido)) lines.push({ ...item, project: b.project });
       });

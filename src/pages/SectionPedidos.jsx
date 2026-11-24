@@ -18,10 +18,6 @@ export const ORDER_STATUSES = [
   { value: 'entregado', label: 'Entregado · falta montar', color: '#c79bff' },
   { value: 'montado', label: 'Entregado y montado', color: '#4be3a0' },
 ];
-const PAYMENT_STATUSES = [
-  { value: 'pendiente', label: 'Por pagar', color: '#ae8b8b' },
-  { value: 'pagado', label: 'Pagado', color: '#8bae8f' },
-];
 const ESTADO = Object.fromEntries(ORDER_STATUSES.map(s => [s.value, s]));
 const colorDe = (v) => (ESTADO[v || 'pendiente'] || ESTADO.pendiente).color;
 const mut = { fontSize: '0.74rem', color: 'rgba(255,255,255,0.45)' };
@@ -44,10 +40,8 @@ function LineaPieza({ line, onUpdate, sel, onSel, dragProps }) {
       <select className="ap-select ap-select-sm" value={line.order_status || 'pendiente'} onChange={e => onUpdate(line, { order_status: e.target.value })} style={{ minWidth: 175 }}>
         {ORDER_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
       </select>
-      <select className="ap-select ap-select-sm" value={line.payment_status || 'pendiente'} onChange={e => onUpdate(line, { payment_status: e.target.value })}>
-        {PAYMENT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-      </select>
       <input type="date" className="ap-field-input" style={{ maxWidth: 140 }} value={line.delivery_date || ''} onChange={e => onUpdate(line, { delivery_date: e.target.value })} />
+      <button type="button" title="Esta partida no es una compra a un proveedor (un servicio, una instalación…): dejará de salir en Pedidos" onClick={() => { if (window.confirm('¿Sacar «' + line.name.slice(0, 60) + '» de Pedidos?\n\nSe marcará como Instalación en el presupuesto y dejará de salir aquí.')) onUpdate(line, { category: 'instalacion' }); }} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.55)', borderRadius: 6, padding: '3px 8px', fontSize: '0.7rem', cursor: 'pointer' }}>No es un pedido</button>
     </div>
   );
 }
@@ -98,6 +92,7 @@ export function SectionPedidos() {
   const updateLine = async (line, updates) => {
     try {
       const { data } = await api.put(`/budgets/${line.budget_id}/items/${line.id}`, updates);
+      if (updates.category && updates.category !== 'material' && updates.category !== 'mobiliario') { setLines(prev => prev.filter(l => l.id !== line.id)); return; } // ya no es una compra: sale de Pedidos
       setLines(prev => prev.map(l => l.id === line.id ? { ...l, ...data.item, effective_provider: data.item.provider?.trim() || data.item.brand?.trim() || 'Sin proveedor' } : l));
     } catch { /* se queda como estaba */ }
   };

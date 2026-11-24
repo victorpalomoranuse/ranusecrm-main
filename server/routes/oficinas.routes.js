@@ -136,7 +136,7 @@ async function pedidosPorProyecto(hoy) {
     if (bu.error) bu = await leeBu(''); // aún sin la migración de pedidos agrupados
     const por = {};
     (bu.data || []).forEach(b => (b.items || []).forEach(it => {
-      if (it.category !== 'material' && it.category !== 'mobiliario') return;
+      if ((it.category !== 'material' && it.category !== 'mobiliario') || /^\s*(instalaci[oó]n|montaje|transporte|retirada|gesti[oó]n|desplazamiento|mano de obra|honorarios|dise[ñn]o)/i.test(it.name || '')) return;
       const e = por[b.project_id] || (por[b.project_id] = { estados: Object.fromEntries(ESTADOS_PEDIDO.map(k => [k, 0])), total: 0, proximaEntrega: null, proveedores: {}, grupos: {}, sinPedir: 0 });
       const st = ESTADOS_PEDIDO.includes(it.order_status) ? it.order_status : 'pendiente', prov = (it.provider || it.brand || 'Sin proveedor').trim();
       e.estados[st]++; e.total++;
