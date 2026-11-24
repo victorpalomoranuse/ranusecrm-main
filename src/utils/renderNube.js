@@ -15,10 +15,19 @@ const esperar = ms => new Promise(r => setTimeout(r, ms));
 export async function lanzarRenderNube({ glb, info, calidad = 'hd', exposicion = 3, alAvanzar = () => {} }) {
   alAvanzar('Subiendo la escena…');
   let t; try { t = (await api.post('/render-nube/crear')).data; } catch (e) { throw new Error('No se pudo preparar el render (' + (e.response?.status || 'sin conexión') + '): ' + (e.response?.data?.error || e.message)); }
-  await subir(t.escena, glb, 'model/gltf-binary');
+  // Supabase no admite archivos de más de ~50 MB: si la escena pesa más, se sube comprimida y el servidor la descomprime para el worker
+  let comprimida = false;
+  if (glb.size > 45 * 1048576) {
+    if (typeof CompressionStream === 'undefined') throw new Error('La escena pesa ' + Math.round(glb.size / 1048576) + ' MB y este navegador no puede comprimirla. Usa Chrome o Edge actualizado.');
+    alAvanzar('Comprimiendo la escena (' + Math.round(glb.size / 1048576) + ' MB)…');
+    const gz = await new Response(glb.stream().pipeThrough(new CompressionStream('gzip'))).blob();
+    if (gz.size > 49 * 1048576) throw new Error('La escena sigue pesando demasiado (' + Math.round(gz.size / 1048576) + ' MB comprimida). Oculta alguna máquina muy detallada o renderiza una zona más pequeña.');
+    alAvanzar('Subiendo la escena…');
+    await subir(t.escenaGz, gz, 'application/gzip'); comprimida = true;
+  } else await subir(t.escena, glb, 'model/gltf-binary');
   await subir(t.luces, new Blob([JSON.stringify(info)], { type: 'application/json' }), 'application/json');
   alAvanzar('Enviando a la GPU…');
-  try { await api.post('/render-nube/iniciar', { id: t.id, calidad, exposicion }); } catch (e) { throw new Error('No se pudo lanzar el render (' + (e.response?.status || 'sin conexión') + '): ' + (e.response?.data?.error || e.message) + (e.response?.data?.detalle ? ' · ' + JSON.stringify(e.response.data.detalle).slice(0, 120) : '')); }
+  try { await api.post('/render-nube/iniciar', { id: t.id, calidad, exposicion, comprimida }); } catch (e) { throw new Error('No se pudo lanzar el render (' + (e.response?.status || 'sin conexión') + '): ' + (e.response?.data?.error || e.message) + (e.response?.data?.detalle ? ' · ' + JSON.stringify(e.response.data.detalle).slice(0, 120) : '')); }
   return t.id;
 }
 

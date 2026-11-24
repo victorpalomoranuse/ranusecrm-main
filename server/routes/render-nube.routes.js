@@ -8,10 +8,26 @@ import { authenticateToken, requirePermission } from '../middleware/auth.middlew
 // pide el trabajo a RunPod, el worker (server/render-worker) renderiza y sube la imagen a otra URL firmada.
 // Variables: RUNPOD_API_KEY y RUNPOD_ENDPOINT_ID. Sin ellas el botón avisa de que aún no está activado.
 const router = express.Router();
-router.use(authenticateToken, requirePermission('proyectos'));
 
 const BUCKET = 'project-documents';
 const BASE = 'render-nube';
+
+// Escenas grandes: el visor sube el .glb comprimido (gzip) porque Supabase limita cada archivo (~50 MB). El worker de RunPod pide la escena
+// a esta URL, que la descomprime al vuelo, así el worker no necesita cambios. Va sin login pero con una firma que caduca (la usa RunPod, no una persona).
+const firmaEscena = (id, exp) => crypto.createHmac('sha256', process.env.JWT_SECRET || 'ranuse').update(`escena:${id}:${exp}`).digest('hex');
+router.get('/escena/:id.glb', async (req, res) => {
+  try {
+    const { id } = req.params, exp = Number(req.query.e) || 0, f = String(req.query.f || '');
+    const ok = /^[a-f0-9]{16}$/.test(id) && exp > Date.now() && f.length === 64 && crypto.timingSafeEqual(Buffer.from(f), Buffer.from(firmaEscena(id, exp)));
+    if (!ok) return res.status(403).json({ error: 'Enlace no válido o caducado' });
+    const { data, error } = await supabase.storage.from(BUCKET).download(`${BASE}/${id}/escena.glb.gz`);
+    if (error || !data) return res.status(404).json({ error: 'No existe la escena' });
+    const glb = (await import('zlib')).gunzipSync(Buffer.from(await data.arrayBuffer()));
+    res.set({ 'Content-Type': 'model/gltf-binary', 'Content-Length': glb.length }).send(glb);
+  } catch (e) { res.status(500).json({ error: 'No se pudo preparar la escena' }); }
+});
+
+router.use(authenticateToken, requirePermission('proyectos'));
 const RUNPOD = 'https://api.runpod.ai/v2';
 const CALIDADES = { previa: { ancho: 1280, muestras: 48 }, hd: { ancho: 3840, muestras: 192 }, '8k': { ancho: 7680, muestras: 256 } };
 const clave = () => process.env.RUNPOD_API_KEY, endpoint = () => process.env.RUNPOD_ENDPOINT_ID;
@@ -27,7 +43,7 @@ router.post('/crear', async (req, res) => {
   try {
     const id = crypto.randomBytes(8).toString('hex');
     const sube = async nombre => { const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(`${BASE}/${id}/${nombre}`); if (error) throw error; return data.signedUrl; };
-    res.json({ id, escena: await sube('escena.glb'), luces: await sube('luces.json') });
+    res.json({ id, escena: await sube('escena.glb'), escenaGz: await sube('escena.glb.gz'), luces: await sube('luces.json') });
   } catch (e) { res.status(500).json({ error: 'No se pudo preparar el render: ' + (e.message || e) }); }
 });
 
@@ -41,7 +57,9 @@ router.post('/iniciar', async (req, res) => {
     const firma = async nombre => { const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(`${BASE}/${id}/${nombre}`, 3600); if (error) throw error; return data.signedUrl; };
     const sube = await supabase.storage.from(BUCKET).createSignedUploadUrl(`${BASE}/${id}/resultado.png`);
     if (sube.error) throw sube.error;
-    const r = await rp('/run', { method: 'POST', body: JSON.stringify({ input: { escena: await firma('escena.glb'), luces: await firma('luces.json'), subida: sube.data.signedUrl, ancho: cal.ancho, muestras: cal.muestras, exposicion: Number(req.body.exposicion) || 3 } }) });
+    let urlEscena;
+    if (req.body.comprimida) { const exp = Date.now() + 3 * 3600 * 1000, base = `${req.get('x-forwarded-proto') || req.protocol}://${req.get('host')}`; urlEscena = `${base}/api/render-nube/escena/${id}.glb?e=${exp}&f=${firmaEscena(id, exp)}`; }
+    const r = await rp('/run', { method: 'POST', body: JSON.stringify({ input: { escena: urlEscena || await firma('escena.glb'), luces: await firma('luces.json'), subida: sube.data.signedUrl, ancho: cal.ancho, muestras: cal.muestras, exposicion: Number(req.body.exposicion) || 3 } }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.id) return res.status(502).json({ error: 'RunPod no aceptó el trabajo', detalle: j.error || r.status });
     await supabase.storage.from(BUCKET).upload(`${BASE}/${id}/job.json`, Buffer.from(JSON.stringify({ runpod: j.id, calidad, usuario: req.user?.id || null, fecha: new Date().toISOString() })), { contentType: 'application/json', upsert: true });
