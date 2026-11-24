@@ -6,6 +6,7 @@ import { leerJson, guardarJson } from '../utils/asistente-personal.js';
 import * as drive from '../utils/drive-lectura.js';
 import { nubeActiva, lanzarNube } from '../utils/nube.js';
 import { callClaude } from '../utils/anthropic.js';
+import { crearFormatoAprobado, aplicarFormatoAprobado } from '../utils/formatos-aprobados.js';
 
 // Estudio de vídeo: subes una voz en off (o un bruto), eliges un formato y un trabajador de vídeo lo monta.
 // Cola de trabajos = un JSON por trabajo en el bucket privado "estudio-video" (sin migraciones de base de datos).
@@ -450,11 +451,40 @@ router.get('/carpetas', async (req, res) => {
   catch { res.status(500).json({ error: 'No se pudieron leer las carpetas' }); }
 });
 
+const idAprobado = id => /^[a-f0-9-]{36}$/.test(String(id || ''));
+async function leerAprobado(id) {
+  if (!idAprobado(id)) return null;
+  const { data, error } = await st().download('aprobados/' + id + '.json');
+  if (error) throw new Error('No se pudo leer el formato aprobado');
+  return JSON.parse(await data.text());
+}
+router.get('/aprobados', async (_req, res) => {
+  try {
+    await bucket(); const { data, error } = await st().list('aprobados', { limit: 1000, sortBy: { column: 'created_at', order: 'desc' } });
+    if (error) throw error;
+    const formatos = await Promise.all((data || []).filter(f => idAprobado(f.name.replace(/\.json$/, ''))).map(f => leerAprobado(f.name.replace(/\.json$/, ''))));
+    res.json({ formatos });
+  } catch { res.status(503).json({ error: 'No se pudieron cargar los formatos aprobados. Vuelve a intentarlo.' }); }
+});
+router.post('/aprobados', async (req, res) => {
+  try {
+    await bucket();
+    if (!/^[a-f0-9]{8}$/.test(String(req.body?.trabajo_id || ''))) return res.status(400).json({ error: 'Vídeo no válido' });
+    const t = await leerTrabajo(req.body.trabajo_id);
+    let p; try { p = crearFormatoAprobado(t, req.body.nombre, req.body.reglas); } catch (e) { return res.status(400).json({ error: e.message }); }
+    p.id = crypto.randomUUID(); p.por = req.user?.name || req.user?.email || null;
+    const { error } = await st().upload('aprobados/' + p.id + '.json', Buffer.from(JSON.stringify(p)), { contentType: 'application/json', upsert: false });
+    if (error) throw error;
+    res.status(201).json({ formato: p });
+  } catch { res.status(500).json({ error: 'No se pudo guardar el formato. Inténtalo de nuevo.' }); }
+});
 router.post('/trabajos', async (req, res) => {
   try {
     await bucket();
-    const b = req.body || {}; if (b.dur_auto) { const [mn, mx] = await duracionIdeal(); b.dur_min = mn; b.dur_max = mx; }
-    const lista = await formatos(); const fmt = b.tipo === 'youtube' ? { id: 'youtube', nombre: 'YouTube 1080p', receta: { flash: false } } : b.tipo === 'referencia' ? lista[0] : lista.find(x => x.id === b.formato);
+    let b = req.body || {}; let aprobado = null;
+    if (b.plantilla_id) { aprobado = await leerAprobado(b.plantilla_id); if (!aprobado) return res.status(400).json({ error: 'Formato aprobado no válido' }); b = aplicarFormatoAprobado(aprobado, b); }
+    if (b.dur_auto) { const [mn, mx] = await duracionIdeal(); b.dur_min = mn; b.dur_max = mx; }
+    const lista = await formatos(); const fmt = aprobado ? { id: aprobado.id, nombre: aprobado.nombre, receta: aprobado.receta, notas: aprobado.reglas } : b.tipo === 'youtube' ? { id: 'youtube', nombre: 'YouTube 1080p', receta: { flash: false } } : b.tipo === 'referencia' ? lista[0] : lista.find(x => x.id === b.formato);
     if (!fmt) return res.status(400).json({ error: 'Elige un formato' });
     if (!['voz', 'bruto', 'base', 'clips', 'referencia', 'youtube'].includes(b.tipo)) return res.status(400).json({ error: 'Indica si subes una voz en off, un bruto o eliges un vídeo base' });
     let fuentes;
@@ -464,10 +494,11 @@ router.post('/trabajos', async (req, res) => {
       if (fuentes.some(f => f.base ? !/^[\w-]{10,60}$/.test(f.base.id) : !/^entradas\/[\w./-]+$/.test(f.archivo) || f.archivo.includes('..'))) return res.status(400).json({ error: 'Fuente de vídeo no válida' });
     } else if (b.tipo === 'base' || b.base?.id) { if (!/^[\w-]{10,60}$/.test(b.base?.id || '')) return res.status(400).json({ error: 'Elige el archivo de Drive' }); }
     else if (!/^entradas\//.test(b.archivo || '')) return res.status(400).json({ error: 'Falta el archivo subido' });
-    const recFin = await recetaFinal(fmt, b.estilo); let notasFmt = fmt.notas || '';
+    const recFin = aprobado ? { receta: structuredClone(aprobado.receta) } : await recetaFinal(fmt, b.estilo); let notasFmt = fmt.notas || '';
     if (fmt.id === 'auto-redes') { const dr = await direccionRedes(); recFin.receta = b.estilo ? recFin.receta : { ...recFin.receta, ...dr.receta, flash: false, intensidad: 'sobria', ilustraciones: false, cortesAutomaticos: false }; notasFmt = dr.notas; }
     const t = { id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), por: req.user?.name || req.user?.email || null, reglas: await textoReglasCompleto(), tipo: b.tipo, ...(b.tipo === 'clips' ? { num_clips: Math.max(0, Math.min(12, parseInt(b.num_clips) || 0)), dur_min: Math.max(10, Math.min(120, parseInt(b.dur_min) || 25)), dur_max: Math.max(15, Math.min(180, parseInt(b.dur_max) || 70)) } : {}), archivo: b.base?.id ? null : b.archivo, base: b.base?.id ? { id: limpia(b.base.id, 80), nombre: limpia(b.base.nombre, 160), ruta: limpia(b.base.ruta, 400) } : null, nombre_archivo: limpia(b.nombre_archivo, 120), formato: fmt.id, formato_nombre: fmt.nombre, receta: recFin.receta, estilo: recFin.estilo?.id || null, estilo_nombre: recFin.estilo?.nombre || null, notas_formato: notasFmt, indicaciones: limpia(b.indicaciones, 800), guion: limpia(b.guion, 20000), ...(b.fase === 'transcribir' && b.tipo === 'clips' ? { fase: 'transcribir' } : {}), ...(b.fase === 'audio' && b.tipo === 'voz' ? { fase: 'audio' } : {}), ...(Array.isArray(b.reparto) && b.reparto.length ? { reparto: b.reparto.slice(0, 40).map(p => ({ texto: limpia(p?.texto, 700), clips: (Array.isArray(p?.clips) ? p.clips : []).slice(0, 10).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['video', 'imagen', 'carpeta'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => /^[\w-]{10,60}$/.test(x.id)) })).filter(p => p.texto && p.clips.length) } : {}), musica: limpia(b.musica, 150) || 'auto', carpetas: (Array.isArray(b.carpetas) ? b.carpetas : []).slice(0, 30).map(c => limpia(c, 200)).filter(Boolean), recursos: (Array.isArray(b.recursos) ? b.recursos : []).slice(0, 60).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['carpeta', 'video', 'imagen', 'subido'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => x.id), estado: 'pendiente', progreso: 'En cola', version: 1, origen: b.origen || null };
     if (b.tipo === 'youtube') Object.assign(t, { fuentes, objetivo_segundos: Math.max(300, Math.min(1200, Number(b.objetivo_segundos) || 600)), formato: 'youtube', formato_nombre: 'YouTube 1080p', receta: { flash: false }, musica: 'ninguna' });
+    if (aprobado) { t.plantilla_id = aprobado.id; t.formato_nombre = aprobado.nombre; t.reglas = aprobado.reglas; t.notas_formato = aprobado.reglas; }
     t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t);
     if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); } // si Google no arranca, lo hace el PC
     res.status(201).json({ trabajo: t });

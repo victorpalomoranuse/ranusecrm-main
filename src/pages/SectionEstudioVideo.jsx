@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import api from '../services/api';
+import { AprobarFormato, CrearConFormato, BibliotecaAprobados } from './FormatosAprobados';
 import { Film, Upload, Mic, Video, Trash2, RefreshCw, Download, Plus, Check, Wand2, Settings2, Loader2, Music, Folder, ArrowLeft, Image as ImagenIcono, Play, X, Scissors } from 'lucide-react';
 
 const card = { background: 'linear-gradient(160deg,rgba(255,255,255,.055),rgba(255,255,255,.02))', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 18, padding: '1.2rem 1.3rem' };
@@ -2076,6 +2077,9 @@ export function SectionRedes() {
 }
 
 export function SectionEstudioVideo() {
+  const [seccion, setSeccion] = useState('crear'), [aprobados, setAprobados] = useState([]), [cargandoAprobados, setCargandoAprobados] = useState(true), [errorAprobados, setErrorAprobados] = useState(''), [seleccionado, setSeleccionado] = useState(''), [verPrueba, setVerPrueba] = useState(false), [revisionId, setRevisionId] = useState('');
+  const cargarAprobados = useCallback(async () => { setCargandoAprobados(true); setErrorAprobados(''); try { const r = await api.get('/estudio-video/aprobados'); setAprobados(r.data.formatos || []); } catch { setErrorAprobados('No se pudieron cargar los formatos aprobados.'); } finally { setCargandoAprobados(false); } }, []);
+  useEffect(() => { cargarAprobados(); }, [cargarAprobados]);
   const [tab, setTab] = useState('videos'), [carpetas, setCarpetas] = useState([]), [pistas, setPistas] = useState([]), [formatos, setFormatos] = useState([]), [trabajos, setTrabajos] = useState(null), [error, setError] = useState('');
   const cargarF = useCallback(() => api.get('/estudio-video/formatos').then(r => setFormatos(r.data.formatos || [])).catch(() => setError('No se han podido cargar los formatos')), []);
   // Al refrescar la lista NO se cambian los enlaces de los vídeos ni los trabajos que no han cambiado: así los reproductores y los paneles abiertos no se reinician
@@ -2096,18 +2100,23 @@ export function SectionEstudioVideo() {
     <div className="ev-root rd-wrap">
       <style>{ESTILO_SELECT + ESTILO_REDES}</style>
       <div className="rd-head">
-        <div><h1 className="rd-title">Estudio de vídeo</h1><div className="rd-sub">Sube el material, elige formato y estilo, y el editor lo monta.</div></div>
+        <div><h1 className="rd-title">Estudio de vídeo</h1><div className="rd-sub">Probamos, revisamos y guardamos tu formato. Después, solo sube el siguiente vídeo.</div></div>
         <div className="rd-tabs">
-          {[['videos', Film, 'Vídeos'], ['formatos', Settings2, 'Formatos y estilos'], ['musica', Music, 'Música'], ['efectos', Wand2, 'Efectos'], ['editor', Mic, 'Habla con el editor']].map(([k, Icono, n]) => <button key={k} className={'rd-tab' + (tab === k ? ' on' : '')} onClick={() => setTab(k)}><Icono size={15} /> {n}</button>)}
+          {[['crear', Upload, 'Crear vídeo'], ['revision', Film, 'Pruebas y revisión'], ['aprobados', Check, 'Mis formatos'], ['avanzado', Settings2, 'Ajustes avanzados']].map(([k, Icono, n]) => <button key={k} className={'rd-tab' + (seccion === k ? ' on' : '')} onClick={() => { setSeccion(k); setRevisionId(''); }}><Icono size={15} /> {n}</button>)}
         </div>
       </div>
       {error && <div className="ap-error" style={{ marginBottom: 10 }}>{error}</div>}
-      {tab === 'editor' ? <PestanaEditor trabajos={trabajos || []} /> : tab === 'efectos' ? <PestanaEfectos /> : tab === 'formatos' ? <><AprenderReferencia formatos={formatos} onCambio={cargarT} /><Formatos formatos={formatos} onCambio={cargarF} /><EstilosPestana /></> : tab === 'ideas' ? <PestanaIdeas /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : (
+      {errorAprobados && <div role="alert" className="rd-card">{errorAprobados}<button className="rd-btn" onClick={cargarAprobados}>Reintentar</button></div>}
+      {seccion === 'crear' && (cargandoAprobados ? <p>Cargando tus formatos…</p> : !errorAprobados && <CrearConFormato formatos={aprobados} seleccionado={seleccionado} onSeleccionar={setSeleccionado} subirArchivo={subirArchivo} onCreado={() => { cargarT(); setRevisionId(''); setSeccion('revision'); }} onPrueba={() => { setVerPrueba(true); setRevisionId(''); setSeccion('revision'); }} />)}
+      {seccion === 'aprobados' && !errorAprobados && (cargandoAprobados ? <p>Cargando…</p> : <BibliotecaAprobados formatos={aprobados} onUsar={id => { setSeleccionado(id); setSeccion('crear'); }} onRevisar={id => { setRevisionId(id); setVerPrueba(false); setSeccion('revision'); }} />)}
+      {seccion === 'revision' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Nuevo formatos={formatos} musica={pistas} carpetas={carpetas} trabajos={trabajos} onCreado={cargarT} />
-          {trabajos === null ? <div className="ap-loading">Cargando…</div> : trabajos.length === 0 ? <div style={mut}>Todavía no hay vídeos. Sube el primero arriba.</div> : trabajos.map(t => <Trabajo key={t.id} t={t} formatos={formatos} musica={pistas} trabajosTodos={trabajos} onCambio={cargarT} />)}
+          <div className="rd-card"><h3>1. Prueba → 2. Revisión → 3. Tu OK</h3><p style={{ margin: 0 }}>Aquí revisamos las pruebas y afinamos los cambios. Cuando un vídeo esté como quieres, aprueba y guarda su formato. Generar un vídeo no lo aprueba automáticamente.</p><button className="rd-btn" onClick={() => setVerPrueba(!verPrueba)}>{verPrueba ? 'Cerrar nueva prueba' : 'Crear una nueva prueba'}</button>{revisionId && <button className="rd-btn" onClick={() => setRevisionId('')}>Ver todas las pruebas</button>}</div>
+          {verPrueba && <Nuevo formatos={formatos} musica={pistas} carpetas={carpetas} trabajos={trabajos} onCreado={() => { cargarT(); setVerPrueba(false); setRevisionId(''); }} />}
+          {trabajos === null ? <div className="ap-loading">Cargando…</div> : !(revisionId ? trabajos.filter(t => t.id === revisionId) : trabajos).length ? <div className="rd-card">{revisionId ? 'El vídeo no está en el historial reciente o se ha eliminado. Su formato guardado sigue disponible.' : 'Todavía no hay pruebas. Crea la primera para empezar.'}</div> : (revisionId ? trabajos.filter(t => t.id === revisionId) : trabajos).map(t => <div key={t.id}><Trabajo t={t} formatos={formatos} musica={pistas} trabajosTodos={trabajos} onCambio={cargarT} /><AprobarFormato trabajo={t} formatos={aprobados} onGuardado={p => setAprobados(prev => [p, ...prev])} /></div>)}
         </div>
       )}
+      {seccion === 'avanzado' && <><div className="rd-card" style={{ marginBottom: 16 }}><p style={{ margin: 0 }}>Herramientas para preparar nuevas pruebas. Cambiar estos ajustes no modifica los formatos que ya has aprobado.</p><div className="rd-tabs">{[['formatos', 'Estilos de prueba'], ['musica', 'Música'], ['efectos', 'Efectos'], ['editor', 'Habla con el editor']].map(([k, n]) => <button key={k} className={'rd-tab' + ((tab === k || (tab === 'videos' && k === 'formatos')) ? ' on' : '')} onClick={() => setTab(k)}>{n}</button>)}</div></div>{tab === 'editor' ? <PestanaEditor trabajos={trabajos || []} /> : tab === 'efectos' ? <PestanaEfectos /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : <><AprenderReferencia formatos={formatos} onCambio={cargarT} /><Formatos formatos={formatos} onCambio={cargarF} /><EstilosPestana /></>}</>}
     </div>
   );
 }
