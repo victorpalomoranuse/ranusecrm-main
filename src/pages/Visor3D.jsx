@@ -6678,15 +6678,23 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
     }
     setLote(null); setGalAbierta(true); setAviso('Renders de las escenas terminados: están en la Galería.');
   };
-  const renderTodasNube = async () => {
-    if (!escenas.length || lote || nube?.estado === 'trabajando') return;
-    if (!window.confirm('Se mandarán ' + escenas.length + ' escenas a la nube a la vez (4K, calidad HD). Cada una tarda unos minutos y se guarda sola en la Galería cuando termina. Puedes seguir trabajando. ¿Continuar?')) return;
+  const renderUnaHD = async (e) => {
+    if (lote || nube?.estado === 'trabajando') return;
+    setLote({ i: 1, n: 1, tipo: 'hd', nombre: e.nombre });
+    const ok = await renderEscena(e, 'hd');
+    setLote(null);
+    if (ok) { setGalAbierta(true); setAviso('Render HD de «' + e.nombre + '» guardado en la Galería.'); } else setAviso('No se pudo hacer el render HD de «' + e.nombre + '».');
+  };
+  const renderTodasNube = async (lista) => {
+    const sel = Array.isArray(lista) ? lista : escenas; // sin argumento (botón «Todas») = todas; con una lista = solo esas
+    if (!sel.length || lote || nube?.estado === 'trabajando') return;
+    if (!window.confirm(sel.length === 1 ? 'Se mandará la escena «' + sel[0].nombre + '» a la nube (4K, calidad HD). Tarda unos minutos y se guarda sola en la Galería cuando termina. Puedes seguir trabajando. ¿Continuar?' : 'Se mandarán ' + sel.length + ' escenas a la nube a la vez (4K, calidad HD). Cada una tarda unos minutos y se guarda sola en la Galería cuando termina. Puedes seguir trabajando. ¿Continuar?')) return;
     const est = await renderNubeDisponible(); if (!est.disponible) { setAviso(est.motivo || 'El render en la nube aún no está activado.'); return; }
     const trabajos = [], fallos = [];
-    setNubeEsc(Object.fromEntries(escenas.map(e => [e.id, { estado: 'espera', texto: 'En espera de enviarse' }])));
+    setNubeEsc(Object.fromEntries(sel.map(e => [e.id, { estado: 'espera', texto: 'En espera de enviarse' }])));
     try {
-      for (let i = 0; i < escenas.length; i++) {
-        const e = escenas[i]; setLote({ i: i + 1, n: escenas.length, tipo: 'nube-envio', nombre: e.nombre });
+      for (let i = 0; i < sel.length; i++) {
+        const e = sel[i]; setLote({ i: i + 1, n: sel.length, tipo: 'nube-envio', nombre: e.nombre });
         ponNubeEsc(e.id, { estado: 'enviando', texto: 'Preparando y enviando la escena…' });
         try { await irAEscena(e); const { glb, info } = await prepararNube(t => ponNubeEsc(e.id, { texto: t })); trabajos.push({ id: await lanzarRenderNube({ glb, info, calidad: 'hd', exposicion: 3, alAvanzar: t => ponNubeEsc(e.id, { texto: t }), galeria: { planoId: id, nombre: e.nombre, meta: e.meta ? metaActual(txtDe(e)) : metaActual() } }), e }); ponNubeEsc(e.id, { estado: 'cola', texto: 'En cola', ini: Date.now() }); } catch (err) { fallos.push(e.nombre + ': ' + (err.message || 'error')); ponNubeEsc(e.id, { estado: 'error', texto: err.message || 'error' }); }
       }
@@ -7867,9 +7875,11 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
                 {e.mini ? <img src={e.mini} alt={e.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.45, fontSize: 11 }}>Sin miniatura · pulsa «Actualizar»</div>}
                 <span style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '14px 8px 5px', fontWeight: 700, fontSize: 12, background: 'linear-gradient(transparent, rgba(0,0,0,0.75))' }}>{e.nombre}</span>
               </div>
-              <div style={{ display: 'flex', gap: 4, marginTop: 4, alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 4, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                 <button style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => actualizarEscena(e.id)} title="Sustituye la escena por la vista de ahora y su miniatura">Actualizar</button>
                 <button style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => { const n = window.prompt('Nombre de la escena', e.nombre); if (n && n.trim()) setEscenas(x => x.map(y => (y.id === e.id ? { ...y, nombre: n.trim() } : y))); }} title="Cambiar el nombre">✎</button>
+                <button style={{ ...btn, padding: '2px 8px', fontSize: 11 }} disabled={!!lote} onClick={() => renderUnaHD(e)} title="Renderiza solo esta escena en HD y la guarda en la Galería">🖼 HD</button>
+                <button style={{ ...btn, padding: '2px 8px', fontSize: 11 }} disabled={!!lote} onClick={() => renderTodasNube([e])} title="Renderiza solo esta escena en la nube (4K, Blender) y la guarda sola en la Galería">☁ 4K</button>
                 <span style={{ flex: 1 }} />
                 {(() => { const n = nubeEsc[e.id]; if (!n) return null; const col = { listo: '#8bae8f', error: '#e08a82', renderizando: '#8fb8de', cola: '#e0b25a', enviando: '#8fb8de', espera: '#9a9a9a' }[n.estado] || '#9a9a9a'; const hechas = Object.values(nubeEsc).filter(z => z.estado === 'listo' && z.ini && z.fin).map(z => (z.fin - z.ini) / 1000); const media = hechas.length ? hechas.reduce((s, v) => s + v, 0) / hechas.length : 0; const seg = n.ini && !n.fin ? Math.round((Date.now() - n.ini) / 1000) : 0; const resta = media && n.estado !== 'listo' && n.estado !== 'error' && n.ini ? Math.max(0, Math.round(media - seg)) : null; return <span style={{ fontSize: 10, color: col, whiteSpace: 'nowrap' }} title={n.texto}>☁ 4K · {n.estado === 'listo' ? '✓ lista' : n.estado === 'error' ? '✕ error' : n.estado === 'espera' ? 'en espera' : n.estado === 'enviando' ? 'enviando…' : (n.estado === 'cola' ? 'en cola ' : 'renderizando ') + seg + ' s' + (resta != null ? ' · faltan ~' + (resta >= 60 ? Math.ceil(resta / 60) + ' min' : resta + ' s') : '')}</span>; })()}
                 <span onClick={() => { if (window.confirm('¿Borrar la escena «' + e.nombre + '»?')) setEscenas(x => x.filter(y => y.id !== e.id)); }} style={{ cursor: 'pointer', opacity: 0.6, padding: '0 4px' }} title="Borrar">✕</span>
