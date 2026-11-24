@@ -2429,7 +2429,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
   const mmDe = g => Math.round(12 / Math.tan((g * Math.PI / 180) / 2));
   // Exporta el espacio (muros, suelos, puertas, ventanas, máquinas y objetos) a .glb para abrirlo en D5, Blender, etc. Medidas en metros, Y arriba
   // Prepara la escena para el render realista (Blender): .glb sin cajas de repuesto ni ayudas, más luces y cámara en un .json
-  const prepararEscena = () => new Promise((ok, ko) => {
+  const prepararEscena = (texMax = 2048) => new Promise((ok, ko) => {
     const a = api3d.current; if (!a.raiz) return ko(new Error('No hay escena'));
     const ocultos = [];
     [a.raiz, a.esc].forEach(g => g.traverse(o => { if (o.visible && (o.userData?.ledPerim || o.userData?.esReflejo || o.userData?.eje || o.userData?.guia || o.userData?.asa || o.isLine || o.isSprite || o.isLight || (o.isMesh && o.material && !Array.isArray(o.material) && o.material.depthTest === false) || (o.isMesh && o.material && (o.material.colorWrite === false || o.material.visible === false)))) { o.visible = false; ocultos.push(o); } }));
@@ -2458,7 +2458,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
           const info = { camara: { pos: [cam.position.x, cam.position.y, cam.position.z], tg: [ctrl.target.x, ctrl.target.y, ctrl.target.z], fov: cam.fov, aspect: cam.aspect }, hora, exposicion: ambiente.exposicion, ev: ambiente.ev ?? 7, luces };
         ok({ buf, info, base: String(titulo || 'espacio').replace(/[^\w-]+/g, '-') || 'espacio' });
       } catch (e) { ko(e); }
-    }, err => { ocultos.forEach(o => { o.visible = true; }); ko(err); }, { binary: true, onlyVisible: true, trs: false, maxTextureSize: 2048 });
+    }, err => { ocultos.forEach(o => { o.visible = true; }); ko(err); }, { binary: true, onlyVisible: true, trs: false, maxTextureSize: texMax });
   });
   const exportarGLB = () => {
     setGuardado('Preparando el archivo para D5…');
@@ -2510,7 +2510,10 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
         for (let i = 0; i < 80; i++) { await new Promise(r => setTimeout(r, 1500)); if (cargasRef.current.pend === 0 && cargasRef.current.pes === 0 && cargasRef.current.lim === 0) break; }
         await new Promise(r => setTimeout(r, 5000));
       }
-      const { buf, info } = await prepararEscena();
+      let { buf, info } = await prepararEscena();
+      // si la escena pesa demasiado para subirla, se vuelve a exportar con texturas más pequeñas (1024 y después 512 px)
+      for (const tx of [1024, 512]) { if (buf.byteLength <= 45 * 1048576) break; setNube({ estado: 'trabajando', texto: 'La escena pesa ' + Math.round(buf.byteLength / 1048576) + ' MB: reduciendo las texturas…' }); ({ buf, info } = await prepararEscena(tx)); }
+      if (buf.byteLength < 20000) throw new Error('La escena ha salido vacía (' + buf.byteLength + ' bytes). Recarga la página y espera a que carguen las máquinas antes de renderizar.');
       info.exposicion = ambiente.exposicion; info.ev = ambiente.ev ?? 7; info.modoExposicion = expNube; info.hora = hora; info.norte = entRot; info.solOn = ambiente.solOn !== false; info.solI = ambiente.solI ?? 1; // 'visor' = la exposición que tienes puesta en el visor; 'auto' = la calcula el servidor
       { const m = marcoRender(); if (m && info.camara) { info.camara.aspect = m.r; info.camara.fov = 2 * Math.atan(Math.tan((info.camara.fov * Math.PI) / 360) * (m.bh / m.H)) * 180 / Math.PI; } } // el render sale con el encuadre elegido
       const url = await enviarARenderNube({ glb: new Blob([buf], { type: 'model/gltf-binary' }), info, calidad, exposicion: 3, alAvanzar: t => setNube({ estado: 'trabajando', texto: t }) });

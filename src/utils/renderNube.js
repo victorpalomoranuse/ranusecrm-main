@@ -7,18 +7,18 @@ export async function renderNubeDisponible() {
 
 const subir = async (url, cuerpo, tipo) => {
   const r = await fetch(url, { method: 'PUT', headers: { 'Content-Type': tipo, 'x-upsert': 'true' }, body: cuerpo });
-  if (!r.ok) throw new Error('No se pudo subir la escena (' + r.status + ')');
+  if (!r.ok) { let d = ''; try { d = (await r.text()).slice(0, 160); } catch { /* sin detalle */ } throw new Error('No se pudo subir la escena (' + r.status + ', ' + Math.round((cuerpo.size || 0) / 1048576 * 10) / 10 + ' MB)' + (d ? ': ' + d : '')); }
 };
 const esperar = ms => new Promise(r => setTimeout(r, ms));
 
 // escena = { glb: Blob, info: { camara, luces, … }, calidad: 'previa' | 'hd' | '8k', exposicion, alAvanzar(texto) }. Devuelve la URL de la imagen.
 export async function enviarARenderNube({ glb, info, calidad = 'hd', exposicion = 3, alAvanzar = () => {} }) {
   alAvanzar('Subiendo la escena…');
-  const { data: t } = await api.post('/render-nube/crear');
+  let t; try { t = (await api.post('/render-nube/crear')).data; } catch (e) { throw new Error('No se pudo preparar el render (' + (e.response?.status || 'sin conexión') + '): ' + (e.response?.data?.error || e.message)); }
   await subir(t.escena, glb, 'model/gltf-binary');
   await subir(t.luces, new Blob([JSON.stringify(info)], { type: 'application/json' }), 'application/json');
   alAvanzar('Enviando a la GPU…');
-  await api.post('/render-nube/iniciar', { id: t.id, calidad, exposicion });
+  try { await api.post('/render-nube/iniciar', { id: t.id, calidad, exposicion }); } catch (e) { throw new Error('No se pudo lanzar el render (' + (e.response?.status || 'sin conexión') + '): ' + (e.response?.data?.error || e.message) + (e.response?.data?.detalle ? ' · ' + JSON.stringify(e.response.data.detalle).slice(0, 120) : '')); }
   const t0 = Date.now();
   for (;;) {
     await esperar(3000);
