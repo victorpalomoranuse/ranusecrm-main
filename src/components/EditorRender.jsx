@@ -53,7 +53,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
   const [autoGuardar, setAutoGuardar] = useState(() => { try { return localStorage.getItem('editorRenderAuto') !== '0'; } catch { return true; } });
   useEffect(() => { try { localStorage.setItem('editorRenderAuto', autoGuardar ? '1' : '0'); } catch { /* sin almacenamiento */ } }, [autoGuardar]);
   const img = useRef(null), lienzo = useRef(null), dibujando = useRef(null), prev = useRef(null), pequena = useRef(null);
-  const [aj, setAj] = useState(AJ0), [aplicandoAj, setAplicandoAj] = useState(false), [mv, setMv] = useState(0), [verMarca, setVerMarca] = useState(true), [gotero, setGotero] = useState(false), [tol, setTol] = useState(28);
+  const [aj, setAj] = useState(AJ0), [aplicandoAj, setAplicandoAj] = useState(false), [mv, setMv] = useState(0), [verMarca, setVerMarca] = useState(false), [gotero, setGotero] = useState(false), [tol, setTol] = useState(28);
   const ajActivo = Object.keys(AJ0).some(k => aj[k] !== AJ0[k]);
 
   const actual = historia[idx];
@@ -216,7 +216,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
           <details style={{ marginBottom: 12, background: '#1d1a17', borderRadius: 8, padding: '8px 10px' }} open>
             <summary style={{ cursor: 'pointer', fontWeight: 700 }}>🎚 Ajustes de imagen <span style={{ fontWeight: 400, opacity: 0.6, fontSize: 11 }}>· sin IA, gratis</span></summary>
             <div style={{ fontSize: 11, margin: '6px 0 0', color: pintado ? '#8fd19e' : '#9a9a9a' }}>{pintado ? '✔ Solo se ajusta la zona que has pintado en rojo.' : 'Sin zona pintada, se ajusta toda la imagen. Pinta una superficie abajo (paso 1) para ajustar solo esa.'}</div>
-            {pintado && <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginTop: 4, cursor: 'pointer' }}><input type="checkbox" checked={verMarca} onChange={e => setVerMarca(e.target.checked)} /> Ver la marca roja (quítala para ver el color real)</label>}
+            {pintado && <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginTop: 4, cursor: 'pointer' }}><input type="checkbox" checked={verMarca} onChange={e => setVerMarca(e.target.checked)} /> Ver la marca roja mientras ajusto</label>}
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', margin: '8px 0' }}>
               {PRESETS_AJ.map(([n, p]) => <button key={n} style={{ ...boton, padding: '2px 8px', fontSize: 11 }} onClick={() => setAj({ ...AJ0, ...p })}>{n}</button>)}
             </div>
