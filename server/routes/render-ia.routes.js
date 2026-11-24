@@ -203,6 +203,16 @@ async function fusionaTono(baseBuf, iaBuf, sigma = 10) {
   for (let i = 0; i < ia.length; i++) { const v = baseL[i] + (ia[i] - iaL[i]); out[i] = v < 0 ? 0 : v > 255 ? 255 : v; }
   return sharp(out, { raw: { width: W, height: H, channels: 3 } }).png().toBuffer();
 }
+// Con zona marcada, lo que queda FUERA de la máscara se devuelve idéntico al original (la IA repinta toda la imagen y puede subir o bajar la exposición en el resto).
+async function fueraDeMascaraOriginal(baseBuf, iaBuf, mascaraB64) {
+  const meta = await sharp(iaBuf).metadata(), W = meta.width, H = meta.height;
+  const rgb = b => sharp(b).removeAlpha().resize(W, H, { fit: 'fill' }).raw().toBuffer();
+  const peso = await sharp(Buffer.from(mascaraB64, 'base64')).ensureAlpha().extractChannel(3).resize(W, H, { fit: 'fill' }).blur(2).raw().toBuffer(); // 255 = se conserva el original; 0 = zona editada
+  const [ia, base] = await Promise.all([rgb(iaBuf), rgb(baseBuf)]);
+  const out = Buffer.alloc(ia.length);
+  for (let p = 0; p < W * H; p++) { const k = peso[p] / 255; for (let c = 0; c < 3; c++) { const i = p * 3 + c; out[i] = ia[i] * (1 - k) + base[i] * k; } }
+  return sharp(out, { raw: { width: W, height: H, channels: 3 } }).png().toBuffer();
+}
 const DATA_IMG = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/;
 router.post('/editar', async (req, res) => {
   const clave = process.env.OPENAI_API_KEY;
@@ -224,6 +234,7 @@ router.post('/editar', async (req, res) => {
       refs.length ? 'Las imágenes adicionales son referencias de lo que hay que incorporar (' + refs.length + '): no las pegues tal cual, intégralas con la perspectiva, la escala, la luz y las sombras de la escena.' : '',
       'Las paredes y techos de pintura lisa deben quedar perfectamente uniformes: sin manchas, nubes, «aguas», vetas, ruido ni textura añadida (un degradado suave de la luz sí es normal).',
       coh.length ? 'Las ÚLTIMAS ' + coh.length + ' imágenes adjuntas son OTRAS VISTAS del mismo espacio, ya con los cambios aprobados. Todo lo que en ellas aparezca modificado (materiales, colores, acabados, objetos, decoración, iluminación) debe verse exactamente igual en la primera imagen cuando esa parte del espacio sea visible desde su cámara. No copies su encuadre ni su composición: mantén el de la primera imagen.' : '',
+      'RESPETA LA ILUMINACIÓN EXISTENTE: los focos y downlights, las tiras LED, las luces indirectas y su brillo, los halos, los reflejos y las sombras deben quedar exactamente como están (misma intensidad, misma posición, misma temperatura). No añadas, quites, apagues ni intensifiques ninguna luz, y no aclares ni oscurezcas la escena.',
       'No cambies la exposición, el contraste, la saturación ni el balance de color general de la imagen, salvo que el cambio pedido lo exija: el resto debe quedar con el mismo tono y brillo que la imagen original.',
       'El resultado debe parecer una fotografía real.',
     ].filter(Boolean).join(' ');
@@ -252,7 +263,9 @@ router.post('/editar', async (req, res) => {
     // Cada edición con IA vuelve a pintar toda la imagen y tiende a subir contraste y saturación; encadenando varias, el render se «quema».
     // Se compensa: el brillo, el contraste y el color medios del resultado se acercan a los de la imagen de entrada, salvo que el cambio pedido sea de luz.
     let salida = Buffer.from(b64, 'base64'), corregida = false;
-    if (soloCalidad === true) {
+    if (mk && soloCalidad !== true) {
+      try { salida = await fueraDeMascaraOriginal(Buffer.from(m[2], 'base64'), salida, mk[1]); corregida = true; } catch (e4) { console.error('render-ia editar (máscara):', e4.message); }
+    } else if (soloCalidad === true) {
       try { salida = await fusionaTono(Buffer.from(m[2], 'base64'), salida); corregida = true; } catch (e3) { console.error('render-ia editar (fusión de tono):', e3.message); }
     } else if (!/luz|ilumin|brillo|oscur|clar[oa]|exposic|hora|noche|d[ií]a|atardecer|sol|sombra|c[aá]lid|fr[ií]o|tono|color|saturaci/i.test(texto)) {
       try {

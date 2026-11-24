@@ -134,7 +134,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
   }); // eslint-disable-line react-hooks/exhaustive-deps
 
   // «Mejorar calidad»: regenera la imagen igual (sin zona, sin referencias) pidiendo solo más definición y limpieza
-  const TEXTO_CALIDAD = 'Regenera esta misma imagen en la máxima calidad SIN cambiar absolutamente nada: mismos objetos, composición, encuadre, luces y colores. Solo mejora la definición: elimina ruido, manchas, «aguas», bandas y artefactos de compresión, afila los bordes y deja las superficies lisas perfectamente uniformes.';
+  const TEXTO_CALIDAD = 'Regenera esta misma imagen en la máxima calidad SIN cambiar absolutamente nada: mismos objetos, composición, encuadre, colores y exactamente la misma iluminación (focos, tiras LED, brillos y sombras idénticos, sin aclarar ni oscurecer). Solo mejora la definición: elimina ruido, manchas, «aguas», bandas y artefactos de compresión, afila los bordes y deja las superficies lisas perfectamente uniformes.';
   const aplicar = async (fijo) => {
     const calidadSola = typeof fijo === 'string', instr = (calidadSola ? fijo : texto).trim();
     if (!instr) { setError('Escribe qué quieres cambiar.'); return; }
