@@ -198,7 +198,7 @@ router.post('/editar', async (req, res) => {
   const clave = process.env.OPENAI_API_KEY;
   if (!clave) return res.status(503).json({ error: 'Falta la clave de OpenAI en el servidor (variable OPENAI_API_KEY en Railway).' });
   try {
-    const { imagen, mascara, instruccion, referencias } = req.body || {};
+    const { imagen, mascara, instruccion, referencias, calidad: soloCalidad } = req.body || {};
     const m = DATA_IMG.exec(String(imagen || ''));
     if (!m) return res.status(400).json({ error: 'Falta la imagen (png, jpg o webp)' });
     const texto = String(instruccion || '').trim().slice(0, 1500);
@@ -239,7 +239,7 @@ router.post('/editar', async (req, res) => {
     // Cada edición con IA vuelve a pintar toda la imagen y tiende a subir contraste y saturación; encadenando varias, el render se «quema».
     // Se compensa: el brillo, el contraste y el color medios del resultado se acercan a los de la imagen de entrada, salvo que el cambio pedido sea de luz.
     let salida = Buffer.from(b64, 'base64'), corregida = false;
-    if (!/luz|ilumin|brillo|oscur|clar[oa]|exposic|hora|noche|d[ií]a|atardecer|sol|sombra|c[aá]lid|fr[ií]o|tono|color|saturaci/i.test(texto)) {
+    if (soloCalidad === true || !/luz|ilumin|brillo|oscur|clar[oa]|exposic|hora|noche|d[ií]a|atardecer|sol|sombra|c[aá]lid|fr[ií]o|tono|color|saturaci/i.test(texto)) {
       try {
         const base = Buffer.from(m[2], 'base64'), pequena = x => sharp(x).resize({ width: 600, withoutEnlargement: true }).removeAlpha();
         const [a, b] = await Promise.all([pequena(base).stats(), pequena(salida).stats()]);

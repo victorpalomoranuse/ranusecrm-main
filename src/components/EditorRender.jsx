@@ -110,8 +110,11 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
     window.addEventListener('paste', pega); return () => window.removeEventListener('paste', pega);
   }); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const aplicar = async () => {
-    if (!texto.trim()) { setError('Escribe qué quieres cambiar.'); return; }
+  // «Mejorar calidad»: regenera la imagen igual (sin zona, sin referencias) pidiendo solo más definición y limpieza
+  const TEXTO_CALIDAD = 'Regenera esta misma imagen en la máxima calidad SIN cambiar absolutamente nada: mismos objetos, composición, encuadre, luces y colores. Solo mejora la definición: elimina ruido, manchas, «aguas», bandas y artefactos de compresión, afila los bordes y deja las superficies lisas perfectamente uniformes.';
+  const aplicar = async (fijo) => {
+    const calidadSola = typeof fijo === 'string', instr = (calidadSola ? fijo : texto).trim();
+    if (!instr) { setError('Escribe qué quieres cambiar.'); return; }
     setError(''); setTrabajando(true);
     try {
       const base = await carga(actual.src), W0 = base.naturalWidth, H0 = base.naturalHeight, asp = W0 / H0;
@@ -119,16 +122,16 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
       const [tw, th] = asp > 1.25 ? [1536, 1024] : asp < 0.8 ? [1024, 1536] : [1024, 1024];
       const imagen = aDataUrl(base, tw, th);
       let mascara;
-      if (pintado) {
+      if (pintado && !calidadSola) {
         const mk = document.createElement('canvas'); mk.width = tw; mk.height = th; const g = mk.getContext('2d');
         g.fillStyle = '#000'; g.fillRect(0, 0, tw, th); g.globalCompositeOperation = 'destination-out'; g.drawImage(lienzo.current, 0, 0, tw, th);
         mascara = mk.toDataURL('image/png');
       }
-      const r = await api.post('/render-ia/editar', { imagen, mascara, instruccion: texto.trim(), referencias: refs }, { timeout: 280000 });
+      const r = await api.post('/render-ia/editar', { imagen, mascara, instruccion: instr, referencias: calidadSola ? [] : refs, calidad: calidadSola }, { timeout: 280000 });
       const sal = await carga(r.data.imagen);
       const url = aDataUrl(sal, W0, H0, 'image/jpeg', 0.93);
-      setHistoria(h => [...h.slice(0, idx + 1), { src: url, guardada: false, texto: texto.trim() }]); setIdx(idx + 1);
-      setTexto(''); setRefs([]);
+      setHistoria(h => [...h.slice(0, idx + 1), { src: url, guardada: false, texto: calidadSola ? 'Mejora de calidad' : instr }]); setIdx(idx + 1);
+      if (!calidadSola) { setTexto(''); setRefs([]); }
       if (autoGuardar) { try { const rr = await onGuardar?.(url, (nombre || 'Render') + ' · v' + (idx + 2)); if (rr) setHistoria(h => h.map((v, i) => (i === idx + 1 ? { ...v, guardada: true, render: rr } : v))); } catch { /* se puede guardar a mano */ } }
     } catch (e) { setError(e.response?.data?.error || e.message || 'No se pudo editar la imagen'); }
     setTrabajando(false);
@@ -211,6 +214,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
             </div>
             <div style={{ opacity: 0.5, fontSize: 11, marginTop: 5 }}>Se ve en directo. Al aplicar se crea una versión nueva, como con la IA, sin gastar nada. Doble clic en un deslizador lo pone a 0.</div>
           </details>
+          <button style={{ ...boton, width: '100%', marginBottom: 12, background: '#2f5f8a', fontWeight: 700, padding: '9px 12px', opacity: trabajando ? 0.6 : 1 }} disabled={trabajando} onClick={() => aplicar(TEXTO_CALIDAD)} title="Regenera la imagen idéntica pero más nítida y limpia, sin cambiar nada">✨ Mejorar calidad (sin cambiar nada)</button>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>1 · Marca la zona (opcional)</div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
             <button style={{ ...boton, ...(borrando ? {} : { background: ORO, color: '#000' }) }} onClick={() => setBorrando(false)}>🖌 Pintar</button>
