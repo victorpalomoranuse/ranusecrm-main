@@ -190,7 +190,7 @@ def realismo_materiales():
                 bw = nt.nodes.new('ShaderNodeRGBToBW'); nt.links.new(bc.links[0].from_socket, bw.inputs[0])
                 bm = nt.nodes.new('ShaderNodeBump'); bm.inputs['Strength'].default_value = 0.25; bm.inputs['Distance'].default_value = 0.002
                 nt.links.new(bw.outputs[0], bm.inputs['Height']); normal_out = bm.outputs[0]
-            if rg > 0.25 or oscuro:  # moteado fino y variación de rugosidad
+            if tex and (rg > 0.25 or oscuro):  # moteado fino y variación de rugosidad (solo en materiales con textura: la pintura lisa debe quedar lisa, sin «aguas»)
                 tc = nt.nodes.new('ShaderNodeTexCoord')
                 nz = nt.nodes.new('ShaderNodeTexNoise'); nz.inputs['Scale'].default_value = 600.0; nz.inputs['Detail'].default_value = 6.0
                 nt.links.new(tc.outputs['Object'], nz.inputs['Vector'])

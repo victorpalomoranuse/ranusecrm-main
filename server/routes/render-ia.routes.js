@@ -97,7 +97,7 @@ router.post('/', async (req, res) => {
     const nivel = ['fiel', 'equilibrado', 'creativo'].includes(libertad) ? libertad : 'equilibrado';
     const NIVELES = {
       fiel: 'Respeta EXACTAMENTE la composición, la perspectiva, las proporciones y la posición de cada elemento. NO añadas, quites ni muevas NADA: ni muebles, repisas, estantes, cuadros, plantas, alfombras, cortinas, cables, rótulos, tiradores ni decoración. Si una pared o una zona está vacía en la imagen, se queda vacía y lisa. Solo mejora la luz, los materiales y las texturas.',
-      equilibrado: 'Respeta la distribución, la perspectiva, las proporciones y TODOS los objetos de la imagen: ni uno más ni uno menos. NO añadas objetos nuevos (muebles, repisas, estantes, cuadros, plantas, alfombras, cortinas, decoración, aparatos ni luminarias); una pared vacía se queda vacía. Sí puedes mejorar la luz natural, los reflejos, las sombras suaves y las texturas realistas de suelos y paredes, sin cambiar el color base de ninguna superficie.',
+      equilibrado: 'Respeta la distribución, la perspectiva, las proporciones y TODOS los objetos de la imagen: ni uno más ni uno menos. NO añadas objetos nuevos (muebles, repisas, estantes, cuadros, plantas, alfombras, cortinas, decoración, aparatos ni luminarias); una pared vacía se queda vacía. Sí puedes mejorar la luz natural, los reflejos, las sombras suaves y las texturas realistas de suelos y paredes, sin cambiar el color base de ninguna superficie. Las paredes y techos de pintura lisa deben quedar perfectamente uniformes: sin manchas, nubes, «aguas», vetas, ruido ni textura añadida (un degradado suave de la luz sí es normal).',
       creativo: 'Mantén la arquitectura (muros, huecos, medidas y perspectiva) y la distribución general, pero decora con criterio de interiorista: textiles, plantas, iluminación ambiente, accesorios y detalles que hagan que el espacio parezca vivido y de revista. No cambies el encuadre.',
     };
     // Muestras reales de los materiales de la escena (imagen + descripción) para que la IA los reconozca y no invente otros
@@ -210,6 +210,7 @@ router.post('/editar', async (req, res) => {
       mk ? 'El cambio se limita a la zona marcada con la máscara: no toques nada fuera de ella.' : 'Aplica el cambio conservando todo lo demás.',
       'Mantén exactamente la composición, la perspectiva, la iluminación, los materiales y todos los elementos que no se mencionan.',
       refs.length ? 'Las imágenes adicionales son referencias de lo que hay que incorporar (' + refs.length + '): no las pegues tal cual, intégralas con la perspectiva, la escala, la luz y las sombras de la escena.' : '',
+      'Las paredes y techos de pintura lisa deben quedar perfectamente uniformes: sin manchas, nubes, «aguas», vetas, ruido ni textura añadida (un degradado suave de la luz sí es normal).',
       'No cambies la exposición, el contraste, la saturación ni el balance de color general de la imagen, salvo que el cambio pedido lo exija: el resto debe quedar con el mismo tono y brillo que la imagen original.',
       'El resultado debe parecer una fotografía real.',
     ].filter(Boolean).join(' ');
