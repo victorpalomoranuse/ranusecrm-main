@@ -28,6 +28,16 @@ router.get('/escena/:id.glb', async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'No se pudo preparar la escena' }); }
 });
 
+router.get('/script/:id.py', async (req, res) => {
+  try {
+    const { id } = req.params, exp = Number(req.query.e) || 0, f = String(req.query.f || '');
+    const ok = /^[a-f0-9]{16}$/.test(id) && exp > Date.now() && f.length === 64 && crypto.timingSafeEqual(Buffer.from(f), Buffer.from(firmaEscena('s' + id, exp)));
+    if (!ok) return res.status(403).json({ error: 'Enlace no válido o caducado' });
+    const { readFile } = await import('fs/promises'), { fileURLToPath } = await import('url'), { dirname, join } = await import('path');
+    res.type('text/plain').send(await readFile(join(dirname(fileURLToPath(import.meta.url)), '..', 'render-worker', 'render.py'), 'utf8'));
+  } catch (e) { res.status(500).json({ error: 'No se pudo leer el script' }); }
+});
+
 router.use(authenticateToken, requirePermission('proyectos'));
 const RUNPOD = 'https://api.runpod.ai/v2';
 const CALIDADES = { previa: { ancho: 1280, muestras: 48 }, hd: { ancho: 3840, muestras: 192 }, '8k': { ancho: 7680, muestras: 256 } };
@@ -60,7 +70,8 @@ router.post('/iniciar', async (req, res) => {
     if (sube.error) throw sube.error;
     let urlEscena;
     if (req.body.comprimida) { const exp = Date.now() + 3 * 3600 * 1000, base = `${req.get('x-forwarded-proto') || req.protocol}://${req.get('host')}`; urlEscena = `${base}/api/render-nube/escena/${id}.glb?e=${exp}&f=${firmaEscena(id, exp)}`; }
-    const r = await rp('/run', { method: 'POST', body: JSON.stringify({ policy: { executionTimeout: (calidad === '8k' ? 40 : calidad === 'previa' ? 15 : 30) * 60 * 1000 }, input: { escena: urlEscena || await firma('escena.glb'), luces: await firma('luces.json'), subida: sube.data.signedUrl, ancho: cal.ancho, muestras: cal.muestras, exposicion: Number(req.body.exposicion) || 3 } }) });
+    const expS = Date.now() + 3 * 3600 * 1000, urlScript = `${req.get('x-forwarded-proto') || req.protocol}://${req.get('host')}/api/render-nube/script/${id}.py?e=${expS}&f=${firmaEscena('s' + id, expS)}`;
+    const r = await rp('/run', { method: 'POST', body: JSON.stringify({ policy: { executionTimeout: (calidad === '8k' ? 40 : calidad === 'previa' ? 15 : 30) * 60 * 1000 }, input: { script: urlScript, escena: urlEscena || await firma('escena.glb'), luces: await firma('luces.json'), subida: sube.data.signedUrl, ancho: cal.ancho, muestras: cal.muestras, exposicion: Number(req.body.exposicion) || 3 } }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.id) return res.status(502).json({ error: 'RunPod no aceptó el trabajo', detalle: j.error || r.status });
     const gal = req.body.galeria && /^[A-Za-z0-9_-]{8,64}$/.test(String(req.body.galeria.planoId || '')) ? { planoId: String(req.body.galeria.planoId), nombre: String(req.body.galeria.nombre || '').slice(0, 80), meta: req.body.galeria.meta || null } : null;

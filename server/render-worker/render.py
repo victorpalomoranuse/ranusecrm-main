@@ -34,7 +34,9 @@ o = nt.nodes.new('ShaderNodeOutputWorld')
 # Los reflejos (espejos, cromados) no ven el cielo azul tal cual: se ven con un gris neutro y oscuro, como en el visor
 lp = nt.nodes.new('ShaderNodeLightPath'); mx = nt.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'
 mx.inputs[7].default_value = (0.03, 0.03, 0.03, 1.0)
-nt.links.new(sky.outputs[0], mx.inputs[6]); nt.links.new(lp.outputs['Is Glossy Ray'], mx.inputs[0])
+refl = nt.nodes.new('ShaderNodeMath'); refl.operation = 'ADD'; refl.use_clamp = True  # reflejo = rayo glossy O rayo de espejo perfecto (singular): ninguno ve el cielo azul
+nt.links.new(lp.outputs['Is Glossy Ray'], refl.inputs[0]); nt.links.new(lp.outputs['Is Singular Ray'], refl.inputs[1])
+nt.links.new(sky.outputs[0], mx.inputs[6]); nt.links.new(refl.outputs[0], mx.inputs[0])
 nt.links.new(mx.outputs[2], bg.inputs[0]); nt.links.new(bg.outputs[0], o.inputs[0])
 
 def hexc(h): h = h.lstrip('#'); return [int(h[i:i+2], 16) / 255 for i in (0, 2, 4)]
@@ -45,7 +47,7 @@ SPOT_K = 1.0  # sin refuerzo: luz física
 LED_K = 1.0  # sin refuerzo: luz física
 W_PER_CD = 4 * math.pi * math.pi / 683.0  # candelas -> vatios de Blender (aprox.)
 for L in info['luces']:
-    col = srgb2lin(hexc(L['col']))
+    col = srgb2lin(hexc(L['col'])); col = [c + (1.0 - c) * 0.45 for c in col]  # menos saturación: sin esto todo sale amarillo
     if L['t'] == 'spot':
         d = bpy.data.lights.new('s', 'SPOT'); d.energy = L['i'] * W_PER_CD * SPOT_K; d.spot_size = min(math.pi, L['ang'] * 2); d.spot_blend = max(0.05, L['pen']); d.shadow_soft_size = 0.05
         ob = bpy.data.objects.new('s', d); sc.collection.objects.link(ob); ob.location = G(L['pos'])
@@ -154,9 +156,13 @@ for mat in bpy.data.materials:
     for nd in mat.node_tree.nodes:
         if nd.type == 'BSDF_PRINCIPLED':
             met = nd.inputs['Metallic'].default_value; ro = nd.inputs['Roughness'].default_value
-            if met >= 0.8 and ro <= 0.15:
+            if met >= 0.8 and ro <= 0.25:
+                for l in [l for l in mat.node_tree.links if l.to_node == nd and l.to_socket.name in ('Base Color', 'Emission Color')]: mat.node_tree.links.remove(l)  # la textura del espejo es azulada: se descarta
                 nd.inputs['Base Color'].default_value = (0.55, 0.55, 0.55, 1.0)
                 nd.inputs['Roughness'].default_value = 0.03
+                try: nd.inputs['Emission Strength'].default_value = 0.0
+                except Exception: pass
+                print('ESPEJO', mat.name)
 
 # Realismo de materiales: relieve sutil desde la textura, variación de rugosidad y moteado fino en superficies oscuras/mates.
 # No toca espejos, cristal, transparencias ni los materiales de suelo con juntas (ya tienen su propia normal).
@@ -272,4 +278,16 @@ elif os.environ.get('EXPO_AUTO', '1') == '1':
     print('EXPOSICION_FINAL', round(exp, 2))
 sc.render.filepath = out
 bpy.ops.render.render(write_still=True)
+def equilibrio(fuerza=0.6):
+    try:
+        import numpy as np
+        im = bpy.data.images.load(out); wd, ht = im.size; buf = np.empty(wd * ht * 4, dtype=np.float32); im.pixels.foreach_get(buf); a = buf.reshape(-1, 4)
+        m = a[::37, :3].mean(axis=0)
+        if min(m) < 0.003: return
+        g = float(m.mean()); gain = np.clip((g / m) ** fuerza, 0.75, 1.25)
+        a[:, :3] = np.clip(a[:, :3] * gain, 0.0, 1.0); im.pixels.foreach_set(buf); im.filepath_raw = out; im.file_format = 'PNG'; im.save()
+        print('BALANCE', [round(float(x), 3) for x in gain])
+    except Exception as e:
+        print('BALANCE_ERR', e)
+if info.get('balance') is not False: equilibrio()
 print('LISTO', out, len(info['luces']), 'luces')

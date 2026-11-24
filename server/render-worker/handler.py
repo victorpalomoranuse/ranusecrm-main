@@ -20,7 +20,15 @@ def handler(job):
         glb, js, png = os.path.join(d, 'escena.glb'), os.path.join(d, 'luces.json'), os.path.join(d, 'resultado.png')
         descargar(i['escena'], glb)
         descargar(i['luces'], js)
-        cmd = ['blender', '-b', '-P', os.path.join(os.path.dirname(__file__), 'render.py'), '--', glb, js, png,
+        # el servidor puede pasar la última versión de render.py (así los retoques no obligan a reconstruir la imagen del worker)
+        script = os.path.join(os.path.dirname(__file__), 'render.py')
+        if i.get('script'):
+            try:
+                nuevo = os.path.join(d, 'render.py'); descargar(i['script'], nuevo)
+                if os.path.getsize(nuevo) > 1000: script = nuevo
+            except Exception as e:
+                print('SCRIPT_ERR', e, flush=True)
+        cmd = ['blender', '-b', '-P', script, '--', glb, js, png,
                str(i.get('exposicion', 3)), str(i.get('ancho', 1600)), str(i.get('muestras', 64))]
         t0 = time.time()
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=1500)
