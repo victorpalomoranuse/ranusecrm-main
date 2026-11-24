@@ -2689,6 +2689,8 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
   const [escAbierta, setEscAbierta] = useState(false);
   const [escNombre, setEscNombre] = useState('');
   const [lote, setLote] = useState(null);
+  const [nubeEsc, setNubeEsc] = useState({}); // estado de cada escena en «Todas en la nube»: { idEscena: { estado, texto, ini, fin } }
+  const ponNubeEsc = (id, d) => setNubeEsc(x => ({ ...x, [id]: { ...(x[id] || {}), ...d } }));
   const panPrev = useRef({});
   const derPrev = useRef({});
   const [renders, setRenders] = useState([]);           // galería de renders y panoramas del plano
@@ -6681,14 +6683,16 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
     if (!window.confirm('Se mandarán ' + escenas.length + ' escenas a la nube a la vez (4K, calidad HD). Cada una tarda unos minutos y se guarda sola en la Galería cuando termina. Puedes seguir trabajando. ¿Continuar?')) return;
     const est = await renderNubeDisponible(); if (!est.disponible) { setAviso(est.motivo || 'El render en la nube aún no está activado.'); return; }
     const trabajos = [], fallos = [];
+    setNubeEsc(Object.fromEntries(escenas.map(e => [e.id, { estado: 'espera', texto: 'En espera de enviarse' }])));
     try {
       for (let i = 0; i < escenas.length; i++) {
         const e = escenas[i]; setLote({ i: i + 1, n: escenas.length, tipo: 'nube-envio', nombre: e.nombre });
-        try { await irAEscena(e); const { glb, info } = await prepararNube(() => {}); trabajos.push({ id: await lanzarRenderNube({ glb, info, calidad: 'hd', exposicion: 3 }), e }); } catch (err) { fallos.push(e.nombre + ': ' + (err.message || 'error')); }
+        ponNubeEsc(e.id, { estado: 'enviando', texto: 'Preparando y enviando la escena…' });
+        try { await irAEscena(e); const { glb, info } = await prepararNube(t => ponNubeEsc(e.id, { texto: t })); trabajos.push({ id: await lanzarRenderNube({ glb, info, calidad: 'hd', exposicion: 3, alAvanzar: t => ponNubeEsc(e.id, { texto: t }) }), e }); ponNubeEsc(e.id, { estado: 'cola', texto: 'En cola', ini: Date.now() }); } catch (err) { fallos.push(e.nombre + ': ' + (err.message || 'error')); ponNubeEsc(e.id, { estado: 'error', texto: err.message || 'error' }); }
       }
       let hechos = 0; setLote({ i: 0, n: trabajos.length, tipo: 'nube-espera', nombre: '' });
       await Promise.all(trabajos.map(async tr => {
-        try { const d = await urlAJpegDataUrl(await esperarRenderNube(tr.id)); const ok = await guardarRender('hd', d, tr.e.meta ? metaActual(txtDe(tr.e)) : metaActual(), tr.e.nombre); if (!ok) throw new Error('no se pudo guardar'); } catch (err) { fallos.push(tr.e.nombre + ': ' + (err.message || 'error')); }
+        try { const d = await urlAJpegDataUrl(await esperarRenderNube(tr.id, t => ponNubeEsc(tr.e.id, { estado: /^En cola/.test(t) ? 'cola' : 'renderizando', texto: t }))); const ok = await guardarRender('hd', d, tr.e.meta ? metaActual(txtDe(tr.e)) : metaActual(), tr.e.nombre); if (!ok) throw new Error('no se pudo guardar'); ponNubeEsc(tr.e.id, { estado: 'listo', texto: 'Terminada · en la Galería', fin: Date.now() }); } catch (err) { fallos.push(tr.e.nombre + ': ' + (err.message || 'error')); ponNubeEsc(tr.e.id, { estado: 'error', texto: err.message || 'error' }); }
         hechos++; setLote({ i: hechos, n: trabajos.length, tipo: 'nube-espera', nombre: '' });
       }));
     } finally { setLote(null); }
@@ -7866,6 +7870,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
                 <button style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => actualizarEscena(e.id)} title="Sustituye la escena por la vista de ahora y su miniatura">Actualizar</button>
                 <button style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => { const n = window.prompt('Nombre de la escena', e.nombre); if (n && n.trim()) setEscenas(x => x.map(y => (y.id === e.id ? { ...y, nombre: n.trim() } : y))); }} title="Cambiar el nombre">✎</button>
                 <span style={{ flex: 1 }} />
+                {(() => { const n = nubeEsc[e.id]; if (!n) return null; const col = { listo: '#8bae8f', error: '#e08a82', renderizando: '#8fb8de', cola: '#e0b25a', enviando: '#8fb8de', espera: '#9a9a9a' }[n.estado] || '#9a9a9a'; const hechas = Object.values(nubeEsc).filter(z => z.estado === 'listo' && z.ini && z.fin).map(z => (z.fin - z.ini) / 1000); const media = hechas.length ? hechas.reduce((s, v) => s + v, 0) / hechas.length : 0; const seg = n.ini && !n.fin ? Math.round((Date.now() - n.ini) / 1000) : 0; const resta = media && n.estado !== 'listo' && n.estado !== 'error' && n.ini ? Math.max(0, Math.round(media - seg)) : null; return <span style={{ fontSize: 10, color: col, whiteSpace: 'nowrap' }} title={n.texto}>☁ 4K · {n.estado === 'listo' ? '✓ lista' : n.estado === 'error' ? '✕ error' : n.estado === 'espera' ? 'en espera' : n.estado === 'enviando' ? 'enviando…' : (n.estado === 'cola' ? 'en cola ' : 'renderizando ') + seg + ' s' + (resta != null ? ' · faltan ~' + (resta >= 60 ? Math.ceil(resta / 60) + ' min' : resta + ' s') : '')}</span>; })()}
                 <span onClick={() => { if (window.confirm('¿Borrar la escena «' + e.nombre + '»?')) setEscenas(x => x.filter(y => y.id !== e.id)); }} style={{ cursor: 'pointer', opacity: 0.6, padding: '0 4px' }} title="Borrar">✕</span>
               </div>
             </div>
