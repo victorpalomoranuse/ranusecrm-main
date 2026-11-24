@@ -7949,7 +7949,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
           </div>
         </div>
       )}
-      {editorRender && <EditorRender key={editorRender.id} src={editorRender.url} nombre={editorRender.nombre} galeria={renders.filter(r => r.tipo !== '360')} onCerrar={() => setEditorRender(null)} onElegir={rd => setEditorRender(rd)} renderInicial={editorRender.id !== 'nuevo' ? editorRender : null} onPublicar={rd => abrirPublicar(rd)} onGuardar={async (u, n) => (await guardarRender('ia', u, editorRender.meta, n)) || false} />}
+      {editorRender && <EditorRender key={editorRender.id} src={editorRender.url} nombre={editorRender.nombre} galeria={renders.filter(r => r.tipo !== '360')} onCerrar={() => setEditorRender(null)} onElegir={rd => setEditorRender(rd)} onBorrar={rd => api.delete('/medicion/' + id + '/render/' + rd.id).then(() => setRenders(x => x.filter(y => y.id !== rd.id)))} renderInicial={editorRender.id !== 'nuevo' ? editorRender : null} onPublicar={rd => abrirPublicar(rd)} onGuardar={async (u, n) => (await guardarRender('ia', u, editorRender.meta, n)) || false} />}
       {verRender && (
         <div onClick={() => setVerRender(null)} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 10, display: 'grid', placeItems: 'center', padding: 16, cursor: 'zoom-out' }}>
           <img src={verRender.url} alt={verRender.nombre} style={{ maxWidth: '94vw', maxHeight: '90vh', borderRadius: 6 }} />
