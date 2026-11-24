@@ -193,6 +193,16 @@ router.post('/', async (req, res) => {
 
 // ── Editor de post-producción: edita un render con una instrucción y, si se manda una máscara (la zona pintada), solo esa zona.
 // La máscara es un PNG del mismo tamaño que la imagen: los píxeles transparentes son los que se editan. Opcionalmente, hasta 3 imágenes de referencia.
+// Fusión de tono: del resultado de la IA se toma el DETALLE (nitidez, limpieza) y de la imagen original los TONOS y colores de cada zona (baja frecuencia).
+// Así, si el usuario oscureció un material a mano, la IA no puede aclararlo al regenerar.
+async function fusionaTono(baseBuf, iaBuf, sigma = 10) {
+  const meta = await sharp(iaBuf).metadata(), W = meta.width, H = meta.height;
+  const lee = (b, blur) => { let p = sharp(b).removeAlpha().resize(W, H, { fit: 'fill' }); if (blur) p = p.blur(blur); return p.raw().toBuffer(); };
+  const [ia, iaL, baseL] = await Promise.all([lee(iaBuf, 0), lee(iaBuf, sigma), lee(baseBuf, sigma)]);
+  const out = Buffer.alloc(ia.length);
+  for (let i = 0; i < ia.length; i++) { const v = baseL[i] + (ia[i] - iaL[i]); out[i] = v < 0 ? 0 : v > 255 ? 255 : v; }
+  return sharp(out, { raw: { width: W, height: H, channels: 3 } }).png().toBuffer();
+}
 const DATA_IMG = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/;
 router.post('/editar', async (req, res) => {
   const clave = process.env.OPENAI_API_KEY;
@@ -242,7 +252,9 @@ router.post('/editar', async (req, res) => {
     // Cada edición con IA vuelve a pintar toda la imagen y tiende a subir contraste y saturación; encadenando varias, el render se «quema».
     // Se compensa: el brillo, el contraste y el color medios del resultado se acercan a los de la imagen de entrada, salvo que el cambio pedido sea de luz.
     let salida = Buffer.from(b64, 'base64'), corregida = false;
-    if (soloCalidad === true || !/luz|ilumin|brillo|oscur|clar[oa]|exposic|hora|noche|d[ií]a|atardecer|sol|sombra|c[aá]lid|fr[ií]o|tono|color|saturaci/i.test(texto)) {
+    if (soloCalidad === true) {
+      try { salida = await fusionaTono(Buffer.from(m[2], 'base64'), salida); corregida = true; } catch (e3) { console.error('render-ia editar (fusión de tono):', e3.message); }
+    } else if (!/luz|ilumin|brillo|oscur|clar[oa]|exposic|hora|noche|d[ií]a|atardecer|sol|sombra|c[aá]lid|fr[ií]o|tono|color|saturaci/i.test(texto)) {
       try {
         const base = Buffer.from(m[2], 'base64'), pequena = x => sharp(x).resize({ width: 600, withoutEnlargement: true }).removeAlpha();
         const [a, b] = await Promise.all([pequena(base).stats(), pequena(salida).stats()]);
