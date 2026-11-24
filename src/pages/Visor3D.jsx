@@ -32,7 +32,7 @@ import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { renderNubeDisponible, enviarARenderNube } from '../utils/renderNube';
+import { renderNubeDisponible, enviarARenderNube, lanzarRenderNube, esperarRenderNube } from '../utils/renderNube';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
@@ -2499,24 +2499,29 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
       setIa({ estado: 'listo', imagen: r.data.imagen, original: imagen, meta: metaActual(), guardado: false });
     } catch (e) { setIa({ estado: 'error', mensaje: e.response?.data?.error || 'No se ha podido mejorar la imagen' }); }
   };
-  const renderNube = async (calidad = 'hd') => {
-    if (nube?.estado === 'trabajando') return;
-    setNube({ estado: 'trabajando', texto: 'Preparando la escena…' });
-    try {
-      const est = await renderNubeDisponible(); if (!est.disponible) { setNube(null); setAviso(est.motivo || 'El render en la nube aún no está activado.'); return; }
+  // Exporta la escena actual y la deja lista para mandarla a la nube (modelos cargados, texturas ajustadas, cámara y exposición).
+  const prepararNube = async (txt) => {
       // Antes de exportar se cargan todos los modelos de las máquinas (si no, salen como cajas azules en el render)
       if (cargasRef.current.pend > 0 || cargasRef.current.pes > 0 || cargasRef.current.lim > 0) {
-        setNube({ estado: 'trabajando', texto: 'Cargando los modelos de las máquinas…' }); setCargarModelos(true); setCargarPesados(true); setLimiteTri(1e12); // sin límite de detalle: ninguna máquina se queda como caja azul
+        txt('Cargando los modelos de las máquinas…'); setCargarModelos(true); setCargarPesados(true); setLimiteTri(1e12); // sin límite de detalle: ninguna máquina se queda como caja azul
         for (let i = 0; i < 80; i++) { await new Promise(r => setTimeout(r, 1500)); if (cargasRef.current.pend === 0 && cargasRef.current.pes === 0 && cargasRef.current.lim === 0) break; }
         await new Promise(r => setTimeout(r, 5000));
       }
       let { buf, info } = await prepararEscena();
       // si la escena pesa demasiado para subirla, se vuelve a exportar con texturas más pequeñas (1024 y después 512 px)
-      for (const tx of [1024, 512]) { if (buf.byteLength <= 45 * 1048576) break; setNube({ estado: 'trabajando', texto: 'La escena pesa ' + Math.round(buf.byteLength / 1048576) + ' MB: reduciendo las texturas…' }); ({ buf, info } = await prepararEscena(tx)); }
+      for (const tx of [1024, 512]) { if (buf.byteLength <= 45 * 1048576) break; txt('La escena pesa ' + Math.round(buf.byteLength / 1048576) + ' MB: reduciendo las texturas…'); ({ buf, info } = await prepararEscena(tx)); }
       if (buf.byteLength < 20000) throw new Error('La escena ha salido vacía (' + buf.byteLength + ' bytes). Recarga la página y espera a que carguen las máquinas antes de renderizar.');
       info.exposicion = ambiente.exposicion; info.ev = ambiente.ev ?? 7; info.modoExposicion = expNube; info.hora = hora; info.norte = entRot; info.solOn = ambiente.solOn !== false; info.solI = ambiente.solI ?? 1; // 'visor' = la exposición que tienes puesta en el visor; 'auto' = la calcula el servidor
       { const m = marcoRender(); if (m && info.camara) { info.camara.aspect = m.r; info.camara.fov = 2 * Math.atan(Math.tan((info.camara.fov * Math.PI) / 360) * (m.bh / m.H)) * 180 / Math.PI; } } // el render sale con el encuadre elegido
-      const url = await enviarARenderNube({ glb: new Blob([buf], { type: 'model/gltf-binary' }), info, calidad, exposicion: 3, alAvanzar: t => setNube({ estado: 'trabajando', texto: t }) });
+    return { glb: new Blob([buf], { type: 'model/gltf-binary' }), info };
+  };
+  const renderNube = async (calidad = 'hd') => {
+    if (nube?.estado === 'trabajando') return;
+    setNube({ estado: 'trabajando', texto: 'Preparando la escena…' });
+    try {
+      const est = await renderNubeDisponible(); if (!est.disponible) { setNube(null); setAviso(est.motivo || 'El render en la nube aún no está activado.'); return; }
+      const { glb, info } = await prepararNube(texto => setNube({ estado: 'trabajando', texto }));
+      const url = await enviarARenderNube({ glb, info, calidad, exposicion: 3, alAvanzar: t => setNube({ estado: 'trabajando', texto: t }) });
       setNube({ estado: 'listo', url });
       urlAJpegDataUrl(url).then(d => guardarRender('hd', d, metaActual(), 'Render realista')).catch(() => { /* si no se puede guardar solo, queda el botón de descargar */ }); // se guarda solo en la galería
     } catch (e) { setNube({ estado: 'error', texto: e.message || 'No se pudo hacer el render' }); }
@@ -6671,6 +6676,24 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
     }
     setLote(null); setGalAbierta(true); setAviso('Renders de las escenas terminados: están en la Galería.');
   };
+  const renderTodasNube = async () => {
+    if (!escenas.length || lote || nube?.estado === 'trabajando') return;
+    if (!window.confirm('Se mandarán ' + escenas.length + ' escenas a la nube a la vez (4K, calidad HD). Cada una tarda unos minutos y se guarda sola en la Galería cuando termina. Puedes seguir trabajando. ¿Continuar?')) return;
+    const est = await renderNubeDisponible(); if (!est.disponible) { setAviso(est.motivo || 'El render en la nube aún no está activado.'); return; }
+    const trabajos = [], fallos = [];
+    try {
+      for (let i = 0; i < escenas.length; i++) {
+        const e = escenas[i]; setLote({ i: i + 1, n: escenas.length, tipo: 'nube-envio', nombre: e.nombre });
+        try { await irAEscena(e); const { glb, info } = await prepararNube(() => {}); trabajos.push({ id: await lanzarRenderNube({ glb, info, calidad: 'hd', exposicion: 3 }), e }); } catch (err) { fallos.push(e.nombre + ': ' + (err.message || 'error')); }
+      }
+      let hechos = 0; setLote({ i: 0, n: trabajos.length, tipo: 'nube-espera', nombre: '' });
+      await Promise.all(trabajos.map(async tr => {
+        try { const d = await urlAJpegDataUrl(await esperarRenderNube(tr.id)); const ok = await guardarRender('hd', d, tr.e.meta ? metaActual(txtDe(tr.e)) : metaActual(), tr.e.nombre); if (!ok) throw new Error('no se pudo guardar'); } catch (err) { fallos.push(tr.e.nombre + ': ' + (err.message || 'error')); }
+        hechos++; setLote({ i: hechos, n: trabajos.length, tipo: 'nube-espera', nombre: '' });
+      }));
+    } finally { setLote(null); }
+    setGalAbierta(true); setAviso(fallos.length ? 'Renders en la nube terminados. Fallaron: ' + fallos.join(' · ') : 'Renders en la nube terminados: están en la Galería.');
+  };
   const captura = () => {
     const { renderer, scene, cam } = api3d.current;
     renderer.render(scene, cam);
@@ -7850,9 +7873,10 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
           {escenas.length > 1 && (
             <div style={{ borderTop: '1px solid #333', paddingTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <button style={btn} disabled={!!lote} onClick={() => renderTodas('hd')} title="Renderiza todas las escenas en HD y las guarda en la galería">🖼 Todas en HD</button>
+              <button style={btn} disabled={!!lote} onClick={renderTodasNube} title="Manda todas las escenas a la nube a la vez (Blender, 4K) y cada resultado se guarda en la galería">☁ Todas en la nube</button>
             </div>
           )}
-          {lote && <div style={{ marginTop: 8, color: '#8fb8de' }}>Renderizando {lote.i} de {lote.n}: {lote.nombre}…</div>}
+          {lote && <div style={{ marginTop: 8, color: '#8fb8de' }}>{lote.tipo === 'nube-envio' ? 'Enviando a la nube ' + lote.i + ' de ' + lote.n + ': ' + lote.nombre + '…' : lote.tipo === 'nube-espera' ? 'Renderizando en la nube: ' + lote.i + ' de ' + lote.n + ' terminadas (puedes seguir trabajando)…' : 'Renderizando ' + lote.i + ' de ' + lote.n + ': ' + lote.nombre + '…'}</div>}
         </div>
       )}
       {galAbierta && (
