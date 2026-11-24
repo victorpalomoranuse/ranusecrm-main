@@ -47,7 +47,10 @@ SPOT_K = 1.0  # sin refuerzo: luz física
 LED_K = 1.0  # sin refuerzo: luz física
 W_PER_CD = 4 * math.pi * math.pi / 683.0  # candelas -> vatios de Blender (aprox.)
 for L in info['luces']:
-    col = srgb2lin(hexc(L['col'])); col = [c + (1.0 - c) * 0.45 for c in col]  # menos saturación: sin esto todo sale amarillo
+    col = srgb2lin(hexc(L['col'])); lum0 = 0.2126 * col[0] + 0.7152 * col[1] + 0.0722 * col[2]
+    col = [c + (1.0 - c) * 0.45 for c in col]  # menos saturación: sin esto todo sale amarillo
+    lum1 = 0.2126 * col[0] + 0.7152 * col[1] + 0.0722 * col[2]
+    if lum1 > 1e-6: col = [c * lum0 / lum1 for c in col]  # misma luminosidad que antes: solo cambia el tono, no la exposición
     if L['t'] == 'spot':
         d = bpy.data.lights.new('s', 'SPOT'); d.energy = L['i'] * W_PER_CD * SPOT_K; d.spot_size = min(math.pi, L['ang'] * 2); d.spot_blend = max(0.05, L['pen']); d.shadow_soft_size = 0.05
         ob = bpy.data.objects.new('s', d); sc.collection.objects.link(ob); ob.location = G(L['pos'])
@@ -285,6 +288,7 @@ def equilibrio(fuerza=0.6):
         m = a[::37, :3].mean(axis=0)
         if min(m) < 0.003: return
         g = float(m.mean()); gain = np.clip((g / m) ** fuerza, 0.75, 1.25)
+        w = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32); gain = gain * float((w * m).sum() / max(1e-6, (w * m * gain).sum()))  # el equilibrio de color no cambia el brillo
         a[:, :3] = np.clip(a[:, :3] * gain, 0.0, 1.0); im.pixels.foreach_set(buf); im.filepath_raw = out; im.file_format = 'PNG'; im.save()
         print('BALANCE', [round(float(x), 3) for x in gain])
     except Exception as e:
