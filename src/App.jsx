@@ -20,7 +20,6 @@ const Visor3D = lazy(() => import('./pages/Visor3D')); // el visor 3D es lo más
 const SubirFotos = lazy(() => import('./pages/SubirFotos').then(m => ({ default: m.SubirFotos })));
 const Rapido = lazy(() => import('./pages/Rapido').then(m => ({ default: m.Rapido })));
 const TourPublico = lazy(() => import('./pages/TourPublico').then(m => ({ default: m.TourPublico })));
-const MaquetaPublica = lazy(() => import('./pages/MaquetaPublica'));
 const HomeGym = lazy(() => import('./pages/HomeGym').then(m => ({ default: m.HomeGym })));
 import './App.css';
 
@@ -80,7 +79,7 @@ function App() {
               {/* Subir fotos del estado actual desde el móvil (sin entrar al CRM) */}
               <Route path="/tour/:id/:firma" element={<TourPublico />} />
               <Route path="/recorrido/:id/:firma" element={<Visor3D cliente />} />
-              <Route path="/maqueta/:id/:firma" element={<MaquetaPublica />} />
+              <Route path="/maqueta/:id/:firma" element={<Visor3D cliente maquetaPub />} />
               <Route path="/zonas/:id/:firma" element={<Visor3D cliente zonasPub />} />
               <Route path="/subir/:code" element={<SubirFotos />} />
 

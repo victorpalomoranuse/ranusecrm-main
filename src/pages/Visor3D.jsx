@@ -24,6 +24,7 @@ import { construirCubierta, cubiertaPorDefecto, normalizaCubierta, calculosCubie
 import { construirEscalada, escaladaPorDefecto, normalizaEscalada, calculosEscalada, textoEscalada, dimEscalada, TIPOS_ESCALADA, COLORES_PANEL_ESC, COLORES_PRESAS, SOPORTES_MONKEY, COLORES_BARRAS } from '../components/escalada3d';
 import { construirSauna, saunaPorDefecto, normalizaSauna, calculosSauna, textoMateriales, MADERAS, TIPOS_SAUNA } from '../components/sauna3d';
 import EditorRender from '../components/EditorRender';
+import { VisorFoto, limpiaNombreRender } from '../components/VisorFoto';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import EditorPlanta2D from '../components/EditorPlanta2D';
@@ -2275,7 +2276,7 @@ class SombrasDeContacto extends SSAOPass {
     super.dispose();
   }
 }
-export default function Visor3D({ cliente = false, zonasPub = false }) {
+export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub = false }) {
   const { id, firma } = useParams();
   if (cliente) api = crearApiCliente(id, firma);
   const navigate = useNavigate();
@@ -2960,7 +2961,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
       const pl = r.data?.plano;
       if (!primera && pl?.updated === ultima) return; // sin cambios en el plano
       ultima = pl?.updated;
-      if (cliente && primera && esMovil() && (pl?.escena3d?.renders || []).some(r => r.tipo === '360' && r.tour)) { navigate('/tour/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma), { replace: true }); return; }
+      if (cliente && !maquetaPub && primera && esMovil() && (pl?.escena3d?.renders || []).some(r => r.tipo === '360' && r.tour)) { navigate('/tour/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma), { replace: true }); return; }
       setTitulo(pl?.nombre || 'Plano');
       const firmaActual = JSON.stringify([pl?.modelo3d, pl?.nodes, pl?.pts]);
       if (!primera && firmaActual === firmaPlano) return;
@@ -4156,8 +4157,8 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
   const [joyPos, setJoyPos] = useState(null);
   const [gpuFlojaCli, setGpuFlojaCli] = useState(false);
   useEffect(() => {
-    if (!cliente || estado !== 'listo') return;
-    const a = api3d.current, par = (renders.filter(r => r.tipo === '360' && r.tour && r.meta?.camara)).sort((x, y) => (y.entrada ? 1 : 0) - (x.entrada ? 1 : 0) || String(x.creado).localeCompare(String(y.creado)));
+    if (!cliente || estado !== 'listo' || maquetaPub) return;
+    const a = api3d.current, par =(renders.filter(r => r.tipo === '360' && r.tour && r.meta?.camara)).sort((x, y) => (y.entrada ? 1 : 0) - (x.entrada ? 1 : 0) || String(x.creado).localeCompare(String(y.creado)));
     setParadasCli(par);
     if (par.length) {
       const c = par[0].meta.camara, yaw = Math.atan2((c.tx ?? c.px) - c.px, (c.tz ?? c.pz + 1) - c.pz);
@@ -6126,55 +6127,65 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
       try { await navigator.clipboard.writeText(u); setAviso((libre ? 'Enlace del recorrido libre copiado: ' : 'Enlace del tour copiado: ') + u); } catch { window.prompt('Copia el enlace del tour:', u); }
     } catch { setAviso('No se pudo crear el enlace del tour'); }
   };
-  // Maqueta del cliente: la planta en 3D vista desde arriba en modo Render (con sus luces y materiales), desde 4 ángulos,
-  // recortada justo al plano y con los puntos donde se hizo cada render publicado. Se genera aquí una vez; el cliente solo descarga las imágenes.
-  const [genMaqueta, setGenMaqueta] = useState(false);
-  const generarMaqueta = async () => {
-    if (genMaqueta || estado !== 'listo') return;
-    if (!modoRender) { setAviso('Pasa a modo Render para generar la maqueta con sus luces y materiales.'); return; }
-    const fotos = renders.filter(r => r.tipo !== '360' && r.tipo !== 'maqueta' && r.publicado && r.meta?.camara);
-    if (!fotos.length) { setAviso('Publica antes algún render en la historia del cliente: la maqueta pone un punto en cada uno.'); return; }
-    const a = api3d.current, m = a.modelo; if (!m) return;
-    const pl0 = (m.plantas || [m])[0], pts = [...(pl0.salas || []).flatMap(s => s.pts), ...(pl0.muros || []).flatMap(mu => [mu.a, mu.b])];
-    if (!pts.length) { setAviso('Este plano no tiene salas ni muros que ver'); return; }
-    const xs = pts.map(p => p[0] * CM), zs = pts.map(p => p[1] * CM), H = (pl0.altura || 260) * CM;
-    const esquinas = []; for (const x of [Math.min(...xs), Math.max(...xs)]) for (const z of [Math.min(...zs), Math.max(...zs)]) for (const y of [0, H]) esquinas.push(new THREE.Vector3(x, y, z));
-    const esperar = ms => new Promise(r => setTimeout(r, ms));
-    const cargar = src => new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = src; });
-    setGenMaqueta(true); setAviso('Generando la maqueta del cliente (4 vistas)…');
-    const ocultasAntes = ocultas, yaAxo = !!axo, fondo = a.scene.background, base = a.base?.visible;
-    try {
-      if (!yaAxo) { liberarCamara(); colocarAxo(45, true); setOcultas(o => (o.includes('techos') ? o : [...o, 'techos'])); }
-      a.scene.background = new THREE.Color(0x1a1612); if (a.base) a.base.visible = false;
-      await esperar(900);
-      const grupo = Date.now().toString(36); let hechas = 0;
-      for (const az of [45, 135, 225, 315]) {
-        colocarAxo(az, false); a.despierta = performance.now() + 2000; await esperar(600);
-        const img = await cargar(await renderHDurl({ ancho: 2800, fmt: 'jpg' }));
-        const c2 = a.cam.clone(); c2.aspect = img.width / img.height; c2.updateProjectionMatrix(); c2.updateMatrixWorld();
-        const aImg = v => { const p = v.clone().project(c2); return [(p.x + 1) / 2 * img.width, (1 - p.y) / 2 * img.height, p.z]; };
-        // recorte justo al plano (sus 8 esquinas vistas desde esta cámara) con un pequeño margen
-        const ex = esquinas.map(aImg), mg = img.width * 0.02;
-        const x0 = Math.max(0, Math.min(...ex.map(p => p[0])) - mg), y0 = Math.max(0, Math.min(...ex.map(p => p[1])) - mg);
-        const x1 = Math.min(img.width, Math.max(...ex.map(p => p[0])) + mg), y1 = Math.min(img.height, Math.max(...ex.map(p => p[1])) + mg);
-        const cw = Math.round(x1 - x0), ch = Math.round(y1 - y0), cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
-        cv.getContext('2d').drawImage(img, x0, y0, cw, ch, 0, 0, cw, ch);
-        const pines = fotos.map(f => { const c = f.meta.camara, [px, py, pz] = aImg(new THREE.Vector3(c.px, c.py, c.pz)); return { id: f.id, x: (px - x0) / cw, y: (py - y0) / ch, z: pz }; })
-          .filter(p => p.z < 1 && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1).map(({ id, x, y }) => ({ id, x, y }));
-        const r = await guardarRender('maqueta', cv.toDataURL('image/jpeg', 0.9), { ...metaActual(), az, grupo, pines }, 'Maqueta ' + az + '°');
-        if (r) hechas++;
-      }
-      setAviso(hechas === 4 ? 'Maqueta lista ✓ Copia su enlace en Exportar → «Copiar enlace de la maqueta».' : 'La maqueta se ha generado a medias (' + hechas + ' de 4 vistas). Vuelve a intentarlo.');
-    } catch (e) { setAviso('No se ha podido generar la maqueta: ' + (e.message || 'error')); }
-    finally {
-      a.scene.background = fondo; if (a.base) a.base.visible = base;
-      if (!yaAxo) { const p = a.alzPrev; if (p) { a.cam.fov = p.fov; a.shiftY = p.shift; a.cam.updateProjectionMatrix(); a.cam.position.copy(p.pos); a.ctrl.target.copy(p.target); } a.alzPrev = null; a.ctrl.update(); setOcultas(ocultasAntes); }
-      else colocarAxo(axo.az, false);
-      setGenMaqueta(false);
-    }
-  };
+  // Maqueta pública (/maqueta/…): la casa vista desde fuera y desde arriba con los acabados del render (sin techos), girable con el dedo,
+  // y un punto en cada render publicado; al tocarlo se abre ese render a pantalla completa
+  const [fotoMaq, setFotoMaq] = useState(null), pinesMaq = useRef([]);
+  const rendersMaq = useMemo(() => (maquetaPub ? renders.filter(r => r.tipo !== '360' && r.tipo !== 'maqueta' && r.publicado && r.url && Number.isFinite(r.meta?.camara?.px)).sort((x, y) => String(x.creado).localeCompare(String(y.creado))) : []), [maquetaPub, renders]);
+  useEffect(() => {
+    if (!maquetaPub || estado !== 'listo') return;
+    const a = api3d.current;
+    const fondoMaq = new THREE.Color(0x1a1612), luzMaq = new THREE.HemisphereLight(0xfff4e6, 0x3a2e24, 1.3);
+    let raf, espera, cx = 0, cz = 0, R = 0;
+    // el modelo puede tardar un instante en montarse tras «listo»: se espera a tenerlo antes de colocar la cámara
+    const listo = () => {
+      const m = a.modelo; if (!m || !a.cam || !a.ctrl) return false;
+      const pl0 = (m.plantas || [m])[0], [ox, oy] = (a.offsPl || [])[0] || [0, 0];
+      const pts = [...(pl0.salas || []).flatMap(s => s.pts || []), ...(pl0.muros || []).flatMap(mu => [mu.a, mu.b])].filter(Boolean);
+      if (!pts.length) return false;
+      const xs = pts.map(p => (p[0] + ox) * CM), zs = pts.map(p => (p[1] + oy) * CM);
+      cx = (Math.min(...xs) + Math.max(...xs)) / 2; cz = (Math.min(...zs) + Math.max(...zs)) / 2; R = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs)) / 2;
+      return true;
+    };
+    const coloca = () => {
+      const asp = a.cam.aspect || 1, fov = asp < 1 ? 50 : 38, el = 52 * Math.PI / 180, A = Math.PI / 4;
+      // la maqueta llena la pantalla: distancia justa para que quepa su planta (con poco margen)
+      const dist = R / Math.sin((fov * Math.PI / 360) * Math.min(1, asp)) * 0.8;
+      a.cam.fov = fov; a.cam.updateProjectionMatrix();
+      a.cam.position.set(cx + Math.sin(A) * Math.cos(el) * dist, Math.sin(el) * dist, cz + Math.cos(A) * Math.cos(el) * dist);
+      a.ctrl.target.set(cx, 0.4, cz); a.ctrl.enablePan = false; a.ctrl.minDistance = dist * 0.35; a.ctrl.maxDistance = dist * 1.5;
+      a.ctrl.minPolarAngle = 0.12; a.ctrl.maxPolarAngle = Math.PI * 0.46; a.ctrl.update();
+    };
+    const v = new THREE.Vector3();
+    const paso = () => {
+      raf = requestAnimationFrame(paso);
+      // otros ajustes del visor (cielo, suelo exterior) pueden volver a ponerse: la maqueta se queda sobre su fondo oscuro
+      if (a.scene.background !== fondoMaq) { a.scene.background = fondoMaq; a.despierta = performance.now() + 300; }
+      if (a.base?.visible) a.base.visible = false;
+      const r = a.renderer.domElement.getBoundingClientRect();
+      rendersMaq.forEach((f, i) => {
+        const b = pinesMaq.current[i]; if (!b) return; const c = f.meta.camara;
+        v.set(c.px, Number.isFinite(c.py) ? c.py : 1.6, c.pz).project(a.cam);
+        const ve = v.z < 1 && Math.abs(v.x) <= 1.02 && Math.abs(v.y) <= 1.02;
+        b.style.display = ve ? 'flex' : 'none';
+        if (ve) b.style.transform = `translate(${r.left + (v.x + 1) / 2 * r.width}px, ${r.top + (1 - v.y) / 2 * r.height}px) translate(-50%, -100%)`;
+      });
+    };
+    const arranca = () => {
+      if (!listo()) return false;
+      setOcultas(o => (o.includes('techos') ? o : [...o, 'techos']));
+      coloca();
+      // sin techo, el interior solo lo alumbran sus luces: una luz suave desde arriba, como en una maqueta, deja ver los acabados sin apagar los LED
+      a.scene.add(luzMaq); a.despierta = performance.now() + 1500;
+      // si el visor recoloca la cámara al terminar de cargar, se vuelve a la vista de maqueta (mientras el cliente no la haya movido)
+      a.ctrl.addEventListener('start', tocada); recoloca = setTimeout(() => { if (!movida) coloca(); }, 1500);
+      paso(); return true;
+    };
+    let movida = false, recoloca; const tocada = () => { movida = true; };
+    if (!arranca()) espera = setInterval(() => { if (arranca()) clearInterval(espera); }, 200);
+    return () => { clearInterval(espera); clearTimeout(recoloca); cancelAnimationFrame(raf); a.scene.remove(luzMaq); a.ctrl?.removeEventListener('start', tocada); };
+  }, [maquetaPub, estado, rendersMaq]); // eslint-disable-line react-hooks/exhaustive-deps
   const copiarEnlaceMaqueta = async () => {
-    if (!renders.some(r => r.tipo === 'maqueta')) { setAviso('Primero genera la maqueta (Exportar → «Generar maqueta del cliente»).'); return; }
+    if (!renders.some(r => r.tipo !== '360' && r.publicado && r.meta?.camara)) setAviso('Aviso: la maqueta pone un punto en cada render publicado y aún no hay ninguno. El enlace funciona igual.');
     try {
       const f = (await api.get('/medicion/' + id + '/tour-firma')).data.firma, u = window.location.origin + '/maqueta/' + encodeURIComponent(id) + '/' + f;
       try { await navigator.clipboard.writeText(u); setAviso('Enlace de la maqueta copiado: ' + u); } catch { window.prompt('Copia el enlace de la maqueta:', u); }
@@ -7419,7 +7430,26 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
           {muneco.ver && zonInfo && <div style={{ position: 'absolute', right: 22, top: 20, fontSize: 12, opacity: 0.6, textAlign: 'right' }}>Arrastra el muñeco o muévelo con W A S D</div>}
         </div>
       )}
-      {cliente && !zonasPub && (
+      {maquetaPub && (
+        <div data-vista="1" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', color: '#f4ede3', fontFamily: 'Montserrat, system-ui, sans-serif' }}>
+          <style>{'@keyframes mq-latido{from{transform:scale(1);opacity:.9}to{transform:scale(2.6);opacity:0}}'}</style>
+          <div style={{ position: 'absolute', left: 12, top: 'calc(env(safe-area-inset-top, 0px) + 10px)', fontSize: 10, letterSpacing: '.18em', textTransform: 'uppercase', color: '#d2ad70', fontWeight: 600, textShadow: '0 1px 6px rgba(0,0,0,.6)' }}>Ranuse Design · {titulo}</div>
+          {rendersMaq.map((f, i) => (
+            <button key={f.id} ref={el => { pinesMaq.current[i] = el; }} type="button" onClick={() => setFotoMaq(i)} aria-label={'Ver ' + limpiaNombreRender(f.nombre)}
+              style={{ position: 'absolute', left: 0, top: 0, display: 'none', pointerEvents: 'auto', background: 'none', border: 0, padding: 0, cursor: 'pointer', flexDirection: 'column', alignItems: 'center', gap: 4, color: '#f4ede3', willChange: 'transform' }}>
+              <span style={{ font: '600 11px Montserrat, system-ui, sans-serif', background: 'rgba(24,20,17,0.82)', border: '1px solid rgba(255,240,220,0.16)', borderRadius: 999, padding: '4px 9px', whiteSpace: 'nowrap' }}>{limpiaNombreRender(f.nombre)}</span>
+              <span style={{ position: 'relative', width: 14, height: 14, borderRadius: '50%', background: '#d2ad70', boxShadow: '0 0 0 4px rgba(210,173,112,.28), 0 0 16px rgba(210,173,112,.8)' }}>
+                <span style={{ position: 'absolute', inset: -4, borderRadius: '50%', border: '2px solid #d2ad70', animation: 'mq-latido 2.2s ease-out infinite' }} />
+              </span>
+            </button>
+          ))}
+          {estado === 'cargando' && <div style={{ position: 'absolute', left: 0, right: 0, top: '45%', textAlign: 'center', fontSize: 14, opacity: 0.8 }}>Cargando la maqueta…</div>}
+          {estado === 'error' && <div style={{ position: 'absolute', left: 0, right: 0, top: '45%', textAlign: 'center', fontSize: 14 }}>No se ha podido abrir la maqueta.</div>}
+          {estado === 'listo' && fotoMaq == null && <div style={{ position: 'absolute', left: '50%', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 14px)', transform: 'translateX(-50%)', background: 'rgba(24,20,17,0.82)', border: '1px solid rgba(255,240,220,0.16)', borderRadius: 999, padding: '8px 14px', fontSize: 12, whiteSpace: 'nowrap' }}>Arrastra para girar · toca un punto para ver el render</div>}
+          {fotoMaq != null && <div style={{ pointerEvents: 'auto' }}><VisorFoto fotos={rendersMaq} inicio={fotoMaq} onCerrar={() => setFotoMaq(null)} cerrarTexto="✕ Maqueta" /></div>}
+        </div>
+      )}
+      {cliente && !zonasPub && !maquetaPub && (
         <div data-vista="1" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', color: '#fff', fontFamily: 'system-ui, sans-serif', textShadow: '0 1px 6px rgba(0,0,0,0.7)' }}>
           <div style={{ position: 'absolute', left: 16, top: 14, right: 16 }}>
             <div style={{ fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', color: '#c9a46c' }}>Ranuse Design</div>
@@ -7506,8 +7536,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
           [generandoTour ? 'Generando el tour…' : '⭐ Generar tour fijo (enlace que no cambia)', generaTourFijo, false, generandoTour || estado !== 'listo', 'Congela el modelo y las paradas de ahora en una copia con su propio enlace: si luego cambias el modelo, ese tour no se toca hasta que generes otro'],
           ['Mis tours generados' + (toursV?.length ? ' (' + toursV.length + ')' : ''), () => { setToursAbierto(v => !v); cargaToursV(); }, toursAbierto, false, 'Enlaces de los tours ya generados: copiar o borrar'],
           ['Copiar enlace del recorrido libre', () => copiarEnlaceTour(true), false, false, 'Enlace público (solo lectura): el cliente anda por el espacio; si su equipo es flojo se le ofrece el tour de panorámicas'],
-          [genMaqueta ? 'Generando la maqueta…' : '⭐ Generar maqueta del cliente', generarMaqueta, false, genMaqueta || estado !== 'listo', 'En modo Render: la planta en 3D desde arriba (4 ángulos) con sus luces, y un punto en cada render publicado. Se genera una vez; el cliente solo ve imágenes'],
-          ['Copiar enlace de la maqueta', copiarEnlaceMaqueta, false, false, 'Enlace público: la maqueta ya generada; al tocar un punto se abre ese render en grande'],
+          ['⭐ Copiar enlace de la maqueta', copiarEnlaceMaqueta, false, false, 'Enlace público: la casa desde arriba con sus acabados de render, girable con el dedo; al tocar un punto se abre ese render en grande'],
           ['Copiar enlace del tour con mis renders (sin deformar)', () => copiarEnlaceTour(false, true), false, false, 'Enlace público: solo tus renders finales publicados, tal cual, con saltos entre ellos. No estira ni inventa nada'],
           ['Copiar enlace del tour', () => copiarEnlaceTour(false), false, false, 'Enlace público (solo lectura) del tour 360° para el cliente'],
           [panoIA ? 'Panorama con IA…' : 'Panorama 360° con IA (prueba)', hacer360IA, false, panoIA || generando360 || estado !== 'listo', 'Manda la panorámica a ChatGPT para hacerla fotorrealista'],
