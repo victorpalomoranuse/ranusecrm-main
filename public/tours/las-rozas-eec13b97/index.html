@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Home Gym · Las Rozas · Tour 360°</title>
+<link rel="icon" href="/iconoRanuse.ico">
+<style>
+  :root{--fondo:#141210;--panel:#1f1c19e0;--oro:#c9a46c;--texto:#f1ece4;--suave:#bfb6a8}
+  html,body{margin:0;height:100%;background:var(--fondo);color:var(--texto);font:15px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}
+  canvas{display:block;touch-action:none;cursor:grab}canvas:active{cursor:grabbing}
+  .panel{position:fixed;background:var(--panel);border:1px solid #ffffff1f;border-radius:14px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+  header{top:16px;left:16px;padding:12px 16px}
+  header b{display:block;font-size:15px;letter-spacing:.02em}header small{color:var(--suave)}
+  #full{top:16px;right:16px;padding:0}
+  nav{bottom:max(18px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);padding:8px;display:flex;gap:6px;max-width:calc(100vw - 32px)}
+  button{font:inherit;border:0;border-radius:9px;padding:10px 16px;cursor:pointer;background:transparent;color:var(--texto);white-space:nowrap}
+  nav button[aria-pressed=true]{background:var(--oro);color:#1b1712;font-weight:600}
+  #full button{padding:10px 14px}
+  #aviso{position:fixed;inset:0;display:grid;place-items:center;color:var(--suave);pointer-events:none;transition:opacity .4s}
+  #pista{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);color:var(--suave);font-size:13px;transition:opacity .8s;pointer-events:none;text-align:center}
+  #hot{position:fixed;left:0;top:0;padding:0;display:none;flex-direction:column;align-items:center;gap:5px;transform:translate(-50%,-14px);background:none}
+  #hot .aro{width:26px;height:26px;border-radius:50%;border:2px solid #fff;background:#ffffff38;box-shadow:0 2px 10px #0009;animation:latido 2s ease-in-out infinite}
+  #hot .txt{background:var(--panel);border:1px solid #ffffff2a;border-radius:12px;padding:2px 9px;font-size:12px;font-weight:600;letter-spacing:.04em}
+  #hot:hover .aro{background:var(--oro);border-color:var(--oro)}
+  @keyframes latido{50%{box-shadow:0 0 0 6px #ffffff18,0 2px 10px #0009}}
+</style>
+</head>
+<body>
+<header class="panel"><b>Home Gym · Las Rozas</b><small id="nombre">Ranuse Design · Tour 360°</small></header>
+<div id="aviso">Cargando…</div>
+<div id="pista">Arrastra para mirar alrededor</div>
+<button id="hot" type="button" aria-label="Cambiar de punto"><span class="aro"></span><span class="txt"></span></button>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+// lon/lat (grados) del punto en el suelo que lleva a la otra parada, medido en la panorámica de cada punto
+const PUNTOS=[{img:'vista-general.jpg',yaw:1.55,nombre:'V1',hot:{lon:-47,lat:-16,txt:'V2'}},{img:'ocio-cardio.jpg',yaw:0,nombre:'V2',hot:{lon:70.5,lat:-9.5,txt:'V1'}}];
+const dirDe=({lon,lat})=>{const a=lon*Math.PI/180,b=lat*Math.PI/180;return new THREE.Vector3(-Math.cos(a)*Math.cos(b),Math.sin(b),-Math.sin(a)*Math.cos(b))};
+const r=new THREE.WebGLRenderer({antialias:true});r.setPixelRatio(Math.min(devicePixelRatio,2));r.setSize(innerWidth,innerHeight);r.outputColorSpace=THREE.SRGBColorSpace;document.body.prepend(r.domElement);
+const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.1,10);
+const mat=new THREE.MeshBasicMaterial({side:THREE.BackSide,color:0x000000}),esfera=new THREE.Mesh(new THREE.SphereGeometry(2,96,64),mat);esfera.scale.x=-1;scene.add(esfera);
+// óptica fija (sin zoom) y mirada limitada para no llegar a los polos
+const fov=()=>{const a=Math.max(.4,innerWidth/innerHeight),v=2*Math.atan(Math.tan(40*Math.PI/180)/a)*180/Math.PI;return Math.max(50,Math.min(80,v))};
+let yaw=0,pitch=0,drag=null,actual=-1,cargando=false;const tex={},loader=new THREE.TextureLoader();
+const hot=document.querySelector('#hot');
+const draw=()=>{cam.lookAt(Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch));r.render(scene,cam);
+  if(actual<0){hot.style.display='none';return}const p=dirDe(PUNTOS[actual].hot),f=new THREE.Vector3();cam.getWorldDirection(f);
+  if(p.dot(f)<.15){hot.style.display='none';return}p.project(cam);hot.style.display='flex';hot.style.left=((p.x+1)/2*innerWidth)+'px';hot.style.top=((1-p.y)/2*innerHeight)+'px'};
+const carga=i=>tex[i]||(tex[i]=loader.loadAsync(PUNTOS[i].img).then(t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=r.capabilities.getMaxAnisotropy();return t}));
+async function ir(i){if(i===actual||cargando)return;cargando=true;const av=document.querySelector('#aviso');av.style.opacity=1;
+  try{const t=await carga(i);mat.map=t;mat.color.set(0xffffff);mat.needsUpdate=true;actual=i;yaw=PUNTOS[i].yaw;pitch=0;
+    hot.querySelector('.txt').textContent=PUNTOS[i].hot.txt;hot.setAttribute('aria-label','Ir a '+PUNTOS[i].hot.txt);document.querySelector('#nombre').textContent=PUNTOS[i].nombre+' · Ranuse Design · Tour 360°';av.style.opacity=0;draw();carga(1-i)}
+  catch{av.textContent='No se ha podido cargar. Recarga la página.'}finally{cargando=false}}
+hot.onclick=()=>ir(1-actual);
+const el=r.domElement;
+el.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY];el.setPointerCapture(e.pointerId);document.querySelector('#pista').style.opacity=0});
+el.addEventListener('pointermove',e=>{if(!drag)return;const k=.0045*cam.fov/70;yaw-=(e.clientX-drag[0])*k;pitch=Math.max(-.75,Math.min(.75,pitch+(e.clientY-drag[1])*k));drag=[e.clientX,e.clientY];draw()});
+const fin=()=>drag=null;el.addEventListener('pointerup',fin);el.addEventListener('pointercancel',fin);
+addEventListener('keydown',e=>{const m={ArrowLeft:[-.08,0],ArrowRight:[.08,0],ArrowUp:[0,.08],ArrowDown:[0,-.08]}[e.key];if(!m)return;yaw+=m[0];pitch=Math.max(-.75,Math.min(.75,pitch+m[1]));e.preventDefault();draw()});
+const ajusta=()=>{cam.aspect=innerWidth/innerHeight;cam.fov=fov();cam.updateProjectionMatrix();r.setSize(innerWidth,innerHeight);draw()};addEventListener('resize',ajusta);ajusta();ir(1);
+</script>
+</body>
+</html>
