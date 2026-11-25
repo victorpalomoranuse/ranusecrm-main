@@ -7977,6 +7977,16 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
       {galAbierta && (
         <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 330, background: 'rgba(24,24,24,0.95)', color: '#fff', borderRadius: 10, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>🖼 Galería <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>renders y panoramas guardados</span></div>
+          <label style={{ ...btn, display: 'block', marginBottom: 8, cursor: 'pointer' }}>Abrir panorama para mejorar
+            <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={async e => {
+              const f = e.target.files?.[0]; e.target.value = ''; if (!f) return;
+              try {
+                const url = await new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsDataURL(f); });
+                const im = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = url; });
+                if (Math.abs(im.naturalWidth / im.naturalHeight - 2) > 0.02) { setAviso('El panorama debe tener proporción 2:1.'); return; }
+                setEditorRender({ id: 'nuevo', tipo: '360', url, nombre: f.name.replace(/\.[^.]+$/, ''), meta: {} });
+              } catch { setAviso('No se ha podido abrir el panorama.'); }
+            }} /></label>
           {!renders.length && <p style={{ opacity: 0.65 }}>Aún no has guardado ninguno. Genera un render con IA o un panorama 360° y pulsa «Guardar en la galería»: se guarda con la vista, la hora y los textos con los que lo hiciste.</p>}
           {renders.map(rd => (
             <div key={rd.id} style={{ borderTop: '1px solid #333', paddingTop: 8, marginTop: 8 }}>
@@ -8038,7 +8048,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
           </div>
         </div>
       )}
-      {editorRender && <EditorRender key={editorRender.id} src={editorRender.url} nombre={editorRender.nombre} galeria={renders.filter(r => r.tipo !== '360')} onCerrar={() => setEditorRender(null)} onElegir={rd => setEditorRender(rd)} onBorrar={rd => api.delete('/medicion/' + id + '/render/' + rd.id).then(() => setRenders(x => x.filter(y => y.id !== rd.id)))} renderInicial={editorRender.id !== 'nuevo' ? editorRender : null} onPublicar={rd => abrirPublicar(rd)} onGuardar={async (u, n) => (await guardarRender('ia', u, editorRender.meta, n)) || false} />}
+      {editorRender && <EditorRender key={editorRender.id} src={editorRender.url} nombre={editorRender.nombre} galeria={renders.filter(r => r.tipo !== '360')} onCerrar={() => setEditorRender(null)} onElegir={rd => setEditorRender(rd)} onBorrar={rd => api.delete('/medicion/' + id + '/render/' + rd.id).then(() => setRenders(x => x.filter(y => y.id !== rd.id)))} renderInicial={editorRender.id !== 'nuevo' ? editorRender : null} onPublicar={rd => abrirPublicar(rd)} onGuardar={async (u, n) => (await guardarRender(editorRender.tipo === '360' ? '360' : 'ia', u, editorRender.meta, n)) || false} />}
       {verRender && (
         <div onClick={() => setVerRender(null)} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 10, display: 'grid', placeItems: 'center', padding: 16, cursor: 'zoom-out' }}>
           <img src={verRender.url} alt={verRender.nombre} style={{ maxWidth: '94vw', maxHeight: '90vh', borderRadius: 6 }} />
