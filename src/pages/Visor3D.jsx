@@ -17,6 +17,7 @@ import opentype from 'opentype.js';
 import { PRESETS_REVEST, PERFILES_MOLDURA, construirRevest, colocaEnMuro, normalizaRevest, preset as presetRevest, cajaRevest, espesorRevest } from '../components/revestimientos';
 import ChatImagenes from '../components/ChatImagenes';
 import { texLuzMural, construirDeco, KINDS_DECO, MEDIDAS_DECO, KINDS_PERSONAS, KINDS_MOBILIARIO } from '../components/deco3d';
+import { crearProyeccion, cargarRefs } from '../utils/proyeccion3d';
 import { construirRack, rackPorDefecto, normalizaRack, calculosRack, textoRack, dimRack, TIPOS_RACK, TIPOS_BAHIA, ACCESORIOS, PERFILES_RACK, COLORES_RACK, bahiaPorDefecto } from '../components/rack3d';
 import { construirCesped, cespedPorDefecto, normalizaCesped, calculosCesped, textoCesped, PRESETS_CESPED, PRESETS_MARCAJE, aplicaPresetMarcaje, COLORES_CESPED, COLORES_LINEA } from '../components/cesped3d';
 import { construirCubierta, cubiertaPorDefecto, normalizaCubierta, calculosCubierta, textoCubierta, altoCubierta, TIPOS_CUBIERTA, PANELES, COLORES_PANEL } from '../components/cubierta3d';
@@ -6008,9 +6009,9 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
     const m = api3d.current.modelo; if (!m || generandoParada) return;
     const lista = []; (m.plantas || [m]).forEach((pl, ip) => (pl.salas || []).forEach((sa, i) => { if (sa.pts && sa.pts.length >= 3) lista.push({ key: ip + ':' + i, nombre: (sa.nombre || 'Sala ' + (i + 1)), planta: (m.plantas || [m]).length > 1 ? (pl.nombre || 'Planta ' + (ip + 1)) : '', sel: !(ocultas || []).includes('planta:' + ip) }); }));
     if (!lista.length) { setAviso('No hay salas en el modelo para repartir paradas.'); return; }
-    setTourCfg({ salas: lista, ia: false, refs: renders.filter(r => r.tipo !== '360').slice(0, 3).map(r => r.id) });
+    setTourCfg({ salas: lista, ia: false, proy: false, refs: renders.filter(r => r.tipo !== '360' && r.meta?.camara).slice(0, 3).map(r => r.id) });
   };
-  const tourAuto = async (elegidas, usarIA, refsIds = []) => {
+  const tourAuto = async (elegidas, usarIA, refsIds = [], proy = false) => {
     const a = api3d.current, m = a.modelo; if (!m || generandoParada) return;
     if (!usarIA && !avisaCalidadTour()) return;
     const pls = m.plantas || [m], offs = a.offsPl || [];
@@ -6039,7 +6040,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
     };
     let paso = 380, pts = reparte(paso); while (pts.length > 30 && paso < 1200) { paso = Math.round(paso * 1.2); pts = reparte(paso); }
     if (!pts.length) { setAviso('No he encontrado salas donde colocar paradas.'); return; }
-    if (!window.confirm('Voy a generar ' + pts.length + ' paradas en las salas que has elegido (una cada ' + (paso / 100).toFixed(1).replace('.', ',') + ' m, lejos de paredes y máquinas).' + (usarIA ? (refsIds.length ? '\n\nSe usarán ' + refsIds.length + ' de tus renders como referencia de materiales, color y luz (no copia su composición).' : '') + '\n\nCada parada pasa por la IA en modo fiel: solo da realismo a materiales y luz, sin inventar nada. Tarda 1-3 minutos POR PARADA (unos ' + Math.round(pts.length * 2) + ' min en total) y gasta crédito de ChatGPT en cada una. No cierres esta pestaña.' : ' Tarda un par de minutos y no hay que tocar nada.') + '\n\n¿Seguimos?')) return;
+    if (!window.confirm('Voy a generar ' + pts.length + ' paradas en las salas que has elegido (una cada ' + (paso / 100).toFixed(1).replace('.', ',') + ' m, lejos de paredes y máquinas).' + (usarIA ? (refsIds.length ? '\n\nSe usarán ' + refsIds.length + ' de tus renders como referencia de materiales, color y luz (no copia su composición).' : '') + '\n\nCada parada pasa por la IA en modo fiel: solo da realismo a materiales y luz, sin inventar nada. Tarda 1-3 minutos POR PARADA (unos ' + Math.round(pts.length * 2) + ' min en total) y gasta crédito de ChatGPT en cada una. No cierres esta pestaña.' : ' Tarda un par de minutos y no hay que tocar nada.') + (proy && refsIds.length ? '\n\nSe pegarán ' + refsIds.length + ' de tus renders al modelo: cada panorámica llevará tus imágenes donde sus cámaras veían, y el resto saldrá del modelo.' : '') + '\n\n¿Seguimos?')) return;
     setGenerandoParada(true);
     // Tus renders elegidos como referencia: se bajan una vez (a 1024 px) y acompañan a cada panorámica
     let vistas = [];
@@ -6057,8 +6058,15 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
         }));
       } catch (e) { vistas = []; setAviso('No he podido cargar tus renders de referencia: sigo sin ellos (' + (e.message || 'error') + ')'); await new Promise(r => setTimeout(r, 1500)); }
     }
+    // Pegar mis renders al modelo: cada panorámica lleva TUS imágenes donde sus cámaras veían (con profundidad, sin atravesar paredes); si algo falla se sigue sin ellas
+    let pr = null;
+    if (proy && refsIds.length) {
+      setAviso('Pegando tus renders al modelo…');
+      try { pr = crearProyeccion(a.renderer, a.scene, await cargarRefs(renders.filter(r => refsIds.includes(r.id))), [a.gizmoG, a.cotasG, a.nodoG, a.guiaG]); pr.aplicar(); }
+      catch (e) { if (pr) pr.quitar(); pr = null; setAviso('No he podido pegar tus renders al modelo; sigo sin ellos (' + (e.message || 'error') + ')'); await new Promise(r => setTimeout(r, 1800)); }
+    }
     let hechas = 0;
-    for (const p of pts) {
+    try { for (const p of pts) {
       setAviso('Tour automático' + (usarIA ? ' con IA fiel' : '') + ': parada ' + (hechas + 1) + ' de ' + pts.length + ' («' + p.nombre + '»)…' + (usarIA ? ' (1–3 min por parada)' : ''));
       await new Promise(r => setTimeout(r, 120));
       try {
@@ -6074,7 +6082,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
         const r = await api.post('/medicion/' + id + '/render', { imagen: url, tipo: '360', nombre: p.nombre, nota: '', tour: true, meta }, { timeout: 120000 });
         setRenders(x => [r.data.render, ...x]); hechas++;
       } catch (e) { setAviso('Se paró en la parada ' + (hechas + 1) + ': ' + (e.response?.data?.error || e.message || 'error')); break; }
-    }
+    } } finally { if (pr) pr.quitar(); }
     setGenerandoParada(false); if (hechas === pts.length) setAviso('Tour automático listo: ' + hechas + ' paradas ✓ Copia el enlace del tour para el cliente.');
   };
   // Versiones fijas del tour: se congela el modelo, la escena y las paradas; el enlace no cambia aunque luego se edite el modelo
@@ -7858,9 +7866,10 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
             ))}
             <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}><input type="checkbox" checked={tourCfg.ia} onChange={e => setTourCfg(c => ({ ...c, ia: e.target.checked }))} style={{ marginTop: 3 }} /><span><b>Dar realismo con IA (modo fiel)</b><br /><span style={{ opacity: 0.65, fontSize: 12 }}>La IA solo mejora materiales, texturas y luz de lo que ya hay: no añade, quita ni cambia objetos. Tarda 1–3 min por parada y gasta crédito de ChatGPT.</span></span></label>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', marginTop: 8 }}><input type="checkbox" checked={!!tourCfg.proy} onChange={e => setTourCfg(c => ({ ...c, proy: e.target.checked }))} style={{ marginTop: 3 }} /><span><b>Pegar mis renders al modelo (giro libre con mis imágenes)</b><br /><span style={{ opacity: 0.65, fontSize: 12 }}>Cada panorámica lleva TUS renders ya mejorados donde sus cámaras veían; lo que ningún render cubre sale del modelo. Se eligen abajo (hasta 3). No gasta crédito de IA.</span></span></label>
             </div>
-            {tourCfg.ia && (() => {
-              const gal = renders.filter(r => r.tipo !== '360').slice(0, 12), refs = tourCfg.refs || [];
+            {(tourCfg.ia || tourCfg.proy) && (() => {
+              const gal = renders.filter(r => r.tipo !== '360' && (!tourCfg.proy || r.meta?.camara)).slice(0, 12), refs = tourCfg.refs || [];
               if (!gal.length) return null;
               return (
                 <div style={{ marginTop: 8 }}>
@@ -7881,7 +7890,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
               );
             })()}
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button style={{ ...btn, flex: 1, background: '#3f7d3a' }} disabled={!tourCfg.salas.some(s => s.sel)} onClick={() => { const cfg = tourCfg; setTourCfg(null); tourAuto(new Set(cfg.salas.filter(s => s.sel).map(s => s.key)), cfg.ia, cfg.ia ? (cfg.refs || []) : []); }}>Generar paradas</button>
+              <button style={{ ...btn, flex: 1, background: '#3f7d3a' }} disabled={!tourCfg.salas.some(s => s.sel)} onClick={() => { const cfg = tourCfg; setTourCfg(null); tourAuto(new Set(cfg.salas.filter(s => s.sel).map(s => s.key)), cfg.ia, cfg.ia || cfg.proy ? (cfg.refs || []) : [], !!cfg.proy); }}>Generar paradas</button>
               <button style={btn} onClick={() => setTourCfg(null)}>Cancelar</button>
             </div>
           </div>
