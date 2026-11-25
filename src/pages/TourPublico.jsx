@@ -21,7 +21,7 @@ export function TourPublico() {
   const cont = useRef(null), vis = useRef({}), hot = useRef({}), actualRef = useRef(0), cono = useRef(null);
 
   useEffect(() => {
-    api.get('/tour-publico/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma))
+    api.get('/tour-publico/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma) + (new URLSearchParams(window.location.search).get('fotos') === '1' ? '?fotos=1' : ''))
       .then(r => setDatos(r.data)).catch(e => setError(e.response?.data?.error || 'No se pudo abrir el tour'));
   }, [id, firma]);
 

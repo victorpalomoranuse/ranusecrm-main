@@ -6108,11 +6108,11 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
     if (!window.confirm('¿Borrar el tour «' + t.nombre + '»? Su enlace dejará de funcionar y no se puede recuperar.')) return;
     try { await api.delete('/medicion/' + id + '/tour-version/' + t.tid); setToursV(v => (v || []).filter(x => x.tid !== t.tid)); } catch { setAviso('No se pudo borrar el tour'); }
   };
-  const copiarEnlaceTour = async (libre = false) => {
+  const copiarEnlaceTour = async (libre = false, fotos = false) => {
     // El tour sirve con paradas 360° o, si no hay, con los renders finales publicados (cada uno guarda su cámara y los saltos se colocan solos)
     if (!libre && !renders.some(r => r.tour) && !renders.some(r => r.tipo !== '360' && r.publicado && r.meta?.camara)) { setAviso('Primero publica algún render en la historia del cliente o añade una parada del tour (menú Salida → Parada del tour).'); return; }
     try {
-      const f = (await api.get('/medicion/' + id + '/tour-firma')).data.firma, u = window.location.origin + (libre ? '/recorrido/' : '/tour/') + encodeURIComponent(id) + '/' + f;
+      const f = (await api.get('/medicion/' + id + '/tour-firma')).data.firma, u = window.location.origin + (libre ? '/recorrido/' : '/tour/') + encodeURIComponent(id) + '/' + f + (fotos ? '?fotos=1' : '');
       try { await navigator.clipboard.writeText(u); setAviso((libre ? 'Enlace del recorrido libre copiado: ' : 'Enlace del tour copiado: ') + u); } catch { window.prompt('Copia el enlace del tour:', u); }
     } catch { setAviso('No se pudo crear el enlace del tour'); }
   };
@@ -7442,6 +7442,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
           [generandoTour ? 'Generando el tour…' : '⭐ Generar tour fijo (enlace que no cambia)', generaTourFijo, false, generandoTour || estado !== 'listo', 'Congela el modelo y las paradas de ahora en una copia con su propio enlace: si luego cambias el modelo, ese tour no se toca hasta que generes otro'],
           ['Mis tours generados' + (toursV?.length ? ' (' + toursV.length + ')' : ''), () => { setToursAbierto(v => !v); cargaToursV(); }, toursAbierto, false, 'Enlaces de los tours ya generados: copiar o borrar'],
           ['Copiar enlace del recorrido libre', () => copiarEnlaceTour(true), false, false, 'Enlace público (solo lectura): el cliente anda por el espacio; si su equipo es flojo se le ofrece el tour de panorámicas'],
+          ['Copiar enlace del tour con mis renders (sin deformar)', () => copiarEnlaceTour(false, true), false, false, 'Enlace público: solo tus renders finales publicados, tal cual, con saltos entre ellos. No estira ni inventa nada'],
           ['Copiar enlace del tour', () => copiarEnlaceTour(false), false, false, 'Enlace público (solo lectura) del tour 360° para el cliente'],
           [panoIA ? 'Panorama con IA…' : 'Panorama 360° con IA (prueba)', hacer360IA, false, panoIA || generando360 || estado !== 'listo', 'Manda la panorámica a ChatGPT para hacerla fotorrealista'],
           ['Galería' + (renders.length ? ' (' + renders.length + ')' : ''), () => setGalAbierta(v => !v), galAbierta, false, 'Renders y panoramas guardados'],

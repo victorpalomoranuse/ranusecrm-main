@@ -60,7 +60,9 @@ router.get('/:id/:firma', async (req, res) => {
     const { data, error } = await supabase.from('mediciones').select('nombre, data').eq('id', id).maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Tour no encontrado' });
-    const paradas = paradasDeTour(data.data?.escena3d);
+    // ?fotos=1: tour solo con los renders finales, sin panorámicas (cada render se ve tal cual, sin estirar ni inventar)
+    const soloFotos = req.query.fotos === '1';
+    const paradas = soloFotos ? [] : paradasDeTour(data.data?.escena3d);
     // Sin panorámicas 360°, el tour se arma con los renders finales publicados: cada uno guarda su cámara y el visor coloca los saltos
     const fotos = paradas.length ? [] : fotosDeTour(data.data?.escena3d);
     if (!paradas.length && !fotos.length) return res.status(404).json({ error: 'Este tour todavía no tiene paradas' });
