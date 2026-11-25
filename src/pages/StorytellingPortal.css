@@ -189,3 +189,16 @@
 
 /* vista de portfolio (sin usuario): las imágenes no se arrastran ni se guardan con el menú táctil */
 .sp-protegido img{-webkit-user-drag:none;user-drag:none;-webkit-touch-callout:none}
+
+/* Móvil: los renders se ven enteros (antes se recortaban a una franja central) y al ampliar se abren grandes y se deslizan */
+@media(max-width:860px){
+  .sp-full{height:auto;min-height:0}
+  .sp-full img{height:auto;object-fit:contain}
+  .sp-rends figure,.sp-rends--3 .sp-rend-main,.sp-rends--4 .sp-rend-main{aspect-ratio:auto}
+  .sp-rends figure img{height:auto;object-fit:contain}
+  .sp-gal>div,.sp-gal--3 .sp-gal-main,.sp-gal--4 .sp-gal-main{aspect-ratio:auto}
+  .sp-gal img{height:auto;object-fit:contain}
+  .sp-lb{overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y pinch-zoom;justify-content:flex-start}
+  .sp-lb>img{max-width:none;max-height:none;height:min(70dvh,130vw);width:auto;margin:auto;flex:0 0 auto;border-radius:0}
+  .sp-lb-x,.sp-lb-n,.sp-lb-i{position:fixed}
+}
