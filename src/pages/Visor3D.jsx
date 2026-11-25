@@ -20,6 +20,7 @@ import { texLuzMural, construirDeco, KINDS_DECO, MEDIDAS_DECO, KINDS_PERSONAS, K
 import { construirRack, rackPorDefecto, normalizaRack, calculosRack, textoRack, dimRack, TIPOS_RACK, TIPOS_BAHIA, ACCESORIOS, PERFILES_RACK, COLORES_RACK, bahiaPorDefecto } from '../components/rack3d';
 import { construirCesped, cespedPorDefecto, normalizaCesped, calculosCesped, textoCesped, PRESETS_CESPED, PRESETS_MARCAJE, aplicaPresetMarcaje, COLORES_CESPED, COLORES_LINEA } from '../components/cesped3d';
 import { construirCubierta, cubiertaPorDefecto, normalizaCubierta, calculosCubierta, textoCubierta, altoCubierta, TIPOS_CUBIERTA, PANELES, COLORES_PANEL } from '../components/cubierta3d';
+import { construirEscalada, escaladaPorDefecto, normalizaEscalada, calculosEscalada, textoEscalada, dimEscalada, TIPOS_ESCALADA, COLORES_PANEL_ESC, COLORES_PRESAS, SOPORTES_MONKEY, COLORES_BARRAS } from '../components/escalada3d';
 import { construirSauna, saunaPorDefecto, normalizaSauna, calculosSauna, textoMateriales, MADERAS, TIPOS_SAUNA } from '../components/sauna3d';
 import EditorRender from '../components/EditorRender';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
@@ -1538,6 +1539,7 @@ const ICONOS = {
   cesped: 'M3 18h18 M3 13h18 M3 8h18 M7 6v14 M13 6v14 M19 6v14',
   persona: 'M12 3.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4z M9 21v-6.5l-2-3.5 2.5-2.5h5L17 11l-2 3.5V21 M12 12v9',
   rack: 'M5 3v18 M19 3v18 M5 7h14 M5 13h14 M5 19h14 M9 7v6 M15 13v6',
+  escalada: 'M4 3v18 M20 3v18 M4 8h16 M8 8v4 M12 8v4 M16 8v4 M4 20h16 M8 14l2 3 M14 13l2 4',
   cubierta: 'M2 14l10-8 10 8 M5 13v7 M19 13v7 M2 14h20',
   sauna: 'M4 4h16v16H4z M4 12h9 M4 16h14 M15 7c0-2 2-2 2-4 M11 7c0-2 2-2 2-4',
   mueble: 'M7 4h10v7H7z M5 11h14v3H5z M7 14v6 M17 14v6', logo: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4', texto: 'M5 6h14 M12 6v13 M9 19h6', imagen: 'M4 5h16v14H4z M8 10a1.5 1.5 0 1 0 0-.01 M4 17l5-5 4 4 3-3 4 4', ideas: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z M18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z',
@@ -4795,6 +4797,17 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
         a.esc.add(gk);
         return;
       }
+      if (o.tipo === 'escalada') {
+        const ge = new THREE.Group();
+        const cont = construirEscalada(o); cont.position.y = (o.z0 || 0) * CM; ge.add(cont);
+        const hit = new THREE.Mesh(new THREE.BoxGeometry(o.w * CM, o.alto * CM, o.d * CM), new THREE.MeshBasicMaterial({ visible: false }));
+        hit.position.y = (o.alto * CM) / 2 + (o.z0 || 0) * CM; hit.userData.hit = true; ge.add(hit);
+        if (selIdsRef.current.has(o.id)) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(hit.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(hit.position); ge.add(l); }
+        ge.position.set(o.cx * CM, 0, o.cy * CM); ge.rotation.y = -(o.rot || 0) * Math.PI / 180;
+        ge.userData.oid = o.id; ge.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
+        a.esc.add(ge);
+        return;
+      }
       if (o.tipo === 'deco') {
         const gd = new THREE.Group(), cont = construirDeco(o, mostrarLuz); cont.position.y = (o.z0 || 0) * CM; gd.add(cont);
         const hit = new THREE.Mesh(new THREE.BoxGeometry(Math.max(0.1, (o.w || 50) * CM), Math.max(0.1, (o.alto || 100) * CM), Math.max(0.05, (o.d || 50) * CM)), new THREE.MeshBasicMaterial({ visible: false }));
@@ -5255,6 +5268,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
     a.despierta = performance.now() + 400; // despierta el dibujo: el siguiente fotograma se guarda tal cual se ve
   });
   const [rackMenu, setRackMenu] = useState(false);
+  const [escaladaMenu, setEscaladaMenu] = useState(false);
   const [revSel, setRevSel] = useState(null);
   const revSelRef = useRef(null); revSelRef.current = revSel;
   const PLANTILLAS_MUEBLE = {
@@ -5311,6 +5325,13 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
     const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'rack', nombre: TIPOS_RACK[tipo].n, etiqueta: 'Racks', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: p.w, d: p.d, alto: p.alto, z0: 0, rack: p.rack };
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setRackMenu(false);
   };
+  // Rocódromo: pared de escalada vertical y monkey bars; se colocan en el centro de la vista y se ajustan en el panel
+  const crearEscalada = (tipo) => {
+    const { ctrl } = api3d.current, p = escaladaPorDefecto(tipo);
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'escalada', nombre: TIPOS_ESCALADA[tipo].n, etiqueta: 'Rocódromo', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: p.w, d: p.d, alto: p.alto, z0: 0, escalada: p.escalada };
+    setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setEscaladaMenu(false);
+  };
+  const cambiarEscalada = (idObj, fn) => setObjs(prev => prev.map(o => { if (o.id !== idObj) return o; const E1 = fn(JSON.parse(JSON.stringify(normalizaEscalada(o)))); return { ...o, escalada: E1, ...dimEscalada(E1) }; }));
   const cambiarRack = (idObj, fn) => setObjs(prev => prev.map(o => { if (o.id !== idObj) return o; const R1 = fn(JSON.parse(JSON.stringify(normalizaRack(o)))); return { ...o, rack: R1, ...dimRack(R1) }; }));
   const cambiarCesped = (idObj, fn) => setObjs(prev => prev.map(o => { if (o.id !== idObj) return o; const C1 = fn(JSON.parse(JSON.stringify(normalizaCesped(o)))); return { ...o, cesped: C1, d: C1.carriles * C1.anchoCarril, alto: C1.grosor }; }));
   const huellasSalas = () => {
@@ -6348,7 +6369,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
       L.muros = []; L.mats = []; L.extras = []; if (a.renderer?.shadowMap) a.renderer.shadowMap.needsUpdate = true;
     };
     const cortar = !!axo && zon.corte, zonas = !!axo && zon.on;
-    const verEnZonas = o => { const ob = objsRef.current.find(x => x.id === o.userData.oid); return !!ob && ['bloque', 'mueble', 'sauna', 'rack', 'escalera', 'deco', 'caja'].includes(ob.tipo); }; // lo que se ve en la vista de zonas: mobiliario y muebles reales
+    const verEnZonas = o => { const ob = objsRef.current.find(x => x.id === o.userData.oid); return !!ob && ['bloque', 'mueble', 'sauna', 'rack', 'escalada', 'escalera', 'deco', 'caja'].includes(ob.tipo); }; // lo que se ve en la vista de zonas: mobiliario y muebles reales
     if (!cortar && !zonas) { setZonInfo(null); return; }
     let vivo = true;
     if (cortar) a.raiz.traverse(o => {
@@ -7504,6 +7525,10 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
           menuRail(rackMenu, setRackMenu, railBtn(rackMenu, 'rack', 'Racks', 'Estructuras modulares de gimnasio: jaula de 4 patas, media jaula a pared o solo estantería, con bahías de peso libre, dominadas, estantería con accesorios, Smith y poleas', () => setRackMenu(v => !v)), (<>
             <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Elige la base; luego añades bahías y accesorios en el panel</div>
             {Object.entries(TIPOS_RACK).map(([k, v]) => <div key={k} onClick={() => crearRack(k)} style={itemMenu}>{v.n}</div>)}
+          </>), 290),
+          menuRail(escaladaMenu, setEscaladaMenu, railBtn(escaladaMenu, 'escalada', 'Rocódromo', 'Pared de escalada vertical (con desplome opcional, presas y colchoneta) y monkey bars colgadas del techo o sobre postes', () => setEscaladaMenu(v => !v)), (<>
+            <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Se coloca en el centro de la vista; medidas, presas y soporte se ajustan en el panel</div>
+            {Object.entries(TIPOS_ESCALADA).map(([k, v]) => <div key={k} onClick={() => crearEscalada(k)} style={itemMenu}>{v.n}</div>)}
           </>), 290),
         ], false, 'Objetos')}
         {!modoRender && grupoRail([
@@ -8774,7 +8799,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
                 const plsD = api3d.current.modelo?.plantas || [api3d.current.modelo], ipD = Math.max(0, plsD.indexOf(sel.pl)), pmD = { ox: ((api3d.current.offsPl || [])[ipD] || [0, 0])[0], oy: ((api3d.current.offsPl || [])[ipD] || [0, 0])[1], z: sel.pl?.z || 0 };
                 const pts = sel.sa.pts, n = pts.length, cx0 = pts.reduce((s, p) => s + p[0], 0) / n, cy0 = pts.reduce((s, p) => s + p[1], 0) / n;
                 const dentro = (px, py) => puntoEnPoligono([px, py], pts);
-                const obst = [...(sel.pl.equipos || []).filter(e => !e.cesped).map(e => ({ x: e.cx, y: e.cy, r: Math.hypot(e.w || 60, e.d || 60) / 2 })), ...objsRef.current.filter(o => ['bloque', 'caja', 'mueble', 'rack', 'sauna'].includes(o.tipo)).map(o => ({ x: o.cx - pmD.ox, y: o.cy - pmD.oy, r: Math.hypot(o.w || 60, o.d || 60) / 2 }))];
+                const obst = [...(sel.pl.equipos || []).filter(e => !e.cesped).map(e => ({ x: e.cx, y: e.cy, r: Math.hypot(e.w || 60, e.d || 60) / 2 })), ...objsRef.current.filter(o => ['bloque', 'caja', 'mueble', 'rack', 'escalada', 'sauna'].includes(o.tipo)).map(o => ({ x: o.cx - pmD.ox, y: o.cy - pmD.oy, r: Math.hypot(o.w || 60, o.d || 60) / 2 }))];
                 const libre = (px, py, r) => dentro(px, py) && obst.every(o => Math.hypot(px - o.x, py - o.y) >= o.r + r + 15);
                 const centroide = [cx0, cy0];
                 const aristas = pts.map((p, k) => { const q = pts[(k + 1) % n], dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1; let nx = -dy / L, ny = dx / L; if (!dentro(p[0] + dx / 2 + nx * 20, p[1] + dy / 2 + ny * 20)) { nx = -nx; ny = -ny; } return { p, q, L, dx, dy, nx, ny }; }).sort((a, b) => b.L - a.L);
@@ -10127,6 +10152,64 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
                 ))}
                 {K.total > 0 && <div style={{ fontWeight: 700, margin: '4px 0' }}>Total: {f1(K.total)} €</div>}
                 <button style={{ ...btn, marginTop: 4 }} onClick={() => { try { navigator.clipboard.writeText(textoRack(objSel)); setSubiendo('Lista de piezas copiada'); } catch { /* sin portapapeles */ } }}>Copiar lista de piezas</button>
+              </div>
+            );
+          })()}
+          {objSel.tipo === 'escalada' && (() => {
+            const E = normalizaEscalada(objSel), K = calculosEscalada(objSel), id = objSel.id, mk = E.tipo === 'monkey';
+            const fila = (txt, ctl) => <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 118, opacity: 0.7 }}>{txt}</span>{ctl}</label>;
+            const sel = (v, op, fn) => <select value={v} onChange={e => fn(e.target.value)} style={{ ...btn, flex: 1, padding: '3px 4px' }}>{op.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>;
+            const numIn = (v, fn, min = 0, max = 99999, w = 70, paso = 1) => <input type="number" min={min} max={max} step={paso} value={v} onChange={e => fn(Math.max(min, Math.min(max, parseFloat(e.target.value) || 0)))} style={{ ...btn, width: w, padding: '3px 4px' }} />;
+            const f1 = v => Number(v).toLocaleString('es-ES', { maximumFractionDigits: 2 });
+            const cam = (fn) => cambiarEscalada(id, e => { fn(e); return e; });
+            const pastillas = (cols, actual, fn) => (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center', marginBottom: 6 }}>
+                {Object.entries(cols).map(([h, n]) => <span key={h} title={n} onClick={() => fn(h)} style={{ width: 24, height: 24, borderRadius: 12, background: h === 'multi' ? 'conic-gradient(#c8102e,#f2c200,#1b6dd6,#2e9e57,#c8102e)' : h, cursor: 'pointer', border: String(actual).toLowerCase() === h ? '2px solid #fff' : '1px solid #666' }} />)}
+              </div>
+            );
+            return (
+              <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>{TIPOS_ESCALADA[E.tipo].n}</div>
+                {!mk && <>
+                  {fila('Ancho cm', numIn(Math.round(E.ancho), v => cam(e => { e.ancho = v; }), 80, 1200))}
+                  {fila('Alto cm', numIn(Math.round(E.alto), v => cam(e => { e.alto = v; }), 150, 900))}
+                  {fila('Desplome °', numIn(E.incl, v => cam(e => { e.incl = v; }), 0, 45, 70))}
+                  <div style={{ fontSize: 11, opacity: 0.65, margin: '-2px 0 6px' }}>0° = pared vertical. Con desplome la pared se inclina hacia quien escala.</div>
+                  <div style={{ opacity: 0.7, marginBottom: 2 }}>Color del panel</div>
+                  {pastillas(COLORES_PANEL_ESC, E.colorPanel, h => cam(e => { e.colorPanel = h; }))}
+                  <div style={{ opacity: 0.7, marginBottom: 2 }}>Color de las presas</div>
+                  {pastillas(COLORES_PRESAS, E.presas, h => cam(e => { e.presas = h; }))}
+                  {fila('Presas por m²', numIn(E.densidad, v => cam(e => { e.densidad = v; }), 0, 40, 70))}
+                  <button style={{ ...btn, marginBottom: 6 }} onClick={() => cam(e => { e.semilla = Math.floor(Math.random() * 9000) + 1; })}>Recolocar presas</button>
+                  <label style={{ cursor: 'pointer', fontSize: 12, display: 'block', marginBottom: 4 }}><input type="checkbox" checked={E.colchoneta} onChange={ev => cam(e => { e.colchoneta = ev.target.checked; })} /> Colchoneta en el suelo</label>
+                  {E.colchoneta && <>
+                    {fila('Fondo colchoneta cm', numIn(Math.round(E.fondoColch), v => cam(e => { e.fondoColch = v; }), 60, 400))}
+                    {fila('Grosor colchoneta cm', numIn(Math.round(E.grosColch), v => cam(e => { e.grosColch = v; }), 5, 40))}
+                  </>}
+                </>}
+                {mk && <>
+                  {fila('Largo cm', numIn(Math.round(E.largo), v => cam(e => { e.largo = v; }), 120, 800))}
+                  {fila('Ancho cm', numIn(Math.round(E.ancho), v => cam(e => { e.ancho = v; }), 40, 150))}
+                  {fila('Altura barras cm', numIn(Math.round(E.altBarras), v => cam(e => { e.altBarras = v; }), 150, 400))}
+                  {fila('Separación peldaños', numIn(Math.round(E.sep), v => cam(e => { e.sep = v; }), 20, 45))}
+                  {fila('Soporte', sel(E.soporte, Object.entries(SOPORTES_MONKEY), v => cam(e => { e.soporte = v; })))}
+                  {E.soporte === 'techo' && fila('Altura del techo cm', numIn(Math.round(E.altTecho), v => cam(e => { e.altTecho = v; }), Math.round(E.altBarras) + 20, 900))}
+                  <div style={{ opacity: 0.7, marginBottom: 2 }}>Color de las barras</div>
+                  {pastillas(COLORES_BARRAS, E.colorBarras, h => cam(e => { e.colorBarras = h; }))}
+                </>}
+                <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: '6px 8px', marginBottom: 6 }}>
+                  <div>Medidas: <b>{f1(K.w)} × {f1(K.d)} × {f1(K.alto)} cm</b></div>
+                </div>
+                {K.avisos.map((a, i) => <div key={i} style={{ fontSize: 11.5, opacity: 0.85, marginBottom: 4, color: i < K.avisos.length - 1 ? '#f2c46d' : undefined }}>{i < K.avisos.length - 1 ? '⚠ ' : 'ℹ '}{a}</div>)}
+                <div style={{ fontWeight: 700, margin: '8px 0 4px' }}>Lista de piezas y presupuesto</div>
+                {K.lista.map(([k, n, q, u]) => (
+                  <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, fontSize: 12 }}>
+                    <span style={{ flex: 1 }}>{n}</span><span style={{ opacity: 0.8, whiteSpace: 'nowrap' }}>{f1(q)} {u}</span>
+                    <input type="number" min="0" step="0.01" placeholder="€/" title={'Precio por ' + u + ' (euros)'} value={E.precios[k] ?? ''} onChange={ev => cam(e => { e.precios[k] = parseFloat(ev.target.value) || 0; })} style={{ ...btn, width: 64, padding: '2px 4px' }} />
+                  </div>
+                ))}
+                {K.total > 0 && <div style={{ fontWeight: 700, margin: '4px 0' }}>Total: {f1(K.total)} €</div>}
+                <button style={{ ...btn, marginTop: 4 }} onClick={() => { try { navigator.clipboard.writeText(textoEscalada(objSel)); setSubiendo('Lista de piezas copiada'); } catch { /* sin portapapeles */ } }}>Copiar lista de piezas</button>
               </div>
             );
           })()}
