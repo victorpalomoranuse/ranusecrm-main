@@ -3955,7 +3955,7 @@ function scene0(C,k,view,o){
     if(dlPre)return dlPre;
     dlPre={ocup:[],ok:{},lin:[],pos:{}};
     var cn=(o.dims&&o.dims!=='simple')?wallCent(view):null;
-    var oc=((view==='suelos'||view==='techos')||((view==='acab'||view==='elec'||view==='ilum')&&!o.flat))&&!st.verCotasMuros;
+    var oc=((view==='suelos'||view==='techos')||((view==='acab'||view==='elec'||view==='ilum'||view==='distrib')&&!o.flat))&&!st.verCotasMuros;
     if(!cn||oc)return dlPre;
     var wsd=dimWalls(view).slice().sort(function(a,b){var sa=o.sel&&o.sel.t==='wall'&&o.sel.id===a.id?1e9:0,sb=o.sel&&o.sel.t==='wall'&&o.sel.id===b.id?1e9:0;return (wLen(b)+sb)-(wLen(a)+sa)});
     wsd.forEach(function(w){ /* líneas de cota de cada pared: el número de otra pared no se pone encima de ellas */
@@ -4337,7 +4337,7 @@ function scene0(C,k,view,o){
       if(q2.g>=300)continue;
       var gc=pmx==null?C.dim:(low?C.dem:C.ok),suave=!!o.flat;
       if(suave)gc=hexMix(gc,'#ffffff',0.4);
-      var mostrar=!o.ante&&((suave&&o.eqgap)||(sel&&sel.t==='eq'&&(sel.id===eqs[ia].id||sel.id===eqs[ib].id))); /* en lámina, las distancias entre bloques solo si se piden; trabajando, salen al seleccionar un bloque */
+      var mostrar=!o.ante&&((suave&&o.eqgap)||(sel&&sel.t==='eq'&&ubicVisible(o)&&(sel.id===eqs[ia].id||sel.id===eqs[ib].id))); /* en lámina, las distancias entre bloques solo si se piden; trabajando, salen al seleccionar un bloque */
       if(!mostrar)continue;
       if(q2.dy<0&&q2.dx>0){
         var yy=(Math.max(ra.y0,rb.y0)+Math.min(ra.y1,rb.y1))/2,l=ra.x0<rb.x0?ra:rb,r2=ra.x0<rb.x0?rb:ra;
@@ -4383,7 +4383,7 @@ function scene0(C,k,view,o){
     h+=txt(C,px,(a.x+b.x)/2,(a.y+b.y)/2-6*px,s,c.len==null?C.warn:(bad?C.dem:C.ok),12,500);
   });
   var cent=(o.dims&&o.dims!=='simple')?wallCent(view):null;
-  var ocultaCM=((view==='suelos'||view==='techos')||((view==='acab'||view==='elec'||view==='ilum')&&!o.flat))&&!st.verCotasMuros; /* trabajando en pantalla, en suelos y techos solo se ven las medidas de las zonas (las de los muros se activan con el botón); al exportar salen todas */
+  var ocultaCM=((view==='suelos'||view==='techos')||((view==='acab'||view==='elec'||view==='ilum'||view==='distrib')&&!o.flat))&&!st.verCotasMuros; /* trabajando en pantalla, en suelos y techos solo se ven las medidas de las zonas (las de los muros se activan con el botón); al exportar salen todas */
   (ocultaCM?[]:(cent?dimWalls(view):v.walls)).forEach(function(w){
     if(!wallVis(w,view))return;
     if(w.arc){ // una sola cota por arco: longitud y radio
