@@ -6099,7 +6099,8 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
     try { await api.delete('/medicion/' + id + '/tour-version/' + t.tid); setToursV(v => (v || []).filter(x => x.tid !== t.tid)); } catch { setAviso('No se pudo borrar el tour'); }
   };
   const copiarEnlaceTour = async (libre = false) => {
-    if (!libre && !renders.some(r => r.tour)) { setAviso('Primero añade alguna parada del tour (menú Salida → Parada del tour).'); return; }
+    // El tour sirve con paradas 360° o, si no hay, con los renders finales publicados (cada uno guarda su cámara y los saltos se colocan solos)
+    if (!libre && !renders.some(r => r.tour) && !renders.some(r => r.tipo !== '360' && r.publicado && r.meta?.camara)) { setAviso('Primero publica algún render en la historia del cliente o añade una parada del tour (menú Salida → Parada del tour).'); return; }
     try {
       const f = (await api.get('/medicion/' + id + '/tour-firma')).data.firma, u = window.location.origin + (libre ? '/recorrido/' : '/tour/') + encodeURIComponent(id) + '/' + f;
       try { await navigator.clipboard.writeText(u); setAviso((libre ? 'Enlace del recorrido libre copiado: ' : 'Enlace del tour copiado: ') + u); } catch { window.prompt('Copia el enlace del tour:', u); }

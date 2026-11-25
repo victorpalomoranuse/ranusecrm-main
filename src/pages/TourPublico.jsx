@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import * as THREE from 'three';
 import api from '../services/api';
+import { TourFotos } from './TourFotos';
 
 // Tour 360° para el cliente (enlace público, solo lectura): se mira alrededor, se camina de una parada a otra con las flechas del suelo
 // o con el minimapa, y cada parada es una panorámica ya renderizada. Orientación: el centro de la imagen mira hacia donde estaba la cámara
@@ -123,6 +124,7 @@ export function TourPublico() {
 
   if (error) return <div style={{ minHeight: '100vh', background: OSCURO, color: '#fff', display: 'grid', placeItems: 'center', padding: 24, textAlign: 'center', fontFamily: 'system-ui, sans-serif' }}><div><div style={{ fontSize: 22, marginBottom: 8 }}>Ranuse Design</div><div style={{ opacity: 0.75 }}>{error}</div></div></div>;
   if (!datos) return <div style={{ minHeight: '100vh', background: OSCURO, color: '#fff', display: 'grid', placeItems: 'center', fontFamily: 'system-ui, sans-serif' }}>Cargando el tour…</div>;
+  if (!datos.paradas?.length && datos.fotos?.length) return <TourFotos datos={datos} id={id} firma={firma} />;
   const par = datos.paradas[actual];
   return (
     <div style={{ position: 'fixed', inset: 0, background: OSCURO, color: '#fff', fontFamily: 'system-ui, sans-serif', overflow: 'hidden' }}>

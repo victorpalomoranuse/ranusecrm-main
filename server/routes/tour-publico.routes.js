@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { leerModelosBib } from '../utils/modelos-bib.js';
 import { leerVersion } from '../utils/tour-version.js';
+import { fotosDeTour } from '../utils/tour-fotos.js';
 import { TIPOS, NOMBRE, COLOR, clave } from '../utils/lamina-zonas.js';
 
 // Tour 360° para el cliente: enlace de solo lectura con las paradas (panorámicas guardadas en la galería del plano y marcadas como «tour»).
@@ -60,9 +61,11 @@ router.get('/:id/:firma', async (req, res) => {
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Tour no encontrado' });
     const paradas = paradasDeTour(data.data?.escena3d);
-    if (!paradas.length) return res.status(404).json({ error: 'Este tour todavía no tiene paradas' });
+    // Sin panorámicas 360°, el tour se arma con los renders finales publicados: cada uno guarda su cámara y el visor coloca los saltos
+    const fotos = paradas.length ? [] : fotosDeTour(data.data?.escena3d);
+    if (!paradas.length && !fotos.length) return res.status(404).json({ error: 'Este tour todavía no tiene paradas' });
     res.set('Cache-Control', 'no-store');
-    res.json({ titulo: data.nombre || 'Tour', paradas });
+    res.json({ titulo: data.nombre || 'Tour', paradas, ...(fotos.length ? { fotos } : {}) });
   } catch (err) {
     console.error('tour-publico:', err);
     res.status(500).json({ error: 'No se pudo cargar el tour' });
