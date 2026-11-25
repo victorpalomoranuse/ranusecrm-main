@@ -1391,22 +1391,32 @@ function cartel(texto) {
 }
 // ── Panorama 360°: se renderiza el cubo completo desde un punto y se convierte a una imagen equirrectangular (la que entienden los visores 360)
 export function capturarEquirect(renderer, scene, pos, yaw, tam, ocultar, calidadJpeg = 0.92) {
+  const targetPrev = renderer.getRenderTarget(), facePrev = renderer.getActiveCubeFace(), mipPrev = renderer.getActiveMipmapLevel(), xrPrev = renderer.xr.enabled;
+  let rt, cc, mat, quad;
   const tamPrev = renderer.getSize(new THREE.Vector2()), prPrev = renderer.getPixelRatio(), vis = ocultar.map(o => o && o.visible);
-  ocultar.forEach(o => { if (o) o.visible = false; });
-  const rt = new THREE.WebGLCubeRenderTarget(tam, { generateMipmaps: false, magFilter: THREE.LinearFilter, minFilter: THREE.LinearFilter });
-  const cc = new THREE.CubeCamera(0.05, 800, rt); cc.position.copy(pos); scene.add(cc); cc.update(renderer, scene); scene.remove(cc);
-  const mat = new THREE.ShaderMaterial({
-    uniforms: { map: { value: rt.texture }, yaw: { value: yaw } }, depthTest: false, depthWrite: false,
-    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
-    fragmentShader: 'uniform samplerCube map; uniform float yaw; varying vec2 vUv;\nvoid main() { float lon = (vUv.x - 0.5) * 6.2831853 + yaw; float lat = (vUv.y - 0.5) * 3.1415926; vec3 d = vec3(cos(lat) * sin(lon), sin(lat), cos(lat) * cos(lon)); gl_FragColor = vec4(textureCube(map, vec3(-d.x, d.y, d.z)).rgb, 1.0);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}',
-  });
-  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat), qs = new THREE.Scene(); qs.add(quad);
-  renderer.setPixelRatio(1); renderer.setSize(tam * 2, tam, false); renderer.render(qs, new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1));
-  const url = renderer.domElement.toDataURL('image/jpeg', calidadJpeg);
-  renderer.setPixelRatio(prPrev); renderer.setSize(tamPrev.x, tamPrev.y);
-  ocultar.forEach((o, i) => { if (o) o.visible = vis[i]; });
-  rt.dispose(); mat.dispose(); quad.geometry.dispose();
-  return url;
+  try {
+    renderer.xr.enabled = false;
+    ocultar.forEach(o => { if (o) o.visible = false; });
+    // Keep HDR values until the final tone mapping; byte targets clip lit surfaces.
+    rt = new THREE.WebGLCubeRenderTarget(tam, { type: THREE.HalfFloatType, colorSpace: THREE.LinearSRGBColorSpace, generateMipmaps: false, magFilter: THREE.LinearFilter, minFilter: THREE.LinearFilter });
+    cc = new THREE.CubeCamera(0.05, 800, rt); cc.position.copy(pos); scene.add(cc); cc.update(renderer, scene); scene.remove(cc);
+    mat = new THREE.ShaderMaterial({
+      uniforms: { map: { value: rt.texture }, yaw: { value: yaw } }, depthTest: false, depthWrite: false,
+      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: 'uniform samplerCube map; uniform float yaw; varying vec2 vUv;\nvoid main() { float lon = (vUv.x - 0.5) * 6.2831853 + yaw; float lat = (vUv.y - 0.5) * 3.1415926; vec3 d = vec3(cos(lat) * sin(lon), sin(lat), cos(lat) * cos(lon)); gl_FragColor = vec4(textureCube(map, vec3(-d.x, d.y, d.z)).rgb, 1.0);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}',
+    });
+    quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); const qs = new THREE.Scene(); qs.add(quad);
+    renderer.setRenderTarget(null);
+    renderer.setPixelRatio(1); renderer.setSize(tam * 2, tam, false); renderer.render(qs, new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1));
+    return renderer.domElement.toDataURL('image/jpeg', calidadJpeg);
+  } finally {
+    if (cc) scene.remove(cc);
+    renderer.xr.enabled = xrPrev;
+    renderer.setPixelRatio(prPrev); renderer.setSize(tamPrev.x, tamPrev.y);
+    ocultar.forEach((o, i) => { if (o) o.visible = vis[i]; });
+    renderer.setRenderTarget(targetPrev, facePrev, mipPrev);
+    rt?.dispose(); mat?.dispose(); quad?.geometry.dispose();
+  }
 }
 // Visor 360 sencillo: arrastrar para mirar alrededor, rueda para acercar (también con el dedo en el móvil)
 export function abrirVisor360(cont, url) {
