@@ -1633,6 +1633,7 @@ function drItemsSvg(C,px,view,sel){
   porZ(st.v.dr||[]).forEach(function(it){if(drVisible(it,view))h+=drItemSvg(C,px,it,sel&&sel.t==='dr'&&sel.id===it.id)});
   return h;
 }
+function ubicVisible(o){return !!(st.verUbic||(o&&o.eqloc)||(typeof gesture!=='undefined'&&gesture&&/^drag/.test(gesture.type||'')))}
 function drTienePuntos(it){return !!it&&['poly','zona','line','arrow','rect','dim','cloud','circ'].indexOf(it.t)>=0&&it.pts&&it.pts.length>=2}
 function drAsas(it){ /* puntos arrastrables de un dibujo; en polilíneas y zonas, también los puntos medios (para añadir uno nuevo) */
   var v=[],m=[],n=it.pts.length,i;
@@ -1650,7 +1651,7 @@ function drSvg(C,px,view,sel,o,sinItems){
       as.v.forEach(function(q){h+='<rect x="'+f2(q.x-5*px)+'" y="'+f2(q.y-5*px)+'" width="'+f2(10*px)+'" height="'+f2(10*px)+'" style="fill:#fff;stroke:'+C.accent+';stroke-width:'+f2(1.8*px)+'"/>'});
     }
   }
-  if(o&&o.nodes&&st.tool==='select'&&view!=='alz'){
+  if(o&&o.nodes&&st.tool==='select'&&view!=='alz'&&ubicVisible(o)){
     var dsel=drSeleccion().filter(function(q){return drVisible(q,view)});
     if(dsel.length){
       var bq=drBoxDe(dsel);
@@ -4363,7 +4364,7 @@ function scene0(C,k,view,o){
     var CAPA={mm:Lmm,eq:Leq,pil:capaVis('pil')?pintaPil():'',dr:drItemsSvg(C,px,view,sel)}; /* las capas, en el orden elegido (de abajo a arriba) */
     capasOrden().forEach(function(id){if(capaVis(id)&&CAPA[id])h+=CAPA[id]});
     h+=gl+etqEq; /* las etiquetas van encima de todo el equipamiento */
-    if(distr&&sel&&sel.t==='eq'){
+    if(distr&&sel&&sel.t==='eq'&&ubicVisible(o)){
       var se2=by(eqs,sel.id);
       if(se2){
         var r3=eqRect(se2);
