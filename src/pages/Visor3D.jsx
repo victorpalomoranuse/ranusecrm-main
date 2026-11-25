@@ -6008,9 +6008,9 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
     const m = api3d.current.modelo; if (!m || generandoParada) return;
     const lista = []; (m.plantas || [m]).forEach((pl, ip) => (pl.salas || []).forEach((sa, i) => { if (sa.pts && sa.pts.length >= 3) lista.push({ key: ip + ':' + i, nombre: (sa.nombre || 'Sala ' + (i + 1)), planta: (m.plantas || [m]).length > 1 ? (pl.nombre || 'Planta ' + (ip + 1)) : '', sel: !(ocultas || []).includes('planta:' + ip) }); }));
     if (!lista.length) { setAviso('No hay salas en el modelo para repartir paradas.'); return; }
-    setTourCfg({ salas: lista, ia: false });
+    setTourCfg({ salas: lista, ia: false, refs: renders.filter(r => r.tipo !== '360').slice(0, 3).map(r => r.id) });
   };
-  const tourAuto = async (elegidas, usarIA) => {
+  const tourAuto = async (elegidas, usarIA, refsIds = []) => {
     const a = api3d.current, m = a.modelo; if (!m || generandoParada) return;
     if (!usarIA && !avisaCalidadTour()) return;
     const pls = m.plantas || [m], offs = a.offsPl || [];
@@ -6039,8 +6039,24 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
     };
     let paso = 380, pts = reparte(paso); while (pts.length > 30 && paso < 1200) { paso = Math.round(paso * 1.2); pts = reparte(paso); }
     if (!pts.length) { setAviso('No he encontrado salas donde colocar paradas.'); return; }
-    if (!window.confirm('Voy a generar ' + pts.length + ' paradas en las salas que has elegido (una cada ' + (paso / 100).toFixed(1).replace('.', ',') + ' m, lejos de paredes y máquinas).' + (usarIA ? '\n\nCada parada pasa por la IA en modo fiel: solo da realismo a materiales y luz, sin inventar nada. Tarda 1-3 minutos POR PARADA (unos ' + Math.round(pts.length * 2) + ' min en total) y gasta crédito de ChatGPT en cada una. No cierres esta pestaña.' : ' Tarda un par de minutos y no hay que tocar nada.') + '\n\n¿Seguimos?')) return;
+    if (!window.confirm('Voy a generar ' + pts.length + ' paradas en las salas que has elegido (una cada ' + (paso / 100).toFixed(1).replace('.', ',') + ' m, lejos de paredes y máquinas).' + (usarIA ? (refsIds.length ? '\n\nSe usarán ' + refsIds.length + ' de tus renders como referencia de materiales, color y luz (no copia su composición).' : '') + '\n\nCada parada pasa por la IA en modo fiel: solo da realismo a materiales y luz, sin inventar nada. Tarda 1-3 minutos POR PARADA (unos ' + Math.round(pts.length * 2) + ' min en total) y gasta crédito de ChatGPT en cada una. No cierres esta pestaña.' : ' Tarda un par de minutos y no hay que tocar nada.') + '\n\n¿Seguimos?')) return;
     setGenerandoParada(true);
+    // Tus renders elegidos como referencia: se bajan una vez (a 1024 px) y acompañan a cada panorámica
+    let vistas = [];
+    if (usarIA && refsIds.length) {
+      setAviso('Preparando tus renders de referencia…');
+      try {
+        vistas = await Promise.all(renders.filter(r => refsIds.includes(r.id)).slice(0, 3).map(async r => {
+          const blob = await (await fetch(r.url)).blob(), obj = URL.createObjectURL(blob);
+          try {
+            const img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = obj; });
+            const k = Math.min(1, 1024 / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
+            c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+            return c.toDataURL('image/jpeg', 0.85);
+          } finally { URL.revokeObjectURL(obj); }
+        }));
+      } catch (e) { vistas = []; setAviso('No he podido cargar tus renders de referencia: sigo sin ellos (' + (e.message || 'error') + ')'); await new Promise(r => setTimeout(r, 1500)); }
+    }
     let hechas = 0;
     for (const p of pts) {
       setAviso('Tour automático' + (usarIA ? ' con IA fiel' : '') + ': parada ' + (hechas + 1) + ' de ' + pts.length + ' («' + p.nombre + '»)…' + (usarIA ? ' (1–3 min por parada)' : ''));
@@ -6051,7 +6067,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
           const base = capturarEquirect(a.renderer, a.scene, new THREE.Vector3(p.x, p.y, p.z), 0, 768, [a.gizmoG, a.cotasG, a.nodoG, a.guiaG]);
           const carga = u => new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = u; });
           const redim = (img, w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); return c.toDataURL('image/png'); };
-          const rIA = await api.post('/render-ia', { imagen: redim(await carga(base), 1536, 1024), modo: 'panorama', proveedor: 'openai', fiel: true }, { timeout: 300000 });
+          const rIA = await api.post('/render-ia', { imagen: redim(await carga(base), 1536, 1024), modo: 'panorama', proveedor: 'openai', fiel: true, ...(vistas.length ? { vistas } : {}) }, { timeout: 300000 });
           const sal = await carga(rIA.data.imagen); url = redim(sal, sal.naturalHeight * 2, sal.naturalHeight);
         } else url = capturarEquirect(a.renderer, a.scene, new THREE.Vector3(p.x, p.y, p.z), 0, 2048, [a.gizmoG, a.cotasG, a.nodoG, a.guiaG]);
         const meta = { camara: { px: p.x, py: p.y, pz: p.z, tx: p.x, ty: p.y, tz: p.z + 1, fov: 75 }, shift: 0, hora, exposicion: ambiente.exposicion, ev: ambiente.ev ?? 7, luces: 1, auto: true };
@@ -7842,8 +7858,29 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
             <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}><input type="checkbox" checked={tourCfg.ia} onChange={e => setTourCfg(c => ({ ...c, ia: e.target.checked }))} style={{ marginTop: 3 }} /><span><b>Dar realismo con IA (modo fiel)</b><br /><span style={{ opacity: 0.65, fontSize: 12 }}>La IA solo mejora materiales, texturas y luz de lo que ya hay: no añade, quita ni cambia objetos. Tarda 1–3 min por parada y gasta crédito de ChatGPT.</span></span></label>
             </div>
+            {tourCfg.ia && (() => {
+              const gal = renders.filter(r => r.tipo !== '360').slice(0, 12), refs = tourCfg.refs || [];
+              if (!gal.length) return null;
+              return (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontWeight: 700 }}>Usar mis renders como referencia <span style={{ opacity: 0.6, fontWeight: 400 }}>({refs.length}/3)</span></div>
+                  <div style={{ opacity: 0.65, fontSize: 12, margin: '2px 0 6px', lineHeight: 1.4 }}>La IA copia de ellos los materiales, el color y la luz, para que las panorámicas se vean como tus fotos. No copia su composición ni añade objetos.</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                    {gal.map(r => {
+                      const on = refs.includes(r.id);
+                      return (
+                        <button key={r.id} type="button" title={r.nombre} aria-pressed={on} onClick={() => setTourCfg(c => { const cur = c.refs || []; return { ...c, refs: cur.includes(r.id) ? cur.filter(x => x !== r.id) : cur.length >= 3 ? cur : [...cur, r.id] }; })} style={{ padding: 0, border: on ? '2px solid #5fbf5a' : '2px solid transparent', borderRadius: 6, background: 'none', cursor: 'pointer' }}>
+                          <img src={r.thumb || r.url} alt={r.nombre} style={{ width: '100%', height: 54, objectFit: 'cover', borderRadius: 4, display: 'block', opacity: on ? 1 : 0.55 }} />
+                          <span style={{ display: 'block', fontSize: 10, padding: '2px 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#ddd' }}>{r.nombre}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button style={{ ...btn, flex: 1, background: '#3f7d3a' }} disabled={!tourCfg.salas.some(s => s.sel)} onClick={() => { const cfg = tourCfg; setTourCfg(null); tourAuto(new Set(cfg.salas.filter(s => s.sel).map(s => s.key)), cfg.ia); }}>Generar paradas</button>
+              <button style={{ ...btn, flex: 1, background: '#3f7d3a' }} disabled={!tourCfg.salas.some(s => s.sel)} onClick={() => { const cfg = tourCfg; setTourCfg(null); tourAuto(new Set(cfg.salas.filter(s => s.sel).map(s => s.key)), cfg.ia, cfg.ia ? (cfg.refs || []) : []); }}>Generar paradas</button>
               <button style={btn} onClick={() => setTourCfg(null)}>Cancelar</button>
             </div>
           </div>
