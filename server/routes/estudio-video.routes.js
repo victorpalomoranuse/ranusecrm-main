@@ -7,6 +7,7 @@ import * as drive from '../utils/drive-lectura.js';
 import { nubeActiva, lanzarNube } from '../utils/nube.js';
 import { callClaude } from '../utils/anthropic.js';
 import { crearFormatoAprobado, aplicarFormatoAprobado } from '../utils/formatos-aprobados.js';
+import { creaTrabajoReveal } from '../utils/reveal.js';
 
 // Estudio de vídeo: subes una voz en off (o un bruto), eliges un formato y un trabajador de vídeo lo monta.
 // Cola de trabajos = un JSON por trabajo en el bucket privado "estudio-video" (sin migraciones de base de datos).
@@ -477,6 +478,16 @@ router.post('/aprobados', async (req, res) => {
     if (error) throw error;
     res.status(201).json({ formato: p });
   } catch { res.status(500).json({ error: 'No se pudo guardar el formato. Inténtalo de nuevo.' }); }
+});
+// Reel "Antes y después": un clip de antes, clips del resultado y una canción; el trabajador los monta al ritmo (ver video-worker/antesdespues.mjs)
+router.post('/reveal', async (req, res) => {
+  try {
+    await bucket();
+    let t; try { t = creaTrabajoReveal(req.body, req.user); } catch (e) { return res.status(400).json({ error: e.message }); }
+    t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t);
+    if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); }
+    res.status(201).json({ trabajo: t });
+  } catch (e) { res.status(500).json({ error: 'No se pudo crear el trabajo: ' + (e.message || '') }); }
 });
 router.post('/trabajos', async (req, res) => {
   try {

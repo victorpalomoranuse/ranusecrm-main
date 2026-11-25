@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import api from '../services/api';
 import { AprobarFormato, CrearConFormato, BibliotecaAprobados } from './FormatosAprobados';
+import { AntesDespues } from './AntesDespues';
 import { Film, Upload, Mic, Video, Trash2, RefreshCw, Download, Plus, Check, Wand2, Settings2, Loader2, Music, Folder, ArrowLeft, Image as ImagenIcono, Play, X, Scissors } from 'lucide-react';
 
 const card = { background: 'linear-gradient(160deg,rgba(255,255,255,.055),rgba(255,255,255,.02))', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 18, padding: '1.2rem 1.3rem' };
@@ -2108,6 +2109,7 @@ export function SectionEstudioVideo() {
       {error && <div className="ap-error" style={{ marginBottom: 10 }}>{error}</div>}
       {errorAprobados && <div role="alert" className="rd-card">{errorAprobados}<button className="rd-btn" onClick={cargarAprobados}>Reintentar</button></div>}
       {seccion === 'crear' && (cargandoAprobados ? <p>Cargando tus formatos…</p> : !errorAprobados && <CrearConFormato formatos={aprobados} seleccionado={seleccionado} onSeleccionar={setSeleccionado} subirArchivo={subirArchivo} onCreado={() => { cargarT(); setRevisionId(''); setSeccion('revision'); }} onPrueba={() => { setVerPrueba(true); setRevisionId(''); setSeccion('revision'); }} />)}
+      {seccion === 'crear' && <AntesDespues subirArchivo={subirArchivo} onCreado={() => { cargarT(); setRevisionId(''); setSeccion('revision'); }} />}
       {seccion === 'aprobados' && !errorAprobados && (cargandoAprobados ? <p>Cargando…</p> : <BibliotecaAprobados formatos={aprobados} onUsar={id => { setSeleccionado(id); setSeccion('crear'); }} onRevisar={id => { setRevisionId(id); setVerPrueba(false); setSeccion('revision'); }} />)}
       {seccion === 'revision' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

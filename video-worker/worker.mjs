@@ -2,6 +2,7 @@
 // Uso: node worker.mjs "<indice.json>"      (se deja abierto; Ctrl+C para parar)
 import fs from 'fs';
 import { preparaYoutube } from './youtube.mjs';
+import { montaAntesDespues } from './antesdespues.mjs';
 import crypto from 'crypto';
 import { hfDisponible, componeHF } from './hf.mjs';
 import { analizaReferencia } from './referencia.mjs';
@@ -213,8 +214,42 @@ async function procesaMuestra(t, dir) {
   await paso(t, 'Muestra lista', { pct: 100, estado: 'listo', muestra_ruta: 'estilos/' + slug + '.mp4', terminado: new Date().toISOString(), error: null });
 }
 
+// Baja una fuente (subida al CRM o de Drive) a un archivo local
+async function bajaFuente(f, destino, etiqueta) {
+  if (f.base) {
+    const { url, cabeceras } = await drive.urlDescarga(f.base.id);
+    const r = await fetch(url, { headers: cabeceras });
+    if (!r.ok) await drive.bajaEnTrozos(f.base.id, destino); else await pipeline(Readable.fromWeb(r.body), fs.createWriteStream(destino));
+    return;
+  }
+  if (await drive.cacheBaja(f.archivo, destino).catch(() => false)) return;
+  const u = await st.createSignedUrl(f.archivo, 3600); if (!u.data?.signedUrl) throw new Error('No encuentro ' + etiqueta);
+  const r = await fetch(u.data.signedUrl); if (!r.ok) throw new Error('No se pudo descargar ' + etiqueta);
+  await pipeline(Readable.fromWeb(r.body), fs.createWriteStream(destino));
+}
+// Reel "Antes y después": un clip de antes, clips del resultado y una canción (ver antesdespues.mjs)
+async function procesaReveal(t, dir) {
+  if (!t.antes || !Array.isArray(t.despues) || !t.despues.length || t.despues.length > 20 || !t.cancion) throw new Error('Faltan el clip de antes, los clips del resultado o la canción');
+  await paso(t, 'Descargando los clips y la canción', { estado: 'procesando', empezado: new Date().toISOString(), pct: 2 });
+  const antes = path.join(dir, 'antes.mp4'); await bajaFuente(t.antes, antes, 'el clip de antes');
+  const despues = [];
+  for (const [i, f] of t.despues.entries()) { const d = path.join(dir, 'despues_' + i + '.mp4'); await paso(t, 'Descargando clip ' + (i + 1) + ' de ' + t.despues.length, { pct: 2 + Math.round(i * 2 / t.despues.length) }); await bajaFuente(f, d, 'el clip ' + (i + 1)); despues.push(d); }
+  const cancion = path.join(dir, 'cancion.audio'); await bajaFuente({ archivo: t.cancion }, cancion, 'la canción');
+  const { plan, salida } = await montaAntesDespues({ antes, despues, cancion, textos: t.textos || {}, ajustes: t.ajustes || {}, dir, salida: path.join(dir, 'reveal.mp4'), avisa: (p, x) => paso(t, x, { pct: p }) });
+  await paso(t, 'Preparando el archivo final', { pct: 94 });
+  let final = salida;
+  if (fs.statSync(salida).size > 45 * 1024 * 1024) { final = path.join(dir, 'final.mp4'); run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', salida, '-c:v', 'libx264', '-crf', '26', '-maxrate', '5M', '-bufsize', '10M', '-c:a', 'copy', '-movflags', '+faststart', final]); if (!fs.existsSync(final) || fs.statSync(final).size > 49 * 1024 * 1024) throw new Error('El vídeo final pesa demasiado para subirlo'); }
+  const movil = path.join(dir, 'movil.mp4');
+  run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', salida, '-vf', 'scale=720:1280', '-c:v', 'libx264', '-crf', '23', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', movil]);
+  await paso(t, 'Subiendo el resultado…', { pct: 97 });
+  const sube = async (ruta, f) => { try { await reintenta(() => st.upload(ruta, fs.readFileSync(f), { contentType: 'video/mp4', upsert: true }), 6); } catch (e) { throw new Error('No se pudo subir ' + ruta + ': ' + e.message); } };
+  await sube('salidas/' + t.id + '.mp4', final); await sube('salidas/' + t.id + '_movil.mp4', fs.existsSync(movil) ? movil : final);
+  await paso(t, 'Listo', { pct: 100, estado: 'listo', resultado: 'salidas/' + t.id + '.mp4', resultado_movil: 'salidas/' + t.id + '_movil.mp4', plan, terminado: new Date().toISOString(), error: null });
+}
+
 async function procesa(t) {
   const dir = path.join(BASE, t.id); fs.mkdirSync(dir, { recursive: true });
+  if (t.tipo === 'reveal') { await procesaReveal(t, dir); return; }
   if (t.tipo === 'youtube') {
     if (!Array.isArray(t.fuentes) || !t.fuentes.length || t.fuentes.length > 8) throw new Error('Elige entre 1 y 8 vídeos');
     await paso(t, 'Preparando las fuentes de YouTube', { estado: 'procesando', empezado: new Date().toISOString(), pct: 2 });

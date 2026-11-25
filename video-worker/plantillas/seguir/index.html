@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1080, height=1920" />
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+<style>
+  @font-face { font-family: "MontserratHF"; src: url("assets/fonts/Montserrat-Bold.ttf"); font-weight: 700; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; background: transparent; }
+  #root { position: relative; width: 1080px; height: 1920px; font-family: "MontserratHF", "Segoe UI", sans-serif; }
+  #ctawrap { position: absolute; left: 0; top: 862px; width: 1080px; height: 80px; }
+  #cta { width: 1080px; height: 80px; line-height: 80px; text-align: center; font-size: 46px; font-weight: 700; color: #fff; text-shadow: 0 3px 14px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.5); }
+  #pillwrap { position: absolute; left: 140px; top: 962px; width: 800px; height: 136px; }
+  #pill { position: relative; width: 800px; height: 136px; border-radius: 68px; background: #f0f0f0; box-shadow: 0 20px 52px rgba(0,0,0,0.38); }
+  #ring { position: absolute; left: 19px; top: 17px; width: 102px; height: 102px; border-radius: 51px; padding: 4px; background: linear-gradient(135deg, #feda75, #fa7e1e, #d62976, #962fbf); }
+  #avatar { width: 94px; height: 94px; border-radius: 47px; border: 3px solid #f0f0f0; background-image: url("assets/avatar.png"); background-size: cover; background-position: center; }
+  #handle { position: absolute; left: 140px; top: 0; height: 136px; line-height: 136px; font-size: 37px; font-weight: 700; color: #1b1b1b; letter-spacing: -0.4px; white-space: nowrap; }
+  #btn { position: absolute; right: 22px; top: 31px; width: 228px; height: 74px; border-radius: 37px; background: linear-gradient(90deg, #8e2de2, #f7861f); box-shadow: 0 5px 14px rgba(120,40,160,0.35); }
+  .lbl { position: absolute; left: 0; top: 0; width: 228px; height: 74px; line-height: 74px; text-align: center; font-size: 30px; font-weight: 700; color: #fff; }
+  #cur { position: absolute; left: 630px; top: 66px; width: 48px; height: 55px; }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-start="0" data-duration="2.5" data-width="1080" data-height="1920">
+  <div id="ctawrap" class="clip" data-start="0" data-duration="2.5" data-track-index="2">
+    <div id="cta" data-var-text="cta">{{CTA}}</div>
+  </div>
+  <div id="pillwrap" class="clip" data-start="0" data-duration="2.5" data-track-index="1">
+    <div id="pill">
+      <div id="ring"><div id="avatar"></div></div>
+      <div id="handle" data-var-text="handle">{{HANDLE}}</div>
+      <div id="btn">
+        <div id="lbl1" class="lbl">Seguir</div>
+        <div id="lbl2" class="lbl">Siguiendo</div>
+      </div>
+      <svg id="cur" viewBox="0 0 56 64" xmlns="http://www.w3.org/2000/svg">
+        <path d="M10 4 L10 46 L21 36 L29 56 L38 52 L30 33 L45 33 Z" fill="#ffffff" stroke="#111" stroke-width="3" stroke-linejoin="round"/>
+      </svg>
+    </div>
+  </div>
+</div>
+<script>
+  const tl = gsap.timeline({ paused: true });
+  // transicion de entrada: primero el texto sube y aparece, la pastilla entra con un pequeno rebote justo despues
+  tl.fromTo("#cta", { opacity: 0, y: 34 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.05);
+  tl.fromTo("#pill", { opacity: 0, scale: 0.78, y: 46 }, { opacity: 1, scale: 1, y: 0, duration: 0.5, ease: "back.out(1.7)" }, 0.22);
+  tl.set("#lbl2", { opacity: 0 }, 0);
+  // el cursor llega al boton y pulsa
+  tl.fromTo("#cur", { opacity: 0, x: 100, y: 80 }, { opacity: 1, x: 0, y: 0, duration: 0.5, ease: "power2.out" }, 0.95);
+  tl.to("#btn", { scale: 0.92, duration: 0.09, ease: "power1.in", transformOrigin: "50% 50%" }, 1.6);
+  tl.to("#btn", { scale: 1, duration: 0.18, ease: "back.out(3)" }, 1.69);
+  tl.set("#lbl1", { opacity: 0 }, 1.66);
+  tl.set("#lbl2", { opacity: 1 }, 1.66);
+  tl.fromTo("#cur", { scale: 1 }, { scale: 0.88, duration: 0.09, transformOrigin: "20% 10%" }, 1.6);
+  tl.to("#cur", { scale: 1, duration: 0.15 }, 1.69);
+  tl.to("#cur", { opacity: 0, x: 36, y: 28, duration: 0.3, ease: "power1.in" }, 2.05);
+  window.__timelines = window.__timelines || {};
+  window.__timelines["main"] = tl;
+  tl.seek(0);
+</script>
+</body>
+</html>
