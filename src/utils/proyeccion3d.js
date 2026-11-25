@@ -7,7 +7,10 @@ import * as THREE from 'three';
 // Hasta 12 renders: todos van en UN mosaico de imágenes y UN mosaico de profundidades, así no se agotan las texturas de la tarjeta gráfica.
 export const MAX_REFS = 12;
 const DEFECTO = { fuerza: 0.97, sesgo: 0.04, cercaMin: 0.12, cercaMax: 0.45 };
-const TW = 1024, TH = 640, LEJOS = 100; // tamaño de cada hueco del mosaico y distancia máxima que guarda el mapa de profundidad (m)
+const LEJOS = 100; // distancia máxima que guarda el mapa de profundidad (m)
+// Tamaño de cada hueco del mosaico según la calidad del panorama: 8K necesita más detalle de cada render
+// «tam» es el lado de cada cara del cubo: el panorama sale al doble de ancho (2048 → 4K, 4096 → 8K)
+export const huecoParaCalidad = (tam) => (tam >= 4096 ? [1536, 960] : [1024, 640]);
 
 // Cámara de un render: la misma proyección que usó el visor (apertura vertical, desplazamiento vertical de la lente y proporción de la imagen)
 export function camaraDeRender(meta, aspecto) {
@@ -20,7 +23,7 @@ export function camaraDeRender(meta, aspecto) {
 }
 
 // Reparto del mosaico: columnas y filas para n huecos, y el rectángulo de cada uno en coordenadas de textura (origen abajo a la izquierda)
-export function disposicionMosaico(n) {
+export function disposicionMosaico(n, TW = 1024, TH = 640) {
   const cols = n <= 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : 4, filas = Math.ceil(n / cols), W = cols * TW, H = filas * TH;
   const huecos = Array.from({ length: n }, (_, k) => { const c = k % cols, f = Math.floor(k / cols); return { px: c * TW, py: H - (f + 1) * TH, tile: [c * TW / W, 1 - (f + 1) * TH / H, TW / W, TH / H] }; });
   return { cols, filas, W, H, huecos };
@@ -34,7 +37,7 @@ const hijoOculto = (scene, ocultar) => {
 };
 
 // Dibuja en cada hueco del mosaico de profundidades lo que ve la cámara de cada render (distancia, empaquetada en 2 canales de 8 bits)
-function mosaicoProfundidad(renderer, scene, cams, ocultar, d) {
+function mosaicoProfundidad(renderer, scene, cams, ocultar, d, TW, TH) {
   const rt = new THREE.WebGLRenderTarget(d.W, d.H, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false, depthBuffer: false });
   const previo = renderer.getRenderTarget(), bg = scene.background, fog = scene.fog, auto = renderer.autoClear, vp = new THREE.Vector4(), sc = new THREE.Vector4(), scT = renderer.getScissorTest();
   renderer.getViewport(vp); renderer.getScissor(sc);
@@ -50,7 +53,7 @@ function mosaicoProfundidad(renderer, scene, cams, ocultar, d) {
   const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), copia), qs = new THREE.Scene(), oc = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1); qs.add(quad);
   renderer.autoClear = false; renderer.setRenderTarget(rt); renderer.setClearColor(0xffffff, 1); renderer.clear(); // 1.0 = «muy lejos»
   cams.forEach((cam, k) => {
-    const w = Math.min(1024, Math.round(1024 * Math.min(1, cam.aspect))), h = Math.round(w / cam.aspect);
+    const w = Math.min(2048, Math.round(2048 * Math.min(1, cam.aspect))), h = Math.round(w / cam.aspect);
     const dt = new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false });
     dt.depthTexture = new THREE.DepthTexture(w, h); dt.depthTexture.type = THREE.UnsignedIntType;
     renderer.setRenderTarget(dt); renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); renderer.setClearColor(0x000000, 1); renderer.clear(); renderer.render(scene, cam);
@@ -64,7 +67,7 @@ function mosaicoProfundidad(renderer, scene, cams, ocultar, d) {
 }
 
 // Mosaico de imágenes: cada render, ajustado a su hueco (al muestrear con coordenadas normalizadas el estirado se deshace solo)
-function mosaicoImagenes(refs, d) {
+function mosaicoImagenes(refs, d, TW, TH) {
   const cv = document.createElement('canvas'); cv.width = d.W; cv.height = d.H; const x = cv.getContext('2d');
   refs.forEach((r, k) => { const h = d.huecos[k]; x.drawImage(r.textura.image, h.px, d.H - h.py - TH, TW, TH); });
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.NoColorSpace; t.minFilter = THREE.LinearFilter; t.magFilter = THREE.LinearFilter; t.generateMipmaps = false; t.needsUpdate = true;
@@ -75,9 +78,9 @@ const MATERIALES = ['isMeshStandardMaterial', 'isMeshPhysicalMaterial', 'isMeshB
 
 // refs: [{ meta, textura (THREE.Texture), aspecto }] (hasta 12). Devuelve { n, aplicar(), quitar() }.
 export function crearProyeccion(renderer, scene, refs, ocultar = [], opciones = {}) {
-  const op = { ...DEFECTO, ...opciones }, lista = refs.slice(0, MAX_REFS).map(r => ({ ...r, cam: camaraDeRender(r.meta, r.aspecto) })).filter(r => r.cam && r.textura && r.textura.image);
+  const op = { ...DEFECTO, ...opciones }, [TW, TH] = opciones.hueco || [1024, 640], lista = refs.slice(0, MAX_REFS).map(r => ({ ...r, cam: camaraDeRender(r.meta, r.aspecto) })).filter(r => r.cam && r.textura && r.textura.image);
   if (!lista.length) throw new Error('Ningún render tiene cámara guardada');
-  const N = lista.length, d = disposicionMosaico(N), rtD = mosaicoProfundidad(renderer, scene, lista.map(r => r.cam), ocultar, d), atlas = mosaicoImagenes(lista, d);
+  const N = lista.length, d = disposicionMosaico(N, TW, TH), rtD = mosaicoProfundidad(renderer, scene, lista.map(r => r.cam), ocultar, d, TW, TH), atlas = mosaicoImagenes(lista, d, TW, TH);
   const U = {
     pvFuerza: { value: op.fuerza }, pvAtlas: { value: atlas }, pvAtlasD: { value: rtD.texture },
     pvM: { value: lista.map(r => new THREE.Matrix4().multiplyMatrices(r.cam.projectionMatrix, r.cam.matrixWorldInverse)) },

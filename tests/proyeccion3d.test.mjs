@@ -26,3 +26,22 @@ test('sin cámara guardada no hay proyección', () => {
 test('una apertura absurda se corrige a la de por defecto', () => {
   assert.equal(camaraDeRender({ camara: { px: 0, py: 1, pz: 0, tx: 0, ty: 1, tz: 1, fov: 400 } }, 2).fov, 50);
 });
+
+import { disposicionMosaico, huecoParaCalidad, MAX_REFS } from '../src/utils/proyeccion3d.js';
+
+test('el mosaico reparte los huecos sin solaparse y caben hasta 12 renders', () => {
+  for (const n of [1, 3, 4, 7, 12]) {
+    const d = disposicionMosaico(n, 1536, 960), cajas = d.huecos.map(h => [h.tile[0], h.tile[1], h.tile[0] + h.tile[2], h.tile[1] + h.tile[3]]);
+    assert.equal(d.huecos.length, n);
+    assert.ok(d.W <= 8192 && d.H <= 8192, `mosaico demasiado grande: ${d.W}x${d.H}`);
+    cajas.forEach(c => { assert.ok(c[0] >= 0 && c[1] >= -1e-9 && c[2] <= 1 + 1e-9 && c[3] <= 1 + 1e-9); });
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      const a = cajas[i], b = cajas[j]; assert.ok(a[2] <= b[0] + 1e-9 || b[2] <= a[0] + 1e-9 || a[3] <= b[1] + 1e-9 || b[3] <= a[1] + 1e-9, `solape ${i}-${j}`);
+    }
+  }
+  assert.equal(MAX_REFS, 12);
+});
+
+test('la calidad 8K usa huecos más finos que la normal', () => {
+  assert.ok(huecoParaCalidad(4096)[0] > huecoParaCalidad(2048)[0]);
+});

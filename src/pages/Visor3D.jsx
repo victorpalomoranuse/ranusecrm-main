@@ -17,7 +17,7 @@ import opentype from 'opentype.js';
 import { PRESETS_REVEST, PERFILES_MOLDURA, construirRevest, colocaEnMuro, normalizaRevest, preset as presetRevest, cajaRevest, espesorRevest } from '../components/revestimientos';
 import ChatImagenes from '../components/ChatImagenes';
 import { texLuzMural, construirDeco, KINDS_DECO, MEDIDAS_DECO, KINDS_PERSONAS, KINDS_MOBILIARIO } from '../components/deco3d';
-import { crearProyeccion, cargarRefs } from '../utils/proyeccion3d';
+import { crearProyeccion, cargarRefs, huecoParaCalidad } from '../utils/proyeccion3d';
 import { construirRack, rackPorDefecto, normalizaRack, calculosRack, textoRack, dimRack, TIPOS_RACK, TIPOS_BAHIA, ACCESORIOS, PERFILES_RACK, COLORES_RACK, bahiaPorDefecto } from '../components/rack3d';
 import { construirCesped, cespedPorDefecto, normalizaCesped, calculosCesped, textoCesped, PRESETS_CESPED, PRESETS_MARCAJE, aplicaPresetMarcaje, COLORES_CESPED, COLORES_LINEA } from '../components/cesped3d';
 import { construirCubierta, cubiertaPorDefecto, normalizaCubierta, calculosCubierta, textoCubierta, altoCubierta, TIPOS_CUBIERTA, PANELES, COLORES_PANEL } from '../components/cubierta3d';
@@ -1390,7 +1390,7 @@ function cartel(texto) {
   sp.scale.set(0.5, 0.125, 1); sp.renderOrder = 1000; return sp;
 }
 // ── Panorama 360°: se renderiza el cubo completo desde un punto y se convierte a una imagen equirrectangular (la que entienden los visores 360)
-export function capturarEquirect(renderer, scene, pos, yaw, tam, ocultar) {
+export function capturarEquirect(renderer, scene, pos, yaw, tam, ocultar, calidadJpeg = 0.92) {
   const tamPrev = renderer.getSize(new THREE.Vector2()), prPrev = renderer.getPixelRatio(), vis = ocultar.map(o => o && o.visible);
   ocultar.forEach(o => { if (o) o.visible = false; });
   const rt = new THREE.WebGLCubeRenderTarget(tam, { generateMipmaps: false, magFilter: THREE.LinearFilter, minFilter: THREE.LinearFilter });
@@ -1402,7 +1402,7 @@ export function capturarEquirect(renderer, scene, pos, yaw, tam, ocultar) {
   });
   const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat), qs = new THREE.Scene(); qs.add(quad);
   renderer.setPixelRatio(1); renderer.setSize(tam * 2, tam, false); renderer.render(qs, new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1));
-  const url = renderer.domElement.toDataURL('image/jpeg', 0.92);
+  const url = renderer.domElement.toDataURL('image/jpeg', calidadJpeg);
   renderer.setPixelRatio(prPrev); renderer.setSize(tamPrev.x, tamPrev.y);
   ocultar.forEach((o, i) => { if (o) o.visible = vis[i]; });
   rt.dispose(); mat.dispose(); quad.geometry.dispose();
@@ -6009,9 +6009,9 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
     const m = api3d.current.modelo; if (!m || generandoParada) return;
     const lista = []; (m.plantas || [m]).forEach((pl, ip) => (pl.salas || []).forEach((sa, i) => { if (sa.pts && sa.pts.length >= 3) lista.push({ key: ip + ':' + i, nombre: (sa.nombre || 'Sala ' + (i + 1)), planta: (m.plantas || [m]).length > 1 ? (pl.nombre || 'Planta ' + (ip + 1)) : '', sel: !(ocultas || []).includes('planta:' + ip) }); }));
     if (!lista.length) { setAviso('No hay salas en el modelo para repartir paradas.'); return; }
-    setTourCfg({ salas: lista, ia: false, proy: false, refs: renders.filter(r => r.tipo !== '360' && r.meta?.camara).slice(0, 3).map(r => r.id) });
+    setTourCfg({ salas: lista, ia: false, proy: false, cal: 2048, refs: renders.filter(r => r.tipo !== '360' && r.meta?.camara).slice(0, 3).map(r => r.id) });
   };
-  const tourAuto = async (elegidas, usarIA, refsIds = [], proy = false) => {
+  const tourAuto = async (elegidas, usarIA, refsIds = [], proy = false, cal = 2048) => {
     const a = api3d.current, m = a.modelo; if (!m || generandoParada) return;
     if (!usarIA && !avisaCalidadTour()) return;
     const pls = m.plantas || [m], offs = a.offsPl || [];
@@ -6062,9 +6062,11 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
     let pr = null;
     if (proy && refsIds.length) {
       setAviso('Pegando tus renders al modelo…');
-      try { pr = crearProyeccion(a.renderer, a.scene, await cargarRefs(renders.filter(r => refsIds.includes(r.id))), [a.gizmoG, a.cotasG, a.nodoG, a.guiaG]); pr.aplicar(); }
+      try { pr = crearProyeccion(a.renderer, a.scene, await cargarRefs(renders.filter(r => refsIds.includes(r.id))), [a.gizmoG, a.cotasG, a.nodoG, a.guiaG], { hueco: huecoParaCalidad(usarIA ? 2048 : cal) }); pr.aplicar(); }
       catch (e) { if (pr) pr.quitar(); pr = null; setAviso('No he podido pegar tus renders al modelo; sigo sin ellos (' + (e.message || 'error') + ')'); await new Promise(r => setTimeout(r, 1800)); }
     }
+    // Calidad del panorama (con IA se queda en 2K): si la tarjeta gráfica no aguanta el tamaño, se baja a la mitad hasta que funcione
+    const capturaAlta = (vec) => { let t = usarIA ? 2048 : cal; for (;;) { try { return capturarEquirect(a.renderer, a.scene, vec, 0, t, [a.gizmoG, a.cotasG, a.nodoG, a.guiaG], t >= 4096 ? 0.86 : 0.92); } catch (e) { if (t <= 2048) throw e; t /= 2; setAviso('Tu tarjeta gráfica no llega a ese tamaño: bajo a ' + (t * 2) + ' px de ancho'); } } };
     let hechas = 0;
     try { for (const p of pts) {
       setAviso('Tour automático' + (usarIA ? ' con IA fiel' : '') + ': parada ' + (hechas + 1) + ' de ' + pts.length + ' («' + p.nombre + '»)…' + (usarIA ? ' (1–3 min por parada)' : ''));
@@ -6077,7 +6079,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
           const redim = (img, w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); return c.toDataURL('image/png'); };
           const rIA = await api.post('/render-ia', { imagen: redim(await carga(base), 1536, 1024), modo: 'panorama', proveedor: 'openai', fiel: true, ...(vistas.length ? { vistas } : {}) }, { timeout: 300000 });
           const sal = await carga(rIA.data.imagen); url = redim(sal, sal.naturalHeight * 2, sal.naturalHeight);
-        } else url = capturarEquirect(a.renderer, a.scene, new THREE.Vector3(p.x, p.y, p.z), 0, 2048, [a.gizmoG, a.cotasG, a.nodoG, a.guiaG]);
+        } else url = capturaAlta(new THREE.Vector3(p.x, p.y, p.z));
         const meta = { camara: { px: p.x, py: p.y, pz: p.z, tx: p.x, ty: p.y, tz: p.z + 1, fov: 75 }, shift: 0, hora, exposicion: ambiente.exposicion, ev: ambiente.ev ?? 7, luces: 1, auto: true };
         const r = await api.post('/medicion/' + id + '/render', { imagen: url, tipo: '360', nombre: p.nombre, nota: '', tour: true, meta }, { timeout: 120000 });
         setRenders(x => [r.data.render, ...x]); hechas++;
@@ -7868,6 +7870,10 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}><input type="checkbox" checked={tourCfg.ia} onChange={e => setTourCfg(c => ({ ...c, ia: e.target.checked }))} style={{ marginTop: 3 }} /><span><b>Dar realismo con IA (modo fiel)</b><br /><span style={{ opacity: 0.65, fontSize: 12 }}>La IA solo mejora materiales, texturas y luz de lo que ya hay: no añade, quita ni cambia objetos. Tarda 1–3 min por parada y gasta crédito de ChatGPT.</span></span></label>
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', marginTop: 8 }}><input type="checkbox" checked={!!tourCfg.proy} onChange={e => setTourCfg(c => ({ ...c, proy: e.target.checked }))} style={{ marginTop: 3 }} /><span><b>Pegar mis renders al modelo (giro libre con mis imágenes)</b><br /><span style={{ opacity: 0.65, fontSize: 12 }}>Cada panorámica lleva TUS renders ya mejorados donde sus cámaras veían; lo que ningún render cubre sale del modelo. Se eligen abajo (hasta 12). No gasta crédito de IA.</span></span></label>
             </div>
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}><b>Calidad del panorama</b>
+              <select value={tourCfg.ia ? 2048 : (tourCfg.cal || 2048)} disabled={tourCfg.ia} onChange={e => setTourCfg(c => ({ ...c, cal: Number(e.target.value) }))} style={{ background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: 6, padding: '3px 6px' }}>
+                <option value={2048}>Normal (4K)</option><option value={4096}>Alta (8K)</option></select></div>
+            <div style={{ opacity: 0.6, fontSize: 11, margin: '2px 0 0', lineHeight: 1.35 }}>{tourCfg.ia ? 'Con IA el panorama sale a 4K; para más calidad desactiva la IA.' : 'Más calidad pesa más y tarda más; en el móvil del cliente se ajusta solo.'}</div>
             {(tourCfg.ia || tourCfg.proy) && (() => {
               const gal = renders.filter(r => r.tipo !== '360' && (!tourCfg.proy || r.meta?.camara)).slice(0, 24), refs = tourCfg.refs || [], tope = tourCfg.proy ? 12 : 3;
               if (!gal.length) return null;
@@ -7891,7 +7897,7 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
               );
             })()}
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button style={{ ...btn, flex: 1, background: '#3f7d3a' }} disabled={!tourCfg.salas.some(s => s.sel)} onClick={() => { const cfg = tourCfg; setTourCfg(null); tourAuto(new Set(cfg.salas.filter(s => s.sel).map(s => s.key)), cfg.ia, cfg.ia || cfg.proy ? (cfg.refs || []) : [], !!cfg.proy); }}>Generar paradas</button>
+              <button style={{ ...btn, flex: 1, background: '#3f7d3a' }} disabled={!tourCfg.salas.some(s => s.sel)} onClick={() => { const cfg = tourCfg; setTourCfg(null); tourAuto(new Set(cfg.salas.filter(s => s.sel).map(s => s.key)), cfg.ia, cfg.ia || cfg.proy ? (cfg.refs || []) : [], !!cfg.proy, cfg.ia ? 2048 : (cfg.cal || 2048)); }}>Generar paradas</button>
               <button style={btn} onClick={() => setTourCfg(null)}>Cancelar</button>
             </div>
           </div>

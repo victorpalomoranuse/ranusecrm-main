@@ -53,10 +53,21 @@ export function TourPublico() {
     const fovFijo = () => { const asp = Math.max(0.3, cam.aspect || 1.6), v = 2 * Math.atan(Math.tan(HFOV / 2) / asp); return Math.max(45, Math.min(78, v * 180 / Math.PI)); };
     cam.fov = fovFijo(); cam.updateProjectionMatrix();
     const cache = new Map();
+    // Los panoramas de 8K pesan mucho: se limita al tope de la tarjeta (y a 4K en móvil), y solo se guardan en memoria el actual y los cercanos
+    const tope = Math.min(r.capabilities.maxTextureSize || 4096, window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 4096 : 8192);
     const cargaTex = url => {
-      if (!cache.has(url)) cache.set(url, new Promise((ok, ko) => new THREE.TextureLoader().load(url, t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; ok(t); }, undefined, ko)));
+      if (!cache.has(url)) cache.set(url, new Promise((ok, ko) => {
+        const im = new Image(); im.crossOrigin = 'anonymous';
+        im.onload = () => {
+          let fuente = im;
+          if (im.naturalWidth > tope) { const c = document.createElement('canvas'); c.width = tope; c.height = Math.round(im.naturalHeight * tope / im.naturalWidth); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); fuente = c; }
+          const t = new THREE.Texture(fuente); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; t.needsUpdate = true; ok(t);
+        };
+        im.onerror = ko; im.src = url;
+      }));
       return cache.get(url);
     };
+    const soltar = (mantener) => { for (const [u, pr] of cache) if (!mantener.has(u)) { cache.delete(u); pr.then(t => { if (t !== mat.map && t !== matB.map) t.dispose(); }).catch(() => {}); } };
     let lon = Math.PI, lat = 0, drag = null, vivo = true, seq = 0;
     let animando = false;
     const anima = (ms, fn) => new Promise(ok => { const t0 = performance.now(); const paso = () => { if (!vivo) return ok(); const k = Math.min(1, (performance.now() - t0) / ms); fn(k * k * (3 - 2 * k)); if (k < 1) requestAnimationFrame(paso); else ok(); }; paso(); });
@@ -85,7 +96,9 @@ export function TourPublico() {
       }
       // se van descargando ya las paradas de al lado para que el salto sea inmediato
       const c = datos.paradas[i];
-      datos.paradas.map((p, k) => ({ p, k, d: Math.hypot(p.x - c.x, p.z - c.z) })).filter(v => v.k !== i).sort((a, b) => a.d - b.d).slice(0, 3).forEach(v => cargaTex(v.p.url).catch(() => {}));
+      const cerca = datos.paradas.map((p, k) => ({ p, k, d: Math.hypot(p.x - c.x, p.z - c.z) })).filter(v => v.k !== i).sort((a, b) => a.d - b.d).slice(0, 2);
+      cerca.forEach(v => cargaTex(v.p.url).catch(() => {}));
+      soltar(new Set([datos.paradas[i].url, ...cerca.map(v => v.p.url)]));
     };
     const dn = e => { drag = [e.clientX, e.clientY]; r.domElement.style.cursor = 'grabbing'; };
     const mv = e => { if (!drag || animando) return; const k = 0.2 * (Math.PI / 180) * (cam.fov / 75); lon -= (e.clientX - drag[0]) * k; lat = Math.max(-LAT_MAX, Math.min(LAT_MAX, lat + (e.clientY - drag[1]) * k)); drag = [e.clientX, e.clientY]; };
