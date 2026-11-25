@@ -4024,7 +4024,7 @@ function scene0(C,k,view,o){
       var slr=sel&&sel.t==='rc'&&sel.id===rc.id,colr=slr?C.accent:(view==='interv'?C.nw:C.ink);
       h+='<polygon points="'+q.pts.map(function(p){return f2(p.x)+','+f2(p.y)}).join(' ')+'" style="fill:'+colr+';fill-opacity:.22;stroke:'+colr+';stroke-width:'+f2((slr?2.6:1.3)*px)+'"/>';
       /* cotas del recrecido: su largo y los huecos hasta el recrecido anterior (o el principio del muro) y hasta el final del muro */
-      (function(){
+      if(!((ocultoK(view,'w:rc:'+rc.id)&&!o.adj)||(view==='distrib'&&!o.flat&&!st.verCotasMuros)))(function(){ /* las cotas del recrecido se ocultan con «Cotas de los muros» y no salen al trabajar en Distribución */
         var gq=wg(q.w),o2=q.w.t/2+(rc.t||10);
         function PP(s,d){return {x:gq.a.x+gq.ux*s+q.nx*d,y:gq.a.y+gq.uy*s+q.ny*d}}
         var a1=PP(Math.max(0,Math.min(gq.l,rc.s0)),o2+26*px),b1=PP(Math.max(0,Math.min(gq.l,rc.s1)),o2+26*px);
