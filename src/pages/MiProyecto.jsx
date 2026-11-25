@@ -62,11 +62,20 @@ function Lightbox({ src, alt, onClose, downloadUrl, downloadName }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // En el móvil una foto apaisada cabe "entera" pero diminuta: se abre a tamaño grande y se desliza para ver el resto; un toque alterna
+  const [grande, setGrande] = useState(false), [apaisada, setApaisada] = useState(false);
+  const alCargar = (e) => {
+    const { naturalWidth: w, naturalHeight: h } = e.currentTarget; if (!w || !h) return;
+    const ancha = w / h > (window.innerWidth / window.innerHeight) * 1.25; setApaisada(ancha);
+    if (ancha && window.innerWidth <= 820) setGrande(true);
+  };
+
   return (
-    <div className="mp-lb" onClick={onClose}>
+    <div className={'mp-lb' + (grande ? ' mp-lb--grande' : '')} onClick={onClose}>
       <button className="mp-lb-close" onClick={onClose}>✕</button>
       {downloadUrl && <DownloadButton url={downloadUrl} filename={downloadName} className="mp-lb-download" />}
-      <img src={src} alt={alt} onClick={e => e.stopPropagation()} />
+      <img src={src} alt={alt} onLoad={alCargar} onClick={e => { e.stopPropagation(); if (apaisada) setGrande(g => !g); }} />
+      {apaisada && <span className="mp-lb-hint">{grande ? 'Desliza para ver el resto · toca para verla entera' : 'Toca la foto para ampliarla'}</span>}
     </div>
   );
 }

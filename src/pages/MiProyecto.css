@@ -605,6 +605,17 @@
   padding: 1.5rem;
 }
 .mp-lb img { max-width: 100%; max-height: 90dvh; border-radius: 8px; object-fit: contain; }
+/* Modo grande (móvil con foto apaisada): la foto se ve a toda altura y se desliza hacia los lados */
+.mp-lb--grande { justify-content: flex-start; overflow: auto; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y pinch-zoom; padding: 3.5rem 0 3rem; }
+.mp-lb--grande img { max-width: none; max-height: none; height: min(70dvh, 130vw); width: auto; flex: 0 0 auto; margin: auto; border-radius: 0; }
+.mp-lb-hint { position: fixed; left: 0; right: 0; bottom: 0.9rem; text-align: center; color: rgba(255,255,255,0.7); font-size: 0.8rem; pointer-events: none; }
+/* En pantallas pequeñas las miniaturas y la portada no recortan la foto: se ve entera */
+@media (max-width: 639px) {
+  .mp-hero-render { aspect-ratio: auto; max-height: none; }
+  .mp-hero-render img { height: auto; object-fit: contain; }
+  .mp-img-thumb { aspect-ratio: auto; }
+  .mp-img-thumb img { height: auto; object-fit: contain; }
+}
 .mp-lb-close {
   position: absolute;
   top: 1rem; right: 1rem;
