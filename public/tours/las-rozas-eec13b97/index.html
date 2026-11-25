@@ -58,7 +58,7 @@ el.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY];el.setPointerCa
 el.addEventListener('pointermove',e=>{if(!drag)return;const k=.0045*cam.fov/70;yaw-=(e.clientX-drag[0])*k;pitch=Math.max(-.75,Math.min(.75,pitch+(e.clientY-drag[1])*k));drag=[e.clientX,e.clientY];draw()});
 const fin=()=>drag=null;el.addEventListener('pointerup',fin);el.addEventListener('pointercancel',fin);
 addEventListener('keydown',e=>{const m={ArrowLeft:[-.08,0],ArrowRight:[.08,0],ArrowUp:[0,.08],ArrowDown:[0,-.08]}[e.key];if(!m)return;yaw+=m[0];pitch=Math.max(-.75,Math.min(.75,pitch+m[1]));e.preventDefault();draw()});
-const ajusta=()=>{cam.aspect=innerWidth/innerHeight;cam.fov=fov();cam.updateProjectionMatrix();r.setSize(innerWidth,innerHeight);draw()};addEventListener('resize',ajusta);ajusta();ir(1);
+const ajusta=()=>{cam.aspect=innerWidth/innerHeight;cam.fov=fov();cam.updateProjectionMatrix();r.setSize(innerWidth,innerHeight);draw()};addEventListener('resize',ajusta);ajusta();ir(new URLSearchParams(location.search).get('v')==='1'?0:1); // ?v=1 abre en V1
 </script>
 </body>
 </html>
