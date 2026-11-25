@@ -4,6 +4,7 @@ import { supabase } from '../config/supabase.js';
 import { leerModelosBib } from '../utils/modelos-bib.js';
 import { leerVersion } from '../utils/tour-version.js';
 import { fotosDeTour } from '../utils/tour-fotos.js';
+import { maquetaDeTour } from '../utils/maqueta.js';
 import { TIPOS, NOMBRE, COLOR, clave } from '../utils/lamina-zonas.js';
 
 // Tour 360° para el cliente: enlace de solo lectura con las paradas (panorámicas guardadas en la galería del plano y marcadas como «tour»).
@@ -65,9 +66,11 @@ router.get('/:id/:firma', async (req, res) => {
     const paradas = soloFotos ? [] : paradasDeTour(data.data?.escena3d);
     // Sin panorámicas 360°, el tour se arma con los renders finales publicados: cada uno guarda su cámara y el visor coloca los saltos
     const fotos = paradas.length ? [] : fotosDeTour(data.data?.escena3d);
-    if (!paradas.length && !fotos.length) return res.status(404).json({ error: 'Este tour todavía no tiene paradas' });
+    // ?maqueta=1: además las vistas de la maqueta ya generadas (el cliente solo descarga imágenes)
+    const maqueta = req.query.maqueta === '1' ? maquetaDeTour(data.data?.escena3d) : [];
+    if (!paradas.length && !fotos.length && !maqueta.length) return res.status(404).json({ error: 'Este tour todavía no tiene paradas' });
     res.set('Cache-Control', 'no-store');
-    res.json({ titulo: data.nombre || 'Tour', paradas, ...(fotos.length ? { fotos } : {}) });
+    res.json({ titulo: data.nombre || 'Tour', paradas, ...(fotos.length ? { fotos } : {}), ...(maqueta.length ? { maqueta } : {}) });
   } catch (err) {
     console.error('tour-publico:', err);
     res.status(500).json({ error: 'No se pudo cargar el tour' });

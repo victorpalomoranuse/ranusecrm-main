@@ -12,6 +12,7 @@ import { callClaude } from '../utils/anthropic.js';
 import { urlSketchup } from './medicion-sketchup.routes.js';
 import { firmaTour, paradasDeTour, catalogoDePlano } from './tour-publico.routes.js';
 import { crearVersion, listarVersiones, borrarVersion } from '../utils/tour-version.js';
+import { limpiaPines } from '../utils/maqueta.js';
 import { leerTexturasMias } from './biblioteca3d.routes.js';
 import { uploadProjectRender } from '../utils/storage.js';
 import { uploadReferenceImageFile, uploadHdriFile, handleMulterError } from '../middleware/upload.middleware.js';
@@ -1018,6 +1019,8 @@ const limpiaMeta = (m) => {
     camara: { px: n(c.px), py: n(c.py), pz: n(c.pz), tx: n(c.tx), ty: n(c.ty), tz: n(c.tz), fov: n(c.fov) },
     shift: n(m?.shift), hora: n(m?.hora), exposicion: n(m?.exposicion), luces: n(m?.luces),
     estancia: s(m?.estancia, 80), estilo: s(m?.estilo, 120), extra: s(m?.extra, 400), libertad: ['fiel', 'equilibrado', 'creativo'].includes(m?.libertad) ? m.libertad : undefined,
+    // vistas de la maqueta del cliente: ángulo, a qué tanda pertenecen y dónde cae cada render en la imagen
+    ...(m?.grupo ? { az: n(m?.az), grupo: s(m.grupo, 40), pines: limpiaPines(m?.pines) } : {}),
   };
 };
 // Guarda una imagen en la galería de renders de un plano (la usan el visor y el render en la nube, que guarda solo aunque se cierre la página)
@@ -1025,7 +1028,7 @@ export async function guardaRenderGaleria(planoId, buf, { tipo, nombre, meta, to
     const req = { params: { id: planoId } };
     const { data: fila } = await supabase.from('mediciones').select('data').eq('id', planoId).maybeSingle();
     if (!fila) { const e = new Error('Plano no encontrado'); e.status = 404; throw e; }
-    const t = ['ia', 'hd', '360'].includes(tipo) ? tipo : 'ia', rid = 'r' + Date.now().toString(36);
+    const t = ['ia', 'hd', '360', 'maqueta'].includes(tipo) ? tipo : 'ia', rid = 'r' + Date.now().toString(36);
     const full = await sharp(buf).resize({ width: t === '360' ? 8192 : 3840, withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
     const thumb = await sharp(buf).resize({ width: 480, withoutEnlargement: true }).jpeg({ quality: 78 }).toBuffer();
     const base = 'renders3d/' + req.params.id + '/' + rid;
@@ -1034,7 +1037,7 @@ export async function guardaRenderGaleria(planoId, buf, { tipo, nombre, meta, to
       if (error) throw error;
     }
     const url = supabase.storage.from(BUCKET_TEX).getPublicUrl(base + '.jpg').data.publicUrl, turl = supabase.storage.from(BUCKET_TEX).getPublicUrl(base + '-t.jpg').data.publicUrl;
-    const render = { id: rid, tipo: t, nombre: String(nombre || '').slice(0, 80) || (t === '360' ? 'Panorama 360°' : t === 'hd' ? 'Render HD' : 'Render con IA'), url, thumb: turl, creado: new Date().toISOString(), meta: limpiaMeta(meta), ...(t === '360' && tour === true ? { tour: true } : {}), ...(nota ? { nota: String(nota).slice(0, 300) } : {}) };
+    const render = { id: rid, tipo: t, nombre: String(nombre || '').slice(0, 80) || (t === '360' ? 'Panorama 360°' : t === 'maqueta' ? 'Maqueta' : t === 'hd' ? 'Render HD' : 'Render con IA'), url, thumb: turl, creado: new Date().toISOString(), meta: limpiaMeta(meta), ...(t === '360' && tour === true ? { tour: true } : {}), ...(nota ? { nota: String(nota).slice(0, 300) } : {}) };
     const esc = fila.data?.escena3d || { objetos: [] };
     const todos = [render, ...(esc.renders || [])], sobran = todos.slice(80);
     const data = { ...fila.data, escena3d: { ...esc, renders: todos.slice(0, 80), iaPrefs: t === 'ia' ? { estancia: render.meta.estancia, estilo: render.meta.estilo, extra: render.meta.extra, libertad: render.meta.libertad } : (esc.iaPrefs || null), updated: Date.now() } };
