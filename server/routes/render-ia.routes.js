@@ -222,7 +222,7 @@ router.post('/editar', async (req, res) => {
   const clave = process.env.OPENAI_API_KEY;
   if (!clave) return res.status(503).json({ error: 'Falta la clave de OpenAI en el servidor (variable OPENAI_API_KEY en Railway).' });
   try {
-    const { imagen, mascara, instruccion, referencias, calidad: soloCalidad, coherencia } = req.body || {};
+    const { imagen, mascara, instruccion, referencias, calidad: soloCalidad, altaResolucion, coherencia } = req.body || {};
     const m = DATA_IMG.exec(String(imagen || ''));
     if (!m) return res.status(400).json({ error: 'Falta la imagen (png, jpg o webp)' });
     const texto = String(instruccion || '').trim().slice(0, 1500);
@@ -242,11 +242,21 @@ router.post('/editar', async (req, res) => {
       'No cambies la exposición, el contraste, la saturación ni el balance de color general de la imagen, salvo que el cambio pedido lo exija: el resto debe quedar con el mismo tono y brillo que la imagen original.',
       'El resultado debe parecer una fotografía real.',
     ].filter(Boolean).join(' ');
-    let modeloO = process.env.OPENAI_IMAGE_MODEL || imagenOpenAI || 'gpt-image-1';
+    const alta = altaResolucion === true && soloCalidad === true && !mk;
+    let tamSalida = 'auto';
+    if (alta) {
+      const meta = await sharp(Buffer.from(m[2], 'base64')).metadata();
+      const ratio = meta.width / meta.height;
+      if (!Number.isFinite(ratio) || ratio < 1 / 3 || ratio > 3) return res.status(400).json({ error: 'La mejora admite proporciones entre 1:3 y 3:1.' });
+      const lado = Math.min(3840, Math.floor(Math.sqrt(8294400 * Math.max(ratio, 1 / ratio)) / 16) * 16);
+      const corto = Math.floor(lado / Math.max(ratio, 1 / ratio) / 16) * 16;
+      tamSalida = ratio >= 1 ? lado + 'x' + corto : corto + 'x' + lado;
+    }
+    let modeloO = alta ? 'gpt-image-2' : process.env.OPENAI_IMAGE_MODEL || imagenOpenAI || 'gpt-image-1';
     const llamar = async ({ fidelidad = true, conRefs = true } = {}) => {
       const fd = new FormData();
-      fd.append('model', modeloO); fd.append('prompt', prompt); fd.append('size', 'auto'); fd.append('quality', process.env.OPENAI_IMAGE_QUALITY || 'high'); fd.append('n', '1');
-      if (fidelidad) fd.append('input_fidelity', 'high');
+      fd.append('model', modeloO); fd.append('prompt', prompt); fd.append('size', tamSalida); fd.append('quality', alta ? 'high' : process.env.OPENAI_IMAGE_QUALITY || 'high'); fd.append('n', '1');
+      if (fidelidad && modeloO !== 'gpt-image-2') fd.append('input_fidelity', 'high');
       const usa = conRefs && (refs.length || coh.length);
       fd.append(usa ? 'image[]' : 'image', new Blob([Buffer.from(m[2], 'base64')], { type: m[1] }), 'render.' + (m[1] === 'image/png' ? 'png' : 'jpg'));
       if (usa) { refs.forEach((x, i) => fd.append('image[]', new Blob([Buffer.from(x[2], 'base64')], { type: x[1] }), 'referencia' + (i + 1) + '.' + (x[1] === 'image/png' ? 'png' : 'jpg'))); coh.forEach((x, i) => fd.append('image[]', new Blob([Buffer.from(x[2], 'base64')], { type: x[1] }), 'vista' + (i + 1) + '.' + (x[1] === 'image/png' ? 'png' : 'jpg'))); }
@@ -255,7 +265,7 @@ router.post('/editar', async (req, res) => {
       return { rr, jj: await rr.json().catch(() => ({})) };
     };
     let { rr, jj } = await llamar();
-    if (!rr.ok && !process.env.OPENAI_IMAGE_MODEL && /does not exist|model_not_found|do not have access|not found/i.test(JSON.stringify(jj?.error || {}))) {
+    if (!rr.ok && !alta && !process.env.OPENAI_IMAGE_MODEL && /does not exist|model_not_found|do not have access|not found/i.test(JSON.stringify(jj?.error || {}))) {
       const lista = await modelosImagenOpenAI(clave).catch(() => []);
       if (lista.length && lista[0] !== modeloO) { modeloO = lista[0]; imagenOpenAI = modeloO; ({ rr, jj } = await llamar()); }
     }

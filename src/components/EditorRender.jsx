@@ -145,7 +145,9 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
     try {
       const base = await carga(actual.src), W0 = base.naturalWidth, H0 = base.naturalHeight, asp = W0 / H0;
       // OpenAI trabaja con 1536×1024, 1024×1536 o 1024×1024: se ajusta el formato (con un estirado leve que luego se deshace)
-      const [tw, th] = asp > 1.25 ? [1536, 1024] : asp < 0.8 ? [1024, 1536] : [1024, 1024];
+      const altaResolucion = calidadSola && !pintado;
+      const kEntrada = Math.min(1, 3840 / Math.max(W0, H0));
+      const [tw, th] = altaResolucion ? [Math.round(W0 * kEntrada), Math.round(H0 * kEntrada)] : asp > 1.25 ? [1536, 1024] : asp < 0.8 ? [1024, 1536] : [1024, 1024];
       const imagen = aDataUrl(base, tw, th);
       let mascara;
       if (pintado) {
@@ -157,9 +159,9 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
       if (coh.length) {
         for (const gid of coh) { const g = galeria.find(x => x.id === gid); if (!g) continue; try { const u = g.url || g.thumb, im = await carga(u + (String(u).includes('?') ? '&' : '?') + 'cors=1'), k = Math.min(1, 1024 / Math.max(im.naturalWidth, im.naturalHeight)); coherencia.push(aDataUrl(im, Math.round(im.naturalWidth * k), Math.round(im.naturalHeight * k), 'image/jpeg', 0.9)); } catch { /* esa vista no se pudo leer: se sigue sin ella */ } }
       }
-      const r = await api.post('/render-ia/editar', { imagen, mascara, instruccion: instr, referencias: calidadSola ? [] : refs, calidad: calidadSola, coherencia }, { timeout: 280000 });
+      const r = await api.post('/render-ia/editar', { imagen, mascara, instruccion: instr, referencias: calidadSola ? [] : refs, calidad: calidadSola, altaResolucion, coherencia }, { timeout: 280000 });
       const sal = await carga(r.data.imagen);
-      const url = aDataUrl(sal, W0, H0, 'image/jpeg', 0.93);
+      const url = altaResolucion ? r.data.imagen : aDataUrl(sal, W0, H0, 'image/jpeg', 0.93);
       setHistoria(h => [...h.slice(0, idx + 1), { src: url, guardada: false, texto: calidadSola ? 'Mejora de calidad' : instr }]); setIdx(idx + 1);
       if (!calidadSola) { setTexto(''); setRefs([]); }
       if (autoGuardar) { try { const rr = await onGuardar?.(url, (nombre || 'Render') + ' · v' + (idx + 2)); if (rr) setHistoria(h => h.map((v, i) => (i === idx + 1 ? { ...v, guardada: true, render: rr } : v))); } catch { /* se puede guardar a mano */ } }

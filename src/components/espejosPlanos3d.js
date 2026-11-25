@@ -59,7 +59,17 @@ export function planosEspejo(a, scene, activo) {
     refl.userData.esReflejo = true; refl.raycast = () => {}; refl.renderOrder = 1; refl.frustumCulled = true;
     refl.material.polygonOffset = true; refl.material.polygonOffsetFactor = -2; refl.material.polygonOffsetUnits = -2;
     // no se reflejan a sí mismos ni se pintan en los pases auxiliares (sombras de contacto…)
-    const orig = refl.onBeforeRender; refl.onBeforeRender = function (r, s, c, ...resto) { if (s.overrideMaterial) return; orig.call(this, r, s, c, ...resto); };
+    const orig = refl.onBeforeRender; refl.onBeforeRender = function (r, s, c, ...resto) {
+      if (s.overrideMaterial) return;
+      // Reflector restores only the target; cube captures also need the face and mip level.
+      const target = r.getRenderTarget(), face = r.getActiveCubeFace(), mip = r.getActiveMipmapLevel();
+      const xr = r.xr.enabled, shadows = r.shadowMap.autoUpdate, visible = this.visible;
+      try { orig.call(this, r, s, c, ...resto); }
+      finally {
+        r.setRenderTarget(target, face, mip);
+        r.xr.enabled = xr; r.shadowMap.autoUpdate = shadows; this.visible = visible;
+      }
+    };
     const antes = { cw: mesh.material.colorWrite, dw: mesh.material.depthWrite };
     mesh.material.colorWrite = false; mesh.material.depthWrite = false; mesh.material.needsUpdate = true; // la superficie original ya no se pinta: la sustituye el reflejo
     scene.add(refl); a.planosEsp.push({ reflector: refl, mesh, antes });
