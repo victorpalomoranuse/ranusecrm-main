@@ -7866,20 +7866,21 @@ export default function Visor3D({ cliente = false, zonasPub = false }) {
             ))}
             <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}><input type="checkbox" checked={tourCfg.ia} onChange={e => setTourCfg(c => ({ ...c, ia: e.target.checked }))} style={{ marginTop: 3 }} /><span><b>Dar realismo con IA (modo fiel)</b><br /><span style={{ opacity: 0.65, fontSize: 12 }}>La IA solo mejora materiales, texturas y luz de lo que ya hay: no añade, quita ni cambia objetos. Tarda 1–3 min por parada y gasta crédito de ChatGPT.</span></span></label>
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', marginTop: 8 }}><input type="checkbox" checked={!!tourCfg.proy} onChange={e => setTourCfg(c => ({ ...c, proy: e.target.checked }))} style={{ marginTop: 3 }} /><span><b>Pegar mis renders al modelo (giro libre con mis imágenes)</b><br /><span style={{ opacity: 0.65, fontSize: 12 }}>Cada panorámica lleva TUS renders ya mejorados donde sus cámaras veían; lo que ningún render cubre sale del modelo. Se eligen abajo (hasta 3). No gasta crédito de IA.</span></span></label>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', marginTop: 8 }}><input type="checkbox" checked={!!tourCfg.proy} onChange={e => setTourCfg(c => ({ ...c, proy: e.target.checked }))} style={{ marginTop: 3 }} /><span><b>Pegar mis renders al modelo (giro libre con mis imágenes)</b><br /><span style={{ opacity: 0.65, fontSize: 12 }}>Cada panorámica lleva TUS renders ya mejorados donde sus cámaras veían; lo que ningún render cubre sale del modelo. Se eligen abajo (hasta 12). No gasta crédito de IA.</span></span></label>
             </div>
             {(tourCfg.ia || tourCfg.proy) && (() => {
-              const gal = renders.filter(r => r.tipo !== '360' && (!tourCfg.proy || r.meta?.camara)).slice(0, 12), refs = tourCfg.refs || [];
+              const gal = renders.filter(r => r.tipo !== '360' && (!tourCfg.proy || r.meta?.camara)).slice(0, 24), refs = tourCfg.refs || [], tope = tourCfg.proy ? 12 : 3;
               if (!gal.length) return null;
               return (
                 <div style={{ marginTop: 8 }}>
-                  <div style={{ fontWeight: 700 }}>Usar mis renders como referencia <span style={{ opacity: 0.6, fontWeight: 400 }}>({refs.length}/3)</span></div>
-                  <div style={{ opacity: 0.65, fontSize: 12, margin: '2px 0 6px', lineHeight: 1.4 }}>La IA copia de ellos los materiales, el color y la luz, para que las panorámicas se vean como tus fotos. No copia su composición ni añade objetos.</div>
+                  <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>Usar mis renders <span style={{ opacity: 0.6, fontWeight: 400 }}>({refs.length}/{tope})</span>
+                    {tourCfg.proy && <><button type="button" style={{ ...btn, padding: '1px 8px', fontSize: 11 }} onClick={() => setTourCfg(c => ({ ...c, refs: gal.slice(0, 12).map(r => r.id) }))}>Elegir todos</button><button type="button" style={{ ...btn, padding: '1px 8px', fontSize: 11 }} onClick={() => setTourCfg(c => ({ ...c, refs: [] }))}>Ninguno</button></>}</div>
+                  <div style={{ opacity: 0.65, fontSize: 12, margin: '2px 0 6px', lineHeight: 1.4 }}>{tourCfg.proy ? 'Se pegan al modelo desde la cámara de cada uno. ' : ''}{tourCfg.ia ? 'La IA copia de ellos los materiales, el color y la luz, para que las panorámicas se vean como tus fotos (usa los 3 primeros). ' : ''}No copia su composición ni añade objetos.</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
                     {gal.map(r => {
                       const on = refs.includes(r.id);
                       return (
-                        <button key={r.id} type="button" title={r.nombre} aria-pressed={on} onClick={() => setTourCfg(c => { const cur = c.refs || []; return { ...c, refs: cur.includes(r.id) ? cur.filter(x => x !== r.id) : cur.length >= 3 ? cur : [...cur, r.id] }; })} style={{ padding: 0, border: on ? '2px solid #5fbf5a' : '2px solid transparent', borderRadius: 6, background: 'none', cursor: 'pointer' }}>
+                        <button key={r.id} type="button" title={r.nombre} aria-pressed={on} onClick={() => setTourCfg(c => { const cur = c.refs || []; return { ...c, refs: cur.includes(r.id) ? cur.filter(x => x !== r.id) : cur.length >= (c.proy ? 12 : 3) ? cur : [...cur, r.id] }; })} style={{ padding: 0, border: on ? '2px solid #5fbf5a' : '2px solid transparent', borderRadius: 6, background: 'none', cursor: 'pointer' }}>
                           <img src={r.thumb || r.url} alt={r.nombre} style={{ width: '100%', height: 54, objectFit: 'cover', borderRadius: 4, display: 'block', opacity: on ? 1 : 0.55 }} />
                           <span style={{ display: 'block', fontSize: 10, padding: '2px 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#ddd' }}>{r.nombre}</span>
                         </button>
