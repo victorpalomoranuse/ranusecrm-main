@@ -2251,7 +2251,7 @@ export function planta(m, z0) {
     if (!Array.isArray(rc.pts) || rc.pts.length < 3) return;
     const hCm = rc.h || m.altura || 260; // en cm y luego a metros: así las texturas (que van en cm) se pintan a su escala
     const sh = new THREE.Shape(rc.pts.map(p => new THREE.Vector2(p[0], -p[1])));
-    const geo = new THREE.ExtrudeGeometry(sh, { depth: hCm, bevelEnabled: false }); geo.rotateX(-Math.PI / 2); geo.scale(CM, CM, CM);
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: hCm, bevelEnabled: false }); geo.rotateX(-Math.PI / 2); if (rc.z0 > 0) geo.translate(0, rc.z0, 0); geo.scale(CM, CM, CM); // z0: trozo por encima de una puerta o ventana
     const x = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: rc.estado === 'new' ? 0xf1ece6 : 0xe4e0db, roughness: 0.95 }));
     x.castShadow = x.receiveShadow = true; x.userData = { capa: 'muros', muroId: 'rc-' + rc.id, recrecidoId: rc.id }; g.add(x); // pintable como un muro (su color se guarda con la clave rc-…)
   });
