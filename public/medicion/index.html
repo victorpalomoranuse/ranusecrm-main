@@ -1389,6 +1389,25 @@ function rcPoly(rc){
   function P(s,d){return {x:g.a.x+g.ux*s+nx*d,y:g.a.y+g.uy*s+ny*d}}
   return {pts:[P(s0,o),P(s1,o),P(s1,o+t),P(s0,o+t)],mid:P((s0+s1)/2,o+t),nx:nx,ny:ny,len:Math.max(0,s1-s0),w:w};
 }
+/* tramo libre de un muro alrededor de [a,b]: lo limitan las caras de los muros que lo tocan (esquinas y muros en T).
+   Un muro que queda dentro de [a,b] no limita (ventanal que pasa por delante de un muro en T). lado: 0 = cualquiera, 1/-1 = solo los que salen por esa cara */
+function tramoLibreMuro(wu,a,b,lado){
+  var gu=wg(wu),s0=0,s1=gu.l;
+  st.v.walls.forEach(function(o2){
+    if(o2===wu||o2.arc||!wallVis(o2,st.view))return;
+    var g2=wg(o2),sen=Math.abs(g2.ux*gu.uy-g2.uy*gu.ux);if(sen<0.3)return;
+    [[o2.a,o2.b],[o2.b,o2.a]].forEach(function(par){
+      var q=nd(par[0]),lejos=nd(par[1]);if(!q||!lejos)return;
+      var comp=(par[0]===wu.a||par[0]===wu.b);
+      if(!comp&&segDist(q,gu.a,gu.b)>wu.t/2+2)return;
+      if(lado){var ld=(lejos.x-q.x)*-gu.uy+(lejos.y-q.y)*gu.ux;if(ld*lado<=0)return}
+      var sc=(q.x-gu.a.x)*gu.ux+(q.y-gu.a.y)*gu.uy,hw=o2.t/2/sen;
+      if(sc+hw<=a+1&&sc+hw>s0)s0=sc+hw;
+      if(sc-hw>=b-1&&sc-hw<s1)s1=sc-hw;
+    });
+  });
+  return {s0:s0,s1:s1};
+}
 function rcAlto(rc){var w=wl(rc.wall);return num(rc.h)>0?num(rc.h):wh(w)}
 /* trozos del recrecido (en el muro: s0-s1 a lo largo, z0-z1 en altura) quitando los huecos de puertas y ventanas que lo cruzan */
 function rcTrozos(rc){
@@ -7172,6 +7191,7 @@ function panelSel(focus){
     var rcs=by(st.v.rc,s.id),rcw=wl(rcs.wall),rcq=rcPoly(rcs);
     h+='<div class="rowh"><strong>Recrecido en pared</strong><span class="muted">'+(rcq?fmt(rcq.len)+' cm de largo':'')+'</span></div>';
     h+='<p class="note">Capa nueva pegada al muro (trasdosado, aislante, recrecido de mortero…). Elige en qué cara va, el tramo y el espesor.</p>';
+    if(rcw)(function(){var gw=wg(rcw),hor=Math.abs(gw.ux)>=Math.abs(gw.uy),ini=hor?(gw.ux>0?'izquierda':'derecha'):(gw.uy>0?'arriba':'abajo'),fin=hor?(gw.ux>0?'derecha':'izquierda'):(gw.uy>0?'abajo':'arriba');h+='<div class="lab">Ubicar entre las paredes</div><div class="btns tr"><button data-a="rcub:ini">⇤ A la '+ini+'</button><button data-a="rcub:cen" title="En el medio entre las dos paredes">↔ Centrar</button><button data-a="rcub:fin">A la '+fin+' ⇥</button></div>'})();
     if(rcw)h+='<div class="seg3">'+['p','m'].map(function(sd){return '<button data-a="rcside" data-s="'+sd+'" aria-pressed="'+(rcs.sd===sd)+'">'+faceName(rcw,sd)+'</button>'}).join('')+'</div>';
     h+=fld('rc_ancho','Ancho, a lo largo del muro ('+UNL()+')',f2(rcs.s1-rcs.s0))+fld('rc_t','Fondo, hacia dentro de la sala ('+UNL()+')',rcs.t)+fld('rc_h','Alto desde el suelo ('+UNL()+')',rcAlto(rcs))+fld('rc_s0','Posición: desde el inicio del muro ('+UNL()+')',rcs.s0)+fld('rc_s1','Posición: hasta ('+UNL()+')',rcs.s1);
     h+='<p class="note" style="margin:0 0 6px">Las puertas y ventanas de este muro lo cortan solas: por debajo y por encima del hueco sigue el panel si llega.</p>';
@@ -7852,20 +7872,7 @@ function doAction(a,el){
   if(a.indexOf('eqpg:')===0&&s.t==='eq'){var qpg=by(st.v.eq,s.id),dv=a.slice(5).split(',');if(qpg){snap();var mvd=eqPegar(qpg,+dv[0],+dv[1]);if(!mvd){hist.pop();toast('No hay nada en esa dirección, o ya está pegado')}else{commit();toast('Pegado: se ha movido '+fmtU(mvd)+' cm')}}return}
   if(a.indexOf('opub:')===0&&s.t==='op'){
     var ou=opn(s.id);if(!ou)return;
-    var wu=wl(ou.wall),gu=wg(wu),Lu=gu.l,cu=ou.p+ou.w/2,s0u=0,s1u=Lu;
-    /* muros que tocan este muro (en sus extremos o a mitad, en T): la cara de cada uno limita el tramo libre */
-    st.v.walls.forEach(function(o2){
-      if(o2===wu||o2.arc||!wallVis(o2,st.view))return;
-      var g2=wg(o2),sen=Math.abs(g2.ux*gu.uy-g2.uy*gu.ux);if(sen<0.3)return;
-      [o2.a,o2.b].forEach(function(nid){
-        var q=nd(nid);if(!q)return;
-        var comp=(nid===wu.a||nid===wu.b),dd=segDist(q,gu.a,gu.b);
-        if(!comp&&dd>wu.t/2+2)return;
-        var sc=(q.x-gu.a.x)*gu.ux+(q.y-gu.a.y)*gu.uy,hw=o2.t/2/sen;
-        if(sc+hw<=ou.p+1&&sc+hw>s0u)s0u=sc+hw; /* un muro que queda bajo el hueco (ventanal que pasa por delante de un muro en T) no limita */
-        if(sc-hw>=ou.p+ou.w-1&&sc-hw<s1u)s1u=sc-hw;
-      });
-    });
+    var wu=wl(ou.wall),tlu=tramoLibreMuro(wu,ou.p,ou.p+ou.w,0),s0u=tlu.s0,s1u=tlu.s1;
     if(!(s1u-s0u>=ou.w)){toast('El tramo libre entre las paredes ('+fmtU(Math.max(0,s1u-s0u))+') es más corto que el hueco');return}
     var modo=a.slice(5),pn=modo==='ini'?s0u:modo==='fin'?s1u-ou.w:s0u+(s1u-s0u-ou.w)/2;
     snap();ou.p=f2(pn);commit();return;
@@ -7944,6 +7951,13 @@ function doAction(a,el){
   if(a==='drbloque'&&s.t==='dr'){drGuardarBloque();return}
   if(a==='mmside'&&s.t==='mm'){var mmx=by(st.v.mm,s.id);if(mmx){snap();mmx.sd=sv;commit()}return}
   if(a==='usartipo'&&s.t==='wall'){var wu=wl(s.id);if(wu){snap();delete wu.tm;aplicarTipo(wu);commit()}return}
+  if(a.indexOf('rcub:')===0&&s.t==='rc'){
+    var rcu=by(st.v.rc,s.id),wrc=rcu&&wl(rcu.wall);if(!wrc)return;
+    var lrc=rcu.s1-rcu.s0,trc=tramoLibreMuro(wrc,rcu.s0,rcu.s1,rcu.sd==='m'?-1:1);
+    if(!(trc.s1-trc.s0>=lrc-0.01)){toast('El tramo libre entre las paredes ('+fmtU(Math.max(0,trc.s1-trc.s0))+') es más corto que el recrecido');return}
+    var mrc=a.slice(5),n0=mrc==='ini'?trc.s0:mrc==='fin'?trc.s1-lrc:trc.s0+(trc.s1-trc.s0-lrc)/2;
+    snap();rcu.s0=f2(n0);rcu.s1=f2(n0+lrc);commit();return;
+  }
   if(a==='rcside'&&s.t==='rc'){var rcx=by(st.v.rc,s.id);if(rcx){snap();rcx.sd=sv;commit()}return}
   if(a==='del'){
     snap();
