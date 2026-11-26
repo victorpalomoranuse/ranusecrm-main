@@ -7501,7 +7501,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
         <button style={bTop} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())} title="Volver al proyecto" aria-label="Volver al proyecto"><img src="/logos/visor-icono-blanco.png" alt="" style={{ display: 'block', width: 33, height: 33, objectFit: 'contain' }} /></button>
         <button style={bTop} onClick={() => abrirEnPlanos()} title="Abre este mismo plano en Planos, en otra pestaña (O)">Planos ↗</button>
         <div className="estudio-modos" role="group" aria-label="Espacio de trabajo" style={{ display: 'inline-flex', flexShrink: 0, padding: 2, border: '1px solid #56514c', borderRadius: 8, background: '#211f1d' }}>
-          {[['modelado', '1 · Modelar'], ['render', '2 · Render en tiempo real']].map(([k, nombre]) => (
+          {[['modelado', '1 · Modelar'], ['modelar', '3D'], ['render', '2 · Render en tiempo real']].map(([k, nombre]) => (
             <button key={k} aria-pressed={espacio === k} style={{ ...bTop, border: 0, background: espacio === k ? '#e3d5bf' : 'transparent', color: espacio === k ? '#231f1c' : '#dedbd6', padding: '6px 14px', fontWeight: 650 }}
               onClick={() => irEspacio(k)}>{nombre}</button>
           ))}
