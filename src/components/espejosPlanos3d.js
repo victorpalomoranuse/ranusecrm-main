@@ -55,10 +55,17 @@ export function planosEspejo(a, scene, activo) {
     // si la cara del espejo queda metida detrás de la superficie del muro (p. ej. un recrecido delante), el reflejo se pone en la superficie:
     // si no, se veían los cantos de ese hueco como un rectángulo opaco a un lado del espejo
     try {
-      const ray = new THREE.Raycaster(cara.p.clone().addScaledVector(cara.n, 0.3), cara.n.clone().negate(), 0, 0.3);
-      const mallas = []; scene.traverse(o => { if (o.isMesh && !o.isInstancedMesh && o.visible) mallas.push(o); }); // solo mallas: los rótulos (sprites) piden cámara y daban error
-      const hit = ray.intersectObjects(mallas, false).find(h => h.object !== mesh && h.object.visible && h.object.isMesh && !h.object.userData.esReflejo && !h.object.userData.luzId && h.object.material && !Array.isArray(h.object.material) && h.object.material.colorWrite !== false && h.face && h.face.normal.clone().transformDirection(h.object.matrixWorld).dot(cara.n) > 0.9);
-      if (hit && hit.distance < 0.3 - 0.004) cara.p = hit.point.clone();
+      // el espejo queda DENTRO de la caja de otra pieza (muro, recrecido…): se busca por dónde sale esa caja hacia la sala
+      scene.updateMatrixWorld(true);
+      const q = cara.p.clone().addScaledVector(cara.n, 0.004); let sale = 0;
+      scene.traverse(o => {
+        if (!o.isMesh || o === mesh || !o.visible || o.userData.esReflejo || o.userData.luzId || !o.geometry) return;
+        if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+        const bb = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld); if (!bb.containsPoint(q)) return;
+        let t = Infinity; ['x', 'y', 'z'].forEach(k => { const nk = cara.n[k]; if (Math.abs(nk) > 1e-6) t = Math.min(t, ((nk > 0 ? bb.max[k] : bb.min[k]) - cara.p[k]) / nk); });
+        if (t > 0.004 && t < 0.15 && t > sale) sale = t;
+      });
+      if (sale > 0) cara.p = cara.p.clone().addScaledVector(cara.n, sale);
     } catch { /* sin cambio */ }
     const refl = new Reflector(new THREE.PlaneGeometry(cara.an, cara.al), { textureWidth: 1024, textureHeight: Math.max(256, Math.round(1024 * cara.al / Math.max(0.01, cara.an))), clipBias: 0.003, color: new THREE.Color(0.92, 0.92, 0.92), multisample: 0, shader: SHADER_ESPEJO });
     refl.matrixAutoUpdate = false;
