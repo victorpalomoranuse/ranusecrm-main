@@ -6580,7 +6580,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
     const sombra = sol.castShadow, mapa = sol.shadow.mapSize.clone(), radio = sol.shadow.radius;
     const sombrasActivas = renderer.shadowMap.enabled, restaura = ocultarAyudas();
     try {
-      const W = opc.ancho || resRender, H = Math.round(W * h0 / w0), a1 = api3d.current;
+      const W = opc.ancho || resRender, H = opc.alto || Math.round(W * h0 / w0), a1 = api3d.current;
       renderer.setPixelRatio(1); renderer.setSize(W, H, false); cam.aspect = W / H; cam.updateProjectionMatrix();
       renderer.shadowMap.enabled = true; sol.castShadow = true; sol.shadow.mapSize.set(4096, 4096); sol.shadow.map?.dispose(); sol.shadow.map = null; sol.shadow.radius = sombraSuave ? 4 : 1;
       renderer.shadowMap.needsUpdate = true;
@@ -6966,6 +6966,18 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
       </>}
     </span>
   );
+  const exportarFullHD = async () => {
+    setRenderizando(true);
+    try {
+      const u = await renderHDurl({ ancho: 1920, alto: 1080, fmt: 'png' });
+      const meta = metaActual();
+      if (meta.camara) meta.camara = { ...meta.camara, aspect: 1920 / 1080 };
+      const guardadoHD = await guardarRender('hd', u, meta, (titulo || 'Plano') + ' · Full HD');
+      const enlace = document.createElement('a'); enlace.href = u; enlace.download = (titulo || 'plano') + '-Full-HD.png'; enlace.click();
+      if (guardadoHD) { setGalAbierta(true); setAviso('Full HD exportado. Selecciona la imagen y pulsa Editar con IA.'); }
+    } catch (e) { setAviso('No se ha podido exportar Full HD: ' + e.message); }
+    finally { setRenderizando(false); }
+  };
   const descargarRender = async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.' + (formatoRender === 'png' ? 'png' : 'jpg'); el.click(); setGuardado('Render descargado ✓'); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); };
   const grupoRail = (hijos, ultimo, titulo) => <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '2px 0 4px', marginBottom: ultimo ? 0 : 4, breakInside: 'avoid', borderBottom: ultimo ? 'none' : '1px solid #3a3a3a' }}>{titulo && <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', opacity: 0.8, color: '#d4c9bb', padding: '2px 0', width: '100%', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden' }}>{titulo}</span>}{hijos}</div>;
   // Un solo bloque «Materiales» (Pintura · Texturas · Mis texturas) y un solo bloque «Componentes» (Catálogo · Muebles · Mis modelos)
@@ -7489,7 +7501,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
         <button style={bTop} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())} title="Volver al proyecto" aria-label="Volver al proyecto"><img src="/logos/visor-icono-blanco.png" alt="" style={{ display: 'block', width: 33, height: 33, objectFit: 'contain' }} /></button>
         <button style={bTop} onClick={() => abrirEnPlanos()} title="Abre este mismo plano en Planos, en otra pestaña (O)">Planos ↗</button>
         <div className="estudio-modos" role="group" aria-label="Espacio de trabajo" style={{ display: 'inline-flex', flexShrink: 0, padding: 2, border: '1px solid #56514c', borderRadius: 8, background: '#211f1d' }}>
-          {[['modelado', 'Modelar'], ['modelar', '3D'], ['render', 'Render']].map(([k, nombre]) => (
+          {[['modelado', '1 · Modelar'], ['render', '2 · Render en tiempo real']].map(([k, nombre]) => (
             <button key={k} aria-pressed={espacio === k} style={{ ...bTop, border: 0, background: espacio === k ? '#e3d5bf' : 'transparent', color: espacio === k ? '#231f1c' : '#dedbd6', padding: '6px 14px', fontWeight: 650 }}
               onClick={() => irEspacio(k)}>{nombre}</button>
           ))}
@@ -7517,35 +7529,11 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
           ['Escenas' + (escenas.length ? ' (' + escenas.length + ')' : ''), () => setEscAbierta(v => !v), escAbierta, false, 'Vistas guardadas', '3'],
         ])}
         <span style={{ flex: 1 }} />
-        {modoRender && !cliente && <button style={{ ...bTop, background: '#8c8076', borderColor: '#8c8076', fontWeight: 700 }} onClick={() => { setLuzSel(null); setCamAbierta(false); setHerr('sel'); setPestanaRender('salida'); setRenderAbierto(true); }} title="Render realista en la nube: abre el encuadre y las calidades (vista previa, 4K y 8K)">{nube?.estado === 'trabajando' ? '⏳ ' + (nube.texto || 'Renderizando…').slice(0, 22) : '☁ Render realista'}</button>}
-        {modoRender && menuTop2('Crear render', 'crear-render', [
-          ['Render con IA · ajustar', abrirFormIA, false, estado !== 'listo' || ia?.estado === 'trabajando', 'Elige estilo, materiales y referencias antes de generar'],
-          ['Render rápido con IA', renderRapido, false, estado !== 'listo' || ia?.estado === 'trabajando', 'Genera desde la vista actual'],
-          ['Render HD · descargar', descargarRender, false, renderizando || estado !== 'listo', 'Imagen del modelo sin IA'],
-          ['Panorama 360°', hacer360, false, generando360 || estado !== 'listo', 'Vista panorámica'],
-          ['Ajustes de salida', () => { setLuzSel(null); setRenderAbierto(true); setPestanaRender('salida'); }, false, false, 'Resolución, formato y galería'],
-        ], true)}
-        {menuTop2('Exportar', 'salida', [
-          ['Captura de la vista', captura, false, false, 'Guarda la vista actual como imagen'],
-          [renderizando ? 'Renderizando…' : 'Render HD', async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.jpg'; el.click(); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }, false, renderizando || estado !== 'listo', 'Render HD limpio con sombras suaves'],
-          ['⚡ Render rápido con IA (1 clic)', renderRapido, false, estado !== 'listo' || ia?.estado === 'trabajando', 'Estilo revista, fiel al modelo y con la iluminación del proyecto: lo que ves ahora, convertido en foto, sin formularios'],
-          ['Render con IA (con ajustes)', abrirFormIA, false, estado !== 'listo' || ia?.estado === 'trabajando', 'La IA convierte esta vista en una foto realista'],
-          [generando360 ? 'Generando 360°…' : 'Panorama 360°', hacer360, false, generando360 || estado !== 'listo', 'Panorama 360° desde la cámara'],
-          [generandoParada ? 'Creando parada…' : 'Parada del tour (360°)', paradaTour, false, generandoParada || generando360 || estado !== 'listo', 'Guarda una panorámica 360° de aquí como parada del tour del cliente'],
-          [generandoParada ? 'Creando paradas…' : 'Tour automático (elegir salas, con IA opcional)', abreTourAuto, false, generandoParada || generando360 || estado !== 'listo', 'Reparte paradas 360° por todas las salas, lejos de paredes y máquinas, y las genera de una vez'],
-          [generandoTour ? 'Generando el tour…' : '⭐ Generar tour fijo (enlace que no cambia)', generaTourFijo, false, generandoTour || estado !== 'listo', 'Congela el modelo y las paradas de ahora en una copia con su propio enlace: si luego cambias el modelo, ese tour no se toca hasta que generes otro'],
-          ['Mis tours generados' + (toursV?.length ? ' (' + toursV.length + ')' : ''), () => { setToursAbierto(v => !v); cargaToursV(); }, toursAbierto, false, 'Enlaces de los tours ya generados: copiar o borrar'],
-          ['Copiar enlace del recorrido libre', () => copiarEnlaceTour(true), false, false, 'Enlace público (solo lectura): el cliente anda por el espacio; si su equipo es flojo se le ofrece el tour de panorámicas'],
-          ['⭐ Copiar enlace de la maqueta', copiarEnlaceMaqueta, false, false, 'Enlace público: la casa desde arriba con sus acabados de render, girable con el dedo; al tocar un punto se abre ese render en grande'],
-          ['Copiar enlace del tour con mis renders (sin deformar)', () => copiarEnlaceTour(false, true), false, false, 'Enlace público: solo tus renders finales publicados, tal cual, con saltos entre ellos. No estira ni inventa nada'],
-          ['Copiar enlace del tour', () => copiarEnlaceTour(false), false, false, 'Enlace público (solo lectura) del tour 360° para el cliente'],
-          [panoIA ? 'Panorama con IA…' : 'Panorama 360° con IA (prueba)', hacer360IA, false, panoIA || generando360 || estado !== 'listo', 'Manda la panorámica a ChatGPT para hacerla fotorrealista'],
-          ['Galería' + (renders.length ? ' (' + renders.length + ')' : ''), () => setGalAbierta(v => !v), galAbierta, false, 'Renders y panoramas guardados'],
-          ['Despiece y cantidades', abrirDespiece, false, false, 'Despiece y cantidades de todo lo diseñado'],
-          ['Render realista en la nube (4K)', () => { setRenderAbierto(true); setPestanaRender('salida'); renderNube('hd'); }, nube?.estado === 'trabajando', estado !== 'listo', 'Trazado de rayos con Blender en una GPU: luz y reflejos reales'],
-          ['Exportar a D5 (.glb)', exportarGLB, false, false, 'Descarga el espacio en 3D para abrirlo en D5 o Blender'],
-        ], true)}
-        <button style={{ ...bTop, ...(galAbierta ? bOn : {}) }} onClick={() => setGalAbierta(v => !v)} title="Renders y panoramas guardados">🖼 Galería{renders.length ? ' (' + renders.length + ')' : ''}</button>
+        {!cliente && <>
+          <button style={bTop} disabled={!modoRender || renderizando || estado !== 'listo'} onClick={exportarFullHD} title="Exporta 1920 × 1080 y guarda una copia en la galería">{renderizando ? 'Exportando…' : '3 · Exportar Full HD'}</button>
+          <button style={{ ...bTop, ...(galAbierta ? bOn : {}) }} onClick={() => { setRenderAbierto(false); setGalAbierta(true); }} title="Selecciona una imagen de la galería y pulsa Editar con IA">4 · Postproducción IA</button>
+          <button style={bTop} disabled={generandoParada || generando360 || estado !== 'listo'} onClick={() => { setGalAbierta(false); abreTourAuto(); }}>5 · Crear tour</button>
+        </>}
         <button style={{ ...bTop, ...(ayudaAbierta ? bOn : {}) }} onClick={() => setAyudaAbierta(v => !v)} title="Tutorial, preguntar cómo se hace algo y lista de atajos">? Ayuda</button>
       </div>
 
@@ -7953,7 +7941,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
       {tourCfg && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 30, display: 'grid', placeItems: 'center' }} onClick={() => setTourCfg(null)}>
           <div onClick={e => e.stopPropagation()} style={{ width: 380, maxWidth: '92vw', maxHeight: '80vh', overflowY: 'auto', background: '#1c1c1c', color: '#fff', borderRadius: 12, padding: 16, fontSize: 13, boxShadow: '0 10px 40px rgba(0,0,0,0.6)' }}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Tour automático</div>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>5 · Crear tour</div>
             <div style={{ opacity: 0.65, marginBottom: 8, lineHeight: 1.4 }}>Elige las salas donde quieres paradas. Quita las que no interesen.</div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
               <button style={btn} onClick={() => setTourCfg(c => ({ ...c, salas: c.salas.map(s => ({ ...s, sel: true })) }))}>Todas</button>
@@ -7963,7 +7951,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
               <label key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', cursor: 'pointer' }}><input type="checkbox" checked={s.sel} onChange={e => setTourCfg(c => ({ ...c, salas: c.salas.map(q => (q.key === s.key ? { ...q, sel: e.target.checked } : q)) }))} />{s.nombre}{s.planta && <span style={{ opacity: 0.5, fontSize: 11 }}> · {s.planta}</span>}</label>
             ))}
             <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}><input type="checkbox" checked={tourCfg.ia} onChange={e => setTourCfg(c => ({ ...c, ia: e.target.checked }))} style={{ marginTop: 3 }} /><span><b>Dar realismo con IA (modo fiel)</b><br /><span style={{ opacity: 0.65, fontSize: 12 }}>La IA solo mejora materiales, texturas y luz de lo que ya hay: no añade, quita ni cambia objetos. Tarda 1–3 min por parada y gasta crédito de ChatGPT.</span></span></label>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}><input type="checkbox" checked={tourCfg.ia} onChange={e => setTourCfg(c => ({ ...c, ia: e.target.checked }))} style={{ marginTop: 3 }} /><span><b>Dar realismo con IA (modo fiel)</b><br /><span style={{ opacity: 0.65, fontSize: 12 }}>Usa tus referencias para mejorar el acabado. Revisa el resultado: la IA puede alterar detalles. La generación tiene coste.</span></span></label>
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', marginTop: 8 }}><input type="checkbox" checked={!!tourCfg.proy} onChange={e => setTourCfg(c => ({ ...c, proy: e.target.checked }))} style={{ marginTop: 3 }} /><span><b>Pegar mis renders al modelo (giro libre con mis imágenes)</b><br /><span style={{ opacity: 0.65, fontSize: 12 }}>Cada panorámica lleva TUS renders ya mejorados donde sus cámaras veían; lo que ningún render cubre sale del modelo. Se eligen abajo (hasta 12). No gasta crédito de IA.</span></span></label>
             </div>
             <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}><b>Calidad del panorama</b>
@@ -8072,7 +8060,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
       )}
       {galAbierta && (
         <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 330, background: 'rgba(24,24,24,0.95)', color: '#fff', borderRadius: 10, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>🖼 Galería <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>renders y panoramas guardados</span></div>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>4 · Postproducción IA <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>renders y panoramas guardados</span></div>
           <label style={{ ...btn, display: 'block', marginBottom: 8, cursor: 'pointer' }}>Abrir panorama para mejorar
             <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={async e => {
               const f = e.target.files?.[0]; e.target.value = ''; if (!f) return;
