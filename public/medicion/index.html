@@ -5546,6 +5546,13 @@ svg.addEventListener('pointermove',function(e){
     if(!gesture.moved&&Math.hypot(p.x-gesture.sx,p.y-gesture.sy)<6)return;
     gesture.moved=true;
     var wo2=toW(p),nwo=nearestWallPos(wo2,45/st.k),oq=gesture.o;
+    if(nwo&&nwo.w.id!==oq.wall){
+      /* saltaría al tramo que sigue en línea tras un muro en T y no cabe en ninguno de los dos: se unen los tramos y sigue en el mismo muro */
+      var wco=wl(oq.wall),nco=wco&&(wco.a===nwo.w.a||wco.a===nwo.w.b?wco.a:wco.b===nwo.w.a||wco.b===nwo.w.b?wco.b:null);
+      if(nco&&tramoEnLinea(wco,nco)===nwo.w&&(oq.w>wg(wco).l+0.5||oq.w>nwo.g.l+0.5)&&unirTramos(wco,nco)){
+        gesture.unido=1;nwo=nearestWallPos(wo2,45/st.k);
+      }
+    }
     if(nwo){
       oq.wall=nwo.w.id;
       oq.p=f2(Math.max(0,Math.min(Math.max(0,nwo.g.l-oq.w),rd5((nwo.s-oq.w/2)))));
@@ -5727,7 +5734,7 @@ function endPtr(e){
   else if(g.type==='dragOp'&&g.id===e.pointerId){
     gesture=null;
     if(!g.moved){hist.pop();return}
-    commit();
+    commit();if(g.unido){panelSel();toast('El muro estaba partido por un muro en T: se han unido los tramos para que el hueco pase de lado a lado')}
   }
   else if(g.type==='dragTe'&&g.id===e.pointerId){
     gesture=null;
@@ -7918,11 +7925,21 @@ function doAction(a,el){
   }
   if(a.indexOf('opub:')===0&&s.t==='op'){
     var ou=opn(s.id);if(!ou)return;
-    var wu=wl(ou.wall),tlu=tramoLibreMuro(wu,ou.p,ou.p+ou.w,0),s0u=tlu.s0,s1u=tlu.s1;
+    var wu=wl(ou.wall),modo=a.slice(5);snap();
+    /* si el hueco no cabe en su tramo y el muro sigue en línea pasado un muro en T, se unen los tramos solos (hacia el lado pedido; al centrar, a los dos) */
+    var unidos=0,gu0;
+    for(var iu=0;iu<6&&ou.w>(gu0=wg(wu).l)+0.5;iu++){
+      var hecho=false;
+      if(modo==='ini'){if(tramoEnLinea(wu,wu.a)){unirTramos(wu,wu.a);modo='fin';hecho=true}} /* al unir por el inicio, el muro se da la vuelta: ese lado pasa a ser el final */
+      else if(tramoEnLinea(wu,wu.b)){unirTramos(wu,wu.b);hecho=true}
+      else if(modo==='cen'&&tramoEnLinea(wu,wu.a)){unirTramos(wu,wu.a);hecho=true}
+      if(!hecho)break;unidos++;
+    }
+    var tlu=tramoLibreMuro(wu,ou.p,ou.p+ou.w,0),s0u=tlu.s0,s1u=tlu.s1;
     /* aunque el hueco sea más largo que el tramo libre, se pega al lado pedido (el otro extremo puede quedar por delante de la pared contraria) */
-    var modo=a.slice(5),Lop=wg(wu).l,pn=modo==='ini'?s0u:modo==='fin'?s1u-ou.w:s0u+(s1u-s0u-ou.w)/2;
+    var Lop=wg(wu).l,pn=modo==='ini'?s0u:modo==='fin'?s1u-ou.w:s0u+(s1u-s0u-ou.w)/2;
     pn=Math.max(0,Math.min(Lop-ou.w,pn));
-    snap();ou.p=f2(pn);commit();if(s1u-s0u<ou.w-0.5)toast('El hueco ('+fmtU(ou.w)+') es más largo que el tramo libre entre las paredes ('+fmtU(Math.max(0,s1u-s0u))+'): queda pegado a ese lado');return;
+    ou.p=f2(pn);commit();panelSel();if(unidos){toast('El muro estaba partido por un muro en T: se han unido los tramos para que quepa');return}if(s1u-s0u<ou.w-0.5)toast('El hueco ('+fmtU(ou.w)+') es más largo que el tramo libre entre las paredes ('+fmtU(Math.max(0,s1u-s0u))+'): queda pegado a ese lado');return;
   }
   if(a.indexOf('ptmed:')===0&&s.t==='pt'){var qm=by(st.v.pts,s.id),mm=a.slice(6).split(',');if(qm&&mm.length===2){snap();qm.w=+mm[0];qm.d=+mm[1];commit(false);panelSel()}return}
   if(a==='eqflx'||a==='eqfly'){var q1f=by(st.v.eq,s.id);snap();if(a==='eqflx')q1f.fx=!q1f.fx;else q1f.fy=!q1f.fy;commit();return}
