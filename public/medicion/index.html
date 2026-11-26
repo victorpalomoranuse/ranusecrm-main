@@ -3031,13 +3031,13 @@ function ptDistRect(wp,q,c,d){
 }
 function ptPos2(p){var n=nd(p.n);return {x:n.x+p.dx2,y:n.y+p.dy2}}
 /* tiras y carriles: dónde van (montaje) y su recorrido (recta o polilínea) */
-var MONT=[['techo','En techo'],['pared','En pared'],['suelo','En suelo'],['mueble','En mueble o estantería']];
-var MONT_CORTO={techo:'techo',pared:'pared',suelo:'suelo',mueble:'mueble'};
+var MONT=[['techo','En techo'],['pared','En pared'],['vert','En pared, vertical (de suelo a techo)'],['suelo','En suelo'],['mueble','En mueble o estantería']];
+var MONT_CORTO={techo:'techo',pared:'pared',vert:'pared vertical',suelo:'suelo',mueble:'mueble'};
 /* perfiles genéricos para las tiras (aparte de las luminarias del catálogo) */
 /* montaje de los puntos de luz: por defecto según el símbolo; se puede cambiar en el panel */
 var MONT_P=[['techo','En techo'],['pared','En pared'],['suelo','En suelo'],['pie','De pie'],['mueble','En mueble o estantería']];
-var MONT_ALL={techo:'techo',pared:'pared',suelo:'suelo',pie:'de pie',mueble:'mueble'};
-var LUMCOL_DEF={techo:'#d9480f',pared:'#1f6f78',suelo:'#5f8a1f',pie:'#7048e8',mueble:'#c2255c'};
+var MONT_ALL={techo:'techo',pared:'pared',vert:'pared, vertical',suelo:'suelo',pie:'de pie',mueble:'mueble'};
+var LUMCOL_DEF={techo:'#d9480f',pared:'#1f6f78',vert:'#0b7285',suelo:'#5f8a1f',pie:'#7048e8',mueble:'#c2255c'};
 function lumColOn(){return !!(st&&st.v)&&st.v.lumColOn!==false} /* por defecto activados: se quitan en la paleta de Iluminación */
 function ptMontAny(q){
   var d=ptDef(q.k);
@@ -3060,7 +3060,18 @@ function ptPerfil(q){return q.k==='led'&&q.pf&&PERFIL_CORTO[q.pf]?q.pf:''}
 function perfilSel(dt,cur,etq){return '<label class="fld"><span>'+(etq||'Perfil')+'</span><select data-t="'+dt+'">'+PERFIL.map(function(m){return '<option value="'+m[0]+'"'+(cur===m[0]?' selected':'')+'>'+m[1]+'</option>'}).join('')+'</select></label>'}
 function ptMont(q){return q.mo&&MONT_CORTO[q.mo]?q.mo:'techo'}
 function ptVerts(q){var n=nd(q.n);if(q.vx&&q.vx.length>=2)return q.vx.map(function(v){return {x:n.x+v.x,y:n.y+v.y}});return [ptPos(q),ptPos2(q)]}
-function ptLen(q){var v=ptVerts(q),t=0,i;for(i=1;i<v.length;i++)t+=Math.hypot(v[i].x-v[i-1].x,v[i].y-v[i-1].y);return t}
+function ledVert(q){return !!q&&q.k==='led'&&q.mo==='vert'}
+function ptLen(q){if(ledVert(q))return q.hv>0?q.hv:wallH();var v=ptVerts(q),t=0,i;for(i=1;i<v.length;i++)t+=Math.hypot(v[i].x-v[i-1].x,v[i].y-v[i-1].y);return t}
+function ledAVertical(q){
+  var vs=ptVerts(q),c=vs[0],node=nd(q.n),nw=nearestWallPos(c,1e9),nx=0,ny=1,px0=c.x,py0=c.y;
+  if(nw){var g=nw.g,s=Math.max(0,Math.min(g.l,nw.s)),bx=g.a.x+g.ux*s,by2=g.a.y+g.uy*s,mx=-g.uy,my=g.ux,sg=((c.x-bx)*mx+(c.y-by2)*my)>=0?1:-1;nx=mx*sg;ny=my*sg;px0=bx+nx*nw.w.t/2;py0=by2+ny*nw.w.t/2}
+  delete q.vx;q.dx=f2(px0-node.x);q.dy=f2(py0-node.y);q.dx2=f2(px0+nx-node.x);q.dy2=f2(py0+ny-node.y);
+  if(!(q.hv>0))q.hv=wallH();
+}
+function ledAHorizontal(q){
+  var a=ptPos(q),b=ptPos2(q),nx=b.x-a.x,ny=b.y-a.y,l=Math.hypot(nx,ny)||1,tx=-ny/l,ty=nx/l,L=q.hv>0?q.hv:100;
+  q.dx2=f2(q.dx+tx*L);q.dy2=f2(q.dy+ty*L);delete q.hv;
+}
 function ptSetVerts(q,vs){
   var n=nd(q.n);if(vs.length<2)return;
   if(vs.length===2)delete q.vx;else q.vx=vs.map(function(v){return {x:f2(v.x-n.x),y:f2(v.y-n.y)}});
@@ -3071,6 +3082,7 @@ function ptShift(q,dx,dy){
   if(q.vx)q.vx=q.vx.map(function(v){return {x:f2(v.x+dx),y:f2(v.y+dy)}});
 }
 function ptMidInfo(q){
+  if(ledVert(q)){var va=ptPos(q),vb=ptPos2(q),vl=Math.hypot(vb.x-va.x,vb.y-va.y)||1,vnx=(vb.x-va.x)/vl,vny=(vb.y-va.y)/vl;return {x:va.x,y:va.y,a:Math.atan2(-vny,-vnx)}} /* tira vertical: la etiqueta va junto al punto, a lo largo de la pared */
   var v=ptVerts(q),h=ptLen(q)/2,t=0,i;
   for(i=1;i<v.length;i++){
     var sg=Math.hypot(v[i].x-v[i-1].x,v[i].y-v[i-1].y);
@@ -3101,6 +3113,14 @@ function ptDraw(C,px,p,sel,mode){
 }
 function ptDraw0(C,px,p,sel,col){
   var d=ptDef(p.k),c=ptPos(p),h='';
+  if(d&&d.lin&&ledVert(p)){
+    var va=ptPos(p),vb=ptPos2(p),vl=Math.hypot(vb.x-va.x,vb.y-va.y)||1,vnx=(vb.x-va.x)/vl,vny=(vb.y-va.y)/vl;
+    if(sel)h+='<circle cx="'+f2(va.x)+'" cy="'+f2(va.y)+'" r="'+f2(12*px)+'" style="fill:'+C.accent+';opacity:.3"/>';
+    h+=ln(va.x+vnx*5*px,va.y+vny*5*px,va.x+vnx*13*px,va.y+vny*13*px,col,1.4*px,'round');
+    h+=ln(va.x+vnx*13*px,va.y+vny*13*px,va.x+vnx*9.5*px-vny*3*px,va.y+vny*9.5*px+vnx*3*px,col,1.4*px,'round')+ln(va.x+vnx*13*px,va.y+vny*13*px,va.x+vnx*9.5*px+vny*3*px,va.y+vny*9.5*px-vnx*3*px,col,1.4*px,'round');
+    h+='<circle cx="'+f2(va.x)+'" cy="'+f2(va.y)+'" r="'+f2(5*px)+'" style="fill:'+C.bg+';stroke:'+col+';stroke-width:'+f2(1.6*px)+'"/><circle cx="'+f2(va.x)+'" cy="'+f2(va.y)+'" r="'+f2(2.2*px)+'" style="fill:'+col+'"/>';
+    return h;
+  }
   if(d&&d.lin){
     var vs=ptVerts(p),mo=ptMont(p),i;
     for(i=1;i<vs.length;i++){
@@ -7216,12 +7236,17 @@ function panelSel(focus){
     if(pd.lin&&(q.k==='lineal'||q.k==='linealc'))h+=fld('pt_lt','Ancho de la luminaria (cm)',q.t>0?q.t:pd.t);
     if(pd.lin){
       var nvs=ptVerts(q).length;
-      h+='<label class="fld"><span>Dónde va</span><select data-t="pt_mo">'+MONT.map(function(m){return '<option value="'+m[0]+'"'+(ptMont(q)===m[0]?' selected':'')+'>'+m[1]+'</option>'}).join('')+'</select></label>';
+      h+='<label class="fld"><span>Dónde va</span><select data-t="pt_mo">'+MONT.filter(function(m){return m[0]!=='vert'||q.k==='led'}).map(function(m){return '<option value="'+m[0]+'"'+(ptMont(q)===m[0]?' selected':'')+'>'+m[1]+'</option>'}).join('')+'</select></label>';
       if(q.k==='led')h+=perfilSel('pt_pf',ptPerfil(q),'Perfil');
+      if(ledVert(q)){
+        h+=fld('pt_hv','Alto de la tira (cm)',Math.round(ptLen(q)))+'<p class="note" style="margin:0 0 6px">Tira vertical en la pared: en el plano es un punto pegado al muro con una flecha hacia donde da la luz. Por defecto va de suelo a techo ('+fmt(wallH())+' cm); escribe otro alto si no llega arriba. Arrástrala para moverla a otro sitio de la pared.</p>';
+        h+='<p class="note">Longitud: '+m2(ptLen(q)/100)+' m.</p>';
+      }else{
       h+=fld('pt_ll','Longitud total (cm)',Math.round(ptLen(q)))+'<label class="fld"><span>Al cambiarla, queda fijo</span><select data-t="pt_anc"><option value="a"'+(st.ptAnc!=='b'?' selected':'')+'>El inicio (se mueve el final)</option><option value="b"'+(st.ptAnc==='b'?' selected':'')+'>El final (se mueve el inicio)</option></select></label>';
       if(nvs>2){var vsT=ptVerts(q),ti;h+='<div class="lab" style="margin-top:8px">Medida de cada tramo (cm)</div>';for(ti=0;ti<vsT.length-1;ti++)h+=fld('pt_sl_'+ti,'Tramo '+(ti+1),Math.round(Math.hypot(vsT[ti+1].x-vsT[ti].x,vsT[ti+1].y-vsT[ti].y)));h+='<p class="note" style="margin:0 0 6px">Al cambiar un tramo, el resto del carril se desplaza con él (o se queda fijo el otro extremo, según lo de arriba).</p>'}
       h+='<div class="btns"><button data-a="ptendereza" title="Deja cada tramo exactamente horizontal o vertical, el que le quede más cerca">Enderezar (horizontal / vertical)</button></div>';
       h+='<p class="note">Longitud: '+m2(ptLen(q)/100)+' m · '+nvs+' puntos'+(nvs>2?' (polilínea)':' (recta)')+'.</p>';
+      }
       if(q.k==='carril'){
         var hijos=st.v.pts.filter(function(z){return z.rc===q.id}),nsp=hijos.filter(function(z){return z.k==='spot'||z.k==='spotl'}).length,nli=hijos.filter(function(z){return z.k==='lineal'}).length;
         h+='<div class="lab" style="margin-top:12px">Llenar el carril</div><p class="note" style="margin:0 0 6px">Reparte spots o luminarias lineales a lo largo del carril. Después puedes mover, copiar o borrar cada una.</p>';
@@ -7563,6 +7588,10 @@ function applyField(key,val,adv,raw){
         return ix>ts?{x:r.x+ux*dd2,y:r.y+uy*dd2}:{x:r.x,y:r.y};
       });
       ptSetVerts(qp,nv);commit(false);panelSel();return;
+    }
+    if(key==='pt_hv'){
+      if(!(n>=5&&n<=5000)){toast('Escribe un alto válido (5–5000 cm)');return}
+      snap();qp.hv=n;commit(false);panelSel();return;
     }
     if(key==='pt_ll'){
       var vsl=ptVerts(qp),tl0=ptLen(qp);
@@ -7984,7 +8013,7 @@ $('side').addEventListener('change',function(e){
   if((t==='zn_sm'&&st.sel&&st.sel.t==='zn')||(t==='sp_sm'&&st.sel&&st.sel.t==='sp')){var qm=t==='zn_sm'?by(st.v.zn,st.sel.id):by(st.v.sp,st.sel.id);if(qm){snap();if(e.target.checked)qm.sm=true;else delete qm.sm;commit(false);panelSel()}return}
   if((t==='zn_ex'&&st.sel&&st.sel.t==='zn')||(t==='sp_ex'&&st.sel&&st.sel.t==='sp')){var qz=t==='zn_ex'?by(st.v.zn,st.sel.id):by(st.v.sp,st.sel.id);if(qz){snap();if(e.target.checked)qz.ex=true;else delete qz.ex;commit(false);panelSel()}return}
   if(t==='pt_pf'&&st.sel&&st.sel.t==='pt'){var qp2=by(st.v.pts,st.sel.id);if(qp2){snap();if(e.target.value)qp2.pf=e.target.value;else delete qp2.pf;commit(false);panelSel()}return}
-  if(t==='pt_mo'&&st.sel&&st.sel.t==='pt'){var qm2=by(st.v.pts,st.sel.id);if(qm2){snap();qm2.mo=e.target.value;commit(false);panelSel()}return}
+  if(t==='pt_mo'&&st.sel&&st.sel.t==='pt'){var qm2=by(st.v.pts,st.sel.id);if(qm2){snap();var eraV=ledVert(qm2);qm2.mo=e.target.value;if(ledVert(qm2)&&!eraV)ledAVertical(qm2);else if(eraV&&!ledVert(qm2))ledAHorizontal(qm2);commit(false);panelSel()}return}
   if((t==='sp_sis'||t==='zn_sis')&&st.sel&&(st.sel.t==='sp'||st.sel.t==='zn')){var zs=clObj();if(zs){snap();if(e.target.value)zs.sis=e.target.value;else delete zs.sis;commit(false);panelSel()}return}
   if((t==='z_cod'||t==='z_hex')&&st.sel&&(st.sel.t==='zn'||st.sel.t==='sp')){
     var zc=clObj();if(!zc)return;

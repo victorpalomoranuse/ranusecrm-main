@@ -3016,7 +3016,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
       api3d.current.modelo = modelo;
       {
         const nodos = Object.fromEntries((pl?.nodes || []).map(n => [n.id, n]));
-        setLucesPl((pl?.pts || []).filter(p => p.v === 'ilum' && p.s !== 'dem' && nodos[p.n] && !String(p.id).startsWith('l3_')).map(p => ({ id: p.id, kid: p.k, lid: p.lid || null, h: p.h, lm: Number.isFinite(p.lm) && p.lm >= 0 ? p.lm : null, ap: p.ap > 0 ? p.ap : null, a: p.a || 0, w: p.w > 0 ? p.w : null, x: nodos[p.n].x + p.dx, y: nodos[p.n].y + p.dy,
+        setLucesPl((pl?.pts || []).filter(p => p.v === 'ilum' && p.s !== 'dem' && nodos[p.n] && !String(p.id).startsWith('l3_')).map(p => ({ id: p.id, kid: p.k, lid: p.lid || null, h: p.h, lm: Number.isFinite(p.lm) && p.lm >= 0 ? p.lm : null, ap: p.ap > 0 ? p.ap : null, a: p.a || 0, w: p.w > 0 ? p.w : null, mo: p.mo || null, hv: p.hv > 0 ? p.hv : null, x: nodos[p.n].x + p.dx, y: nodos[p.n].y + p.dy,
           vs: ['carril', 'led', 'lineal', 'linealc'].includes(p.k) ? ((p.vx && p.vx.length >= 2) ? p.vx.map(v => [nodos[p.n].x + v.x, nodos[p.n].y + v.y]) : [[nodos[p.n].x + p.dx, nodos[p.n].y + p.dy], [nodos[p.n].x + (p.dx2 ?? p.dx), nodos[p.n].y + (p.dy2 ?? p.dy)]]) : null })));
       }
       puntosSnapRef.current = (modelo.plantas || [modelo]).flatMap((pl, ip) => { const [ox, oy] = (offsPl[ip] || [0, 0]); return [
@@ -3913,13 +3913,23 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
       const col = colorK(K), aj = lucesAj[l.id] || {};
       const ap = aj.ap ?? l.ap ?? (l.kid === 'spotl' ? 80 : 60);
       const penumbra = Math.max(0, Math.min(1, aj.penumbra ?? 0.8));
-      const longitud = l.vs ? l.vs.slice(1).reduce((sum, p, i) => sum + Math.hypot(p[0]-l.vs[i][0], p[1]-l.vs[i][1]) * CM, 0) : 1;
+      const vertical = l.kid === 'led' && l.mo === 'vert' && l.vs;
+      const longitud = vertical ? (l.hv || techoEn(l.vs[0][0], l.vs[0][1])) * CM : l.vs ? l.vs.slice(1).reduce((sum, p, i) => sum + Math.hypot(p[0]-l.vs[i][0], p[1]-l.vs[i][1]) * CM, 0) : 1;
       const flujo = Math.max(0, lm) * longitud;
       flujoInterior += flujo; colorRebote.add(col.clone().multiplyScalar(flujo));
       // Flujo en lúmenes, intensidad en candelas y distancias en metros.
       const inten = Math.max(0, lm) / (4 * Math.PI) * 1, intSp = candelasFoco(lm, ap, penumbra) * 1;
       const puede = () => nLuces < 24 && (nLuces++, true);
       // carriles, tiras LED y luminarias lineales: se modelan a lo largo de su recorrido
+      // tira LED vertical en la pared (de suelo a techo): el 2º punto marca hacia dónde da la luz
+      if (vertical) {
+        const p = l.vs[0], q = l.vs[l.vs.length - 1], dl = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1, nx = (q[0] - p[0]) / dl, nz = (q[1] - p[1]) / dl;
+        const H = Math.max(0.05, longitud), x = p[0] * CM + nx * 0.004, z = p[1] * CM + nz * 0.004;
+        const m = new THREE.Mesh(new THREE.BoxGeometry(0.012, H, 0.012), new THREE.MeshBasicMaterial({ color: col, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+        m.position.set(x, H / 2, z); m.rotation.y = -Math.atan2(nz, nx); m.traverse(o => { o.userData.luzId = l.id; }); g.add(m);
+        luzArea(g, new THREE.Vector3(x + nx * 0.02, H / 2, z + nz * 0.02), new THREE.Vector3(nx, 0, nz), 0.04, H, col, luminanciaArea(lm * H, H, 0.04), presupL);
+        return;
+      }
       if (l.vs) {
         const esC = l.kid === 'carril', esL = l.kid === 'led';
         const ancho = esL ? 0.012 : esC ? 0.032 : 0.04, alto = esL ? 0.006 : esC ? 0.025 : 0.035;
