@@ -3924,11 +3924,13 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
       const inten = Math.max(0, lm) / (4 * Math.PI) * 1, intSp = candelasFoco(lm, ap, penumbra) * 1;
       const puede = () => nLuces < 24 && (nLuces++, true);
       // carriles, tiras LED y luminarias lineales: se modelan a lo largo de su recorrido
+      // material que brilla: en Render la exposición es muy baja y un color normal salía casi negro; se sube a la escala de la exposición (como las luminarias) y sin tono, así el bloom lo coge
+      const matBrillo = () => { const m0 = new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(EXPO_R.v < 0.5 ? 40 * kLumEm(col) / Math.max(1e-4, EXPO_R.v) : 0.65), toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); m0.userData.ledBloomBase = col.clone(); m0.userData.ledBloomK = 1; return m0; };
       // tira LED vertical en la pared (de suelo a techo): el 2º punto marca hacia dónde da la luz
       if (vertical) {
         const p = l.vs[0], q = l.vs[l.vs.length - 1], dl = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1, nx = (q[0] - p[0]) / dl, nz = (q[1] - p[1]) / dl;
         const H = Math.max(0.05, longitud), x = p[0] * CM + nx * 0.004, z = p[1] * CM + nz * 0.004;
-        const m = new THREE.Mesh(new THREE.BoxGeometry(0.012, H, 0.012), new THREE.MeshBasicMaterial({ color: col, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+        const m = new THREE.Mesh(new THREE.BoxGeometry(0.012, H, 0.012), matBrillo());
         m.position.set(x, H / 2, z); m.rotation.y = -Math.atan2(nz, nx); m.traverse(o => { o.userData.luzId = l.id; }); g.add(m);
         luzArea(g, new THREE.Vector3(x + nx * 0.02, H / 2, z + nz * 0.02), new THREE.Vector3(nx, 0, nz), 0.04, H, col, luminanciaArea(lm * H, H, 0.04), presupL);
         return;
@@ -3939,7 +3941,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
         for (let i = 0; i < l.vs.length - 1; i++) {
           const p = l.vs[i], q = l.vs[i + 1], L = Math.hypot(q[0] - p[0], q[1] - p[1]) * CM; if (L < 0.01) continue;
           const y = (l.h != null ? l.h * CM : techoEn((p[0] + q[0]) / 2, (p[1] + q[1]) / 2) * CM) - (esL ? 0.004 : alto / 2) - (l.kid === 'linealc' ? 0.5 : 0);
-          const m = new THREE.Mesh(new THREE.BoxGeometry(L, alto, ancho), esL || !esC ? new THREE.MeshBasicMaterial({ color: esL ? col : 0xf4f4f4, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : matNegro);
+          const m = new THREE.Mesh(new THREE.BoxGeometry(L, alto, ancho), esL || !esC ? matBrillo() : matNegro);
           m.position.set(((p[0] + q[0]) / 2) * CM, y, ((p[1] + q[1]) / 2) * CM); m.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); m.traverse(x => { x.userData.luzId = l.id; }); g.add(m);
           // tiras y lineales: luz LINEAL (de área, tan larga como el tramo) y no una luz puntual en el centro, que pegada al techo hacía un punto brillante; el tope de intensidad evita los quemados si los lúmenes están mal puestos
           if (!esC) luzArea(g, new THREE.Vector3(m.position.x, y - 0.02, m.position.z), new THREE.Vector3(0, -1, 0), L, 0.04, col, luminanciaArea(lm * L, L, 0.04) * 1, presupL, new THREE.Vector3((q[0] - p[0]) / (L / CM), 0, (q[1] - p[1]) / (L / CM)));
