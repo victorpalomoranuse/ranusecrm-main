@@ -176,7 +176,12 @@ router.get('/crear-ia/:id', (req, res) => {
 
 // «Mis texturas»: imágenes propias (suelos, paredes, tejidos…) que se suben una vez y sirven en todos los planos. Lista en modelos-3d/_texturas.json
 const RUTA_TEX_MIAS = 'modelos-3d/_texturas.json';
+// se lee la copia pública con un parámetro que cambia cada vez: la descarga normal a veces devolvía una copia vieja (sin la textura recién subida)
 export async function leerTexturasMias() {
+  try {
+    const url = supabase.storage.from(BUCKET).getPublicUrl(RUTA_TEX_MIAS).data.publicUrl + '?t=' + Date.now();
+    const r = await fetch(url, { cache: 'no-store' }); if (r.ok) { const j = await r.json(); if (Array.isArray(j)) return j; }
+  } catch { /* se prueba la descarga normal */ }
   try { const { data, error } = await supabase.storage.from(BUCKET).download(RUTA_TEX_MIAS); if (error || !data) return []; const j = JSON.parse(await data.text()); return Array.isArray(j) ? j : []; } catch { return []; }
 }
 // Hace continua una textura (microcemento, mortero, lino…): 1) quita las variaciones grandes de claro y oscuro (lo que más delata los rectángulos al repetirla) y

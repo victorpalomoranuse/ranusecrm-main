@@ -5263,7 +5263,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
     try {
       let nueva = texturas.find(x => x.id === 'b_' + t.id);
       if (!nueva) {
-        const peticion = colaTexturas.current.then(() => api.post('/medicion/' + id + '/textura-biblioteca', { texId: t.id, tam: t.tam }));
+        const peticion = colaTexturas.current.then(() => api.post('/medicion/' + id + '/textura-biblioteca', { texId: t.id, tam: t.tam, ...(t.mia ? { url: t.url, nombre: t.nombre } : {}) }));
         colaTexturas.current = peticion.catch(() => {});
         nueva = (await peticion).data.textura;
       }

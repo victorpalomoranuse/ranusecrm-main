@@ -940,7 +940,10 @@ router.post('/:id/textura-color', async (req, res) => {
 router.post('/:id/textura-biblioteca', async (req, res) => {
   try {
     const ind = await indiceBiblioteca3d();
-    const t = (ind?.texturas || []).find(x => x.id === req.body?.texId) || (await leerTexturasMias()).find(x => x.id === req.body?.texId);
+    let t = (ind?.texturas || []).find(x => x.id === req.body?.texId) || (await leerTexturasMias()).find(x => x.id === req.body?.texId);
+    // una de «Mis texturas» recién subida: si la lista aún no la trae, vale la que manda el visor siempre que la imagen esté en nuestra carpeta
+    const urlMia = String(req.body?.url || '');
+    if (!t && /^mt-[a-z0-9]+$/.test(String(req.body?.texId || '')) && urlMia.startsWith(supabase.storage.from('project-documents').getPublicUrl('biblioteca3d/mis-texturas/x').data.publicUrl.slice(0, -1))) t = { id: req.body.texId, nombre: String(req.body?.nombre || 'Mi textura').slice(0, 60), url: urlMia, tam: req.body?.tam };
     if (!t) return res.status(404).json({ error: 'Esa textura no está en la biblioteca' });
     const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
     if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
