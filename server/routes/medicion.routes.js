@@ -640,7 +640,7 @@ router.put('/:id', async (req, res) => {
 
 // Escena 3D de un plano: objetos que se colocan y modelan en el visor 3D (bloques de la biblioteca y cajas).
 // Se guarda aparte del dibujo 2D para que ninguno de los dos editores pise al otro.
-const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen', 'sauna', 'revest', 'extr', 'cubierta', 'cesped', 'rack', 'deco'];
+const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen', 'sauna', 'revest', 'extr', 'cubierta', 'cesped', 'rack', 'deco', 'escalada'];
 const BUCKET_TEX = 'project-documents';
 // Las luminarias que se ponen solo en el 3D (focos y colgantes de un carril, y objetos con nombre de lámpara) también se escriben en el plano,
 // en su capa de iluminación. Llevan un id que empieza por «l3_»: cada vez que se guarda la escena 3D se vuelven a calcular.
@@ -757,6 +757,16 @@ router.put('/:id/escena3d', async (req, res) => {
           anchoBahia: n(r.anchoBahia, 125, 60, 250), fondo: n(r.fondo, 120, 25, 250), alto: n(r.alto, 230, 120, 320), precios,
           bahias: (Array.isArray(r.bahias) ? r.bahias : []).slice(0, 8).map(b => ({ tipo: TB.includes(b?.tipo) ? b.tipo : 'libre', niveles: Math.round(n(b?.niveles, 3, 2, 6)), altJ: n(b?.altJ, 130, 60, 200), altSeg: n(b?.altSeg, 75, 30, 160), barra: !!b?.barra, accesorios: (Array.isArray(b?.accesorios) ? b.accesorios : []).slice(0, 6).map(a => (AC.includes(a) ? a : 'kb')) })),
         };
+      })() : undefined,
+      // Rocódromo (pared de escalada / monkey bars): mismos límites que normalizaEscalada del visor
+      escalada: o.tipo === 'escalada' && o.escalada && typeof o.escalada === 'object' ? (() => {
+        const r = o.escalada, hx = (v, d) => (/^#[0-9a-fA-F]{6}$/.test(v || '') ? v : d), n = (v, d, mn, mx) => Math.max(mn, Math.min(mx, num(v, d)));
+        const precios = {}; if (r.precios && typeof r.precios === 'object') Object.keys(r.precios).slice(0, 30).forEach(k => { if (/^[a-z]{2,20}$/.test(k)) precios[k] = n(r.precios[k], 0, 0, 1e6); });
+        if (r.tipo === 'monkey') {
+          const altBarras = n(r.altBarras, 230, 150, 400);
+          return { tipo: 'monkey', largo: n(r.largo, 360, 120, 800), ancho: n(r.ancho, 70, 40, 150), altBarras, altTecho: n(r.altTecho, 420, altBarras + 20, 900), sep: n(r.sep, 30, 20, 45), diam: n(r.diam, 3.2, 2.5, 4.5), soporte: r.soporte === 'postes' ? 'postes' : 'techo', colorBarras: hx(r.colorBarras, '#8a8a8a'), precios };
+        }
+        return { tipo: 'pared', ancho: n(r.ancho, 300, 80, 1200), alto: n(r.alto, 330, 150, 900), incl: n(r.incl, 0, 0, 45), colorPanel: hx(r.colorPanel, '#d9b98a'), presas: r.presas === 'multi' ? 'multi' : hx(r.presas, 'multi'), densidad: n(r.densidad, 18, 0, 40), semilla: Math.round(n(r.semilla, 7, 1, 9999)), colchoneta: r.colchoneta !== false, fondoColch: n(r.fondoColch, 150, 60, 400), grosColch: n(r.grosColch, 20, 5, 40), colorColch: hx(r.colorColch, '#1b6dd6'), precios };
       })() : undefined,
       cesped: o.tipo === 'cesped' && o.cesped && typeof o.cesped === 'object' ? (() => {
         const c = o.cesped, hx = (v, d) => (/^#[0-9a-fA-F]{6}$/.test(v || '') ? v : d);
