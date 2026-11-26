@@ -1,3 +1,4 @@
+import tourAcabadoRouter from './tour-acabado.routes.js';
 import express from 'express';
 import sharp from 'sharp';
 import compression from 'compression';
@@ -47,6 +48,14 @@ async function proyectoPermitido(req, projectId) {
   const emp = await disenadorDe(req);
   return !emp || proyectoEsDe(emp, projectId);
 }
+
+// The tour routes explicitly check project assignment, including nested paths.
+router.use('/:id/tour-acabado', async (req, res, next) => {
+  try {
+    if (!await planoPermitido(req, req.params.id)) return res.status(403).json({ error: 'No tienes acceso a este plano.' });
+    next();
+  } catch { res.status(500).json({ error: 'No se pudo comprobar el acceso.' }); }
+}, tourAcabadoRouter({ supabase, guardaRenderGaleria }));
 
 // ── Catálogo → herramienta ─────────────────────────────────────────────────
 const SIMBOLO_MAQUINA = [

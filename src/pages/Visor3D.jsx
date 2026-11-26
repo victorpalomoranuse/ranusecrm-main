@@ -1,3 +1,4 @@
+import TourAcabado from '../components/TourAcabado';
 import { recortarRanura, colocarEmpotrado, normalizarGiroLed } from '../components/ledEmpotrado3d';
 import './VisorEstudio.css';
 import { dibujarModelar } from '../components/vistaModelar3d';
@@ -6015,6 +6016,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
   };
   // Tour automático: reparte las paradas por todas las salas visibles (cuadrícula, lejos de muros y máquinas) y las genera de una vez
   // Tour automático: se eligen las salas que se quieren (se pueden quitar las demás) y, si se desea, cada parada pasa por la IA solo para dar realismo (modo fiel)
+  const [tourPipeline, setTourPipeline] = useState(false);
   const [tourCfg, setTourCfg] = useState(null);
   const abreTourAuto = () => {
     const m = api3d.current.modelo; if (!m || generandoParada) return;
@@ -7532,7 +7534,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
         {!cliente && <>
           <button style={bTop} disabled={!modoRender || renderizando || estado !== 'listo'} onClick={exportarFullHD} title="Exporta 1920 × 1080 y guarda una copia en la galería">{renderizando ? 'Exportando…' : '3 · Exportar Full HD'}</button>
           <button style={{ ...bTop, ...(galAbierta ? bOn : {}) }} onClick={() => { setRenderAbierto(false); setGalAbierta(true); }} title="Selecciona una imagen de la galería y pulsa Editar con IA">4 · Postproducción IA</button>
-          <button style={bTop} disabled={generandoParada || generando360 || estado !== 'listo'} onClick={() => { setGalAbierta(false); abreTourAuto(); }}>5 · Crear tour</button>
+          <button style={bTop} disabled={generandoParada || generando360 || estado !== 'listo'} onClick={() => { setGalAbierta(false); setTourPipeline(true); }}>5 · Crear tour</button>
         </>}
         <button style={{ ...bTop, ...(ayudaAbierta ? bOn : {}) }} onClick={() => setAyudaAbierta(v => !v)} title="Tutorial, preguntar cómo se hace algo y lista de atajos">? Ayuda</button>
       </div>
@@ -7938,6 +7940,18 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
           </div>
         );
       })()}
+      {tourPipeline && <TourAcabado id={id} api={api} renders={renders}
+        onClose={() => setTourPipeline(false)}
+        onSaved={rd => setRenders(old => [rd, ...old.filter(r => r.id !== rd.id)])}
+        onOpenTour={() => copiarEnlaceTour(false)}
+        capture={async () => {
+          if (!modoRender) throw new Error('Activa Render en tiempo real antes de generar un punto.');
+          if (estado !== 'listo') throw new Error('Espera a que termine de cargar el modelo.');
+          await soltarSeleccion();
+          const a = api3d.current, p = a.cam.position.clone();
+          const imagen = capturarEquirect(a.renderer, a.scene, p, 0, 2048, [a.gizmoG, a.cotasG, a.nodoG, a.guiaG], 0.96);
+          return { imagen, meta: { camara: { px: p.x, py: p.y, pz: p.z, tx: p.x, ty: p.y, tz: p.z + 1, fov: 75 } } };
+        }} />}
       {tourCfg && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 30, display: 'grid', placeItems: 'center' }} onClick={() => setTourCfg(null)}>
           <div onClick={e => e.stopPropagation()} style={{ width: 380, maxWidth: '92vw', maxHeight: '80vh', overflowY: 'auto', background: '#1c1c1c', color: '#fff', borderRadius: 12, padding: 16, fontSize: 13, boxShadow: '0 10px 40px rgba(0,0,0,0.6)' }}>
