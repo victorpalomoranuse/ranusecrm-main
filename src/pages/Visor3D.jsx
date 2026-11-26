@@ -7543,7 +7543,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
         <span style={{ flex: 1 }} />
         {!cliente && <>
           <button style={bTop} disabled={!modoRender || renderizando || estado !== 'listo'} onClick={exportarFullHD} title="Exporta 1920 × 1080 y guarda una copia en la galería">{renderizando ? 'Exportando…' : '3 · Exportar Full HD'}</button>
-          <button style={{ ...bTop, ...(galAbierta ? bOn : {}) }} onClick={() => { setRenderAbierto(false); setGalAbierta(true); }} title="Selecciona una imagen de la galería y pulsa Editar con IA">4 · Postproducción IA</button>
+          <button style={{ ...bTop, ...(galAbierta ? bOn : {}) }} onClick={() => { setRenderAbierto(false); setGalAbierta(v => !v); }} title="Selecciona una imagen de la galería y pulsa Editar con IA (otro clic lo cierra)">4 · Postproducción IA</button>
           <button style={bTop} disabled={generandoParada || generando360 || estado !== 'listo'} onClick={() => { setGalAbierta(false); setTourPipeline(true); }}>5 · Crear tour</button>
         </>}
         <button style={{ ...bTop, ...(ayudaAbierta ? bOn : {}) }} onClick={() => setAyudaAbierta(v => !v)} title="Tutorial, preguntar cómo se hace algo y lista de atajos">? Ayuda</button>
@@ -8084,7 +8084,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
       )}
       {galAbierta && (
         <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 330, background: 'rgba(24,24,24,0.95)', color: '#fff', borderRadius: 10, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>4 · Postproducción IA <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>renders y panoramas guardados</span></div>
+          <div style={{ fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'flex-start' }}><span style={{ flex: 1 }}>4 · Postproducción IA <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>renders y panoramas guardados</span></span><span onClick={() => setGalAbierta(false)} title="Cerrar" style={{ cursor: 'pointer', opacity: 0.7, padding: '0 4px', fontSize: 15 }}>✕</span></div>
           <label style={{ ...btn, display: 'block', marginBottom: 8, cursor: 'pointer' }}>Abrir panorama para mejorar
             <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={async e => {
               const f = e.target.files?.[0]; e.target.value = ''; if (!f) return;
