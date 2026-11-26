@@ -2803,7 +2803,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
     const hemi = new THREE.HemisphereLight(0xffffff, 0xcfc8bf, 1.1);
     scene.add(hemi);
     const sol = new THREE.DirectionalLight(0xffffff, 1.6);
-    sol.castShadow = true;
+    sol.castShadow = true; sol.shadow.bias = -0.0002; sol.shadow.normalBias = 0.006; // sin esto salían rayas diagonales (acné de sombra) en paredes y techo
     scene.add(sol);
     const raiz = new THREE.Group();
     scene.add(raiz);
@@ -5937,7 +5937,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
   // Calidad: en ordenadores sin tarjeta gráfica potente se baja la resolución y las sombras
   useEffect(() => {
     const a = api3d.current; if (!a.renderer) return;
-    const q = { baja: [1, 0, 512], media: [1, 1, 1024], alta: [window.devicePixelRatio, 1, 2048] }[calidad];
+    const q = { baja: [1, 0, 512], media: [1, 1, 2048], alta: [window.devicePixelRatio, 1, 4096] }[calidad]; // mapa de sombras más fino: menos dientes y rayas en las esquinas
     a.prBase = q[0]; a.renderer.setPixelRatio(q[0]);
     a.renderer.shadowMap.enabled = !modelando;
     a.sol.castShadow = !modelando;
