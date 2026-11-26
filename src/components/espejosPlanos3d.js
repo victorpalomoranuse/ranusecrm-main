@@ -52,6 +52,13 @@ export function planosEspejo(a, scene, activo) {
   const lista = []; scene.traverse(o => { if (esEspejo(o) && !o.userData.esReflejo) lista.push(o); });
   for (const mesh of lista.slice(0, 4)) {
     const cara = caraPlana(mesh, centro); if (!cara) continue;
+    // si la cara del espejo queda metida detrás de la superficie del muro (p. ej. un recrecido delante), el reflejo se pone en la superficie:
+    // si no, se veían los cantos de ese hueco como un rectángulo opaco a un lado del espejo
+    try {
+      const ray = new THREE.Raycaster(cara.p.clone().addScaledVector(cara.n, 0.3), cara.n.clone().negate(), 0, 0.3);
+      const hit = ray.intersectObjects(scene.children, true).find(h => h.object !== mesh && h.object.visible && h.object.isMesh && !h.object.userData.esReflejo && !h.object.userData.luzId && h.object.material && !Array.isArray(h.object.material) && h.object.material.colorWrite !== false && h.face && h.face.normal.clone().transformDirection(h.object.matrixWorld).dot(cara.n) > 0.9);
+      if (hit && hit.distance < 0.3 - 0.004) cara.p = hit.point.clone();
+    } catch { /* sin cambio */ }
     const refl = new Reflector(new THREE.PlaneGeometry(cara.an, cara.al), { textureWidth: 1024, textureHeight: Math.max(256, Math.round(1024 * cara.al / Math.max(0.01, cara.an))), clipBias: 0.003, color: new THREE.Color(0.92, 0.92, 0.92), multisample: 0, shader: SHADER_ESPEJO });
     refl.matrixAutoUpdate = false;
     refl.matrix.makeBasis(cara.u, cara.v, cara.n); refl.matrix.setPosition(cara.p.clone().addScaledVector(cara.n, 0.003));
