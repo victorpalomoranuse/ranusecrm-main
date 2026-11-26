@@ -1,3 +1,4 @@
+import { instalarAgrupacionDibujo } from '../utils/agrupacionDibujo3d';
 import TourAcabado from '../components/TourAcabado';
 import { recortarRanura, colocarEmpotrado, normalizarGiroLed } from '../components/ledEmpotrado3d';
 import './VisorEstudio.css';
@@ -2776,6 +2777,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
   useEffect(() => {
     const el = caja.current;
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    instalarAgrupacionDibujo(renderer);
     try { KTX2L = new KTX2Loader().setTranscoderPath('/basis/').detectSupport(renderer); } catch { KTX2L = null; }
     el.appendChild(renderer.domElement);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -4939,6 +4941,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
           const mm = ajustarModelo(raw, giroO ? d : w, giroO ? w : d, h, o.ajuste || 'estirar');
           if (!mm) return;
           sobrescribirModelo(mm, o, texturas);
+          mm.userData.modeloImportado = true;
           if (o.ocultosPartes?.length) mm.traverse(x => { if (x.isMesh && o.ocultosPartes.includes(x.userData.comp || x.name)) x.visible = false; });
           mm.rotation.y = -rotO * Math.PI / 180;
           mm.position.y = (o.z0 || 0) * CM;
