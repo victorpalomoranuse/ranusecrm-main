@@ -56,7 +56,8 @@ export function planosEspejo(a, scene, activo) {
     // si no, se veían los cantos de ese hueco como un rectángulo opaco a un lado del espejo
     try {
       const ray = new THREE.Raycaster(cara.p.clone().addScaledVector(cara.n, 0.3), cara.n.clone().negate(), 0, 0.3);
-      const hit = ray.intersectObjects(scene.children, true).find(h => h.object !== mesh && h.object.visible && h.object.isMesh && !h.object.userData.esReflejo && !h.object.userData.luzId && h.object.material && !Array.isArray(h.object.material) && h.object.material.colorWrite !== false && h.face && h.face.normal.clone().transformDirection(h.object.matrixWorld).dot(cara.n) > 0.9);
+      const mallas = []; scene.traverse(o => { if (o.isMesh && !o.isInstancedMesh && o.visible) mallas.push(o); }); // solo mallas: los rótulos (sprites) piden cámara y daban error
+      const hit = ray.intersectObjects(mallas, false).find(h => h.object !== mesh && h.object.visible && h.object.isMesh && !h.object.userData.esReflejo && !h.object.userData.luzId && h.object.material && !Array.isArray(h.object.material) && h.object.material.colorWrite !== false && h.face && h.face.normal.clone().transformDirection(h.object.matrixWorld).dot(cara.n) > 0.9);
       if (hit && hit.distance < 0.3 - 0.004) cara.p = hit.point.clone();
     } catch { /* sin cambio */ }
     const refl = new Reflector(new THREE.PlaneGeometry(cara.an, cara.al), { textureWidth: 1024, textureHeight: Math.max(256, Math.round(1024 * cara.al / Math.max(0.01, cara.an))), clipBias: 0.003, color: new THREE.Color(0.92, 0.92, 0.92), multisample: 0, shader: SHADER_ESPEJO });
