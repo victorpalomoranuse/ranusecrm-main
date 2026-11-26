@@ -3925,7 +3925,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
       const puede = () => nLuces < 24 && (nLuces++, true);
       // carriles, tiras LED y luminarias lineales: se modelan a lo largo de su recorrido
       // material que brilla: en Render la exposición es muy baja y un color normal salía casi negro; se sube a la escala de la exposición (como las luminarias) y sin tono, así el bloom lo coge
-      const matBrillo = () => { const m0 = new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(EXPO_R.v < 0.5 ? 40 * kLumEm(col) / Math.max(1e-4, EXPO_R.v) : 0.65), toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); m0.userData.ledBloomBase = col.clone(); m0.userData.ledBloomK = 1; return m0; };
+      const matBrillo = () => { const m0 = new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(EXPO_R.v < 0.5 ? 40 * kLumEm(col) * 0.4 / Math.max(1e-4, EXPO_R.v) : 0.65), toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); m0.userData.ledBloomBase = col.clone(); m0.userData.ledBloomK = 0.4; return m0; }; // 0.4: con más brillo el halo de las tiras tapaba lo que tienen al lado (p. ej. un espejo)
       // tira LED vertical en la pared (de suelo a techo): el 2º punto marca hacia dónde da la luz
       if (vertical) {
         const p = l.vs[0], q = l.vs[l.vs.length - 1], dl = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1, nx = (q[0] - p[0]) / dl, nz = (q[1] - p[1]) / dl;
