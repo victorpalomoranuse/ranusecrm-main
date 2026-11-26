@@ -1645,7 +1645,7 @@ export function construirHoja(o, mu, cfg, valHoja, texturas, valCristal) {
   // herraje de la manilla en el color elegido: inox, negro, latón, blanco o cobre (metal pulido o satinado: se ve bien también sin entorno)
   const HERRAJES = { inox: [0xe0e2e4, 0.3, 0.45], negro: [0x1a1a1c, 0.45, 0.35], laton: [0xd6b25a, 0.32, 0.5], blanco: [0xf3f3f1, 0.45, 0.1], cobre: [0xcd8658, 0.34, 0.5] };
   const hv = HERRAJES[cfg.manillaColor] || HERRAJES.inox, herrajeM = new THREE.MeshStandardMaterial({ color: hv[0], roughness: hv[1], metalness: hv[2] });
-  const info = { muroId: mu.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t, tip: o.tip, mat: o.mat };
+  const info = { flip: !!o.flip, side: o.side, muroId: mu.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t, tip: o.tip, mat: o.mat };
   const pieza = (padre, bw, bh, bd, px, py, pz, m, zona) => { const b = new THREE.Mesh(new THREE.BoxGeometry(Math.max(bw, 0.002), Math.max(bh, 0.002), Math.max(bd, 0.002)), m); b.position.set(px, py, pz); b.castShadow = m !== vidM || /espejo/.test(tv); b.userData = { capa: 'huecos', hueco: info, zona }; padre.add(b); return b; };
   const cilindro = (padre, rad, largo, px, py, pz, m, eje) => { const c = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, Math.max(largo, 0.002), 20), m); c.position.set(px, py, pz); if (eje === 'z') c.rotation.x = Math.PI / 2; else if (eje === 'x') c.rotation.z = Math.PI / 2; c.castShadow = true; c.userData = { capa: 'huecos', hueco: info, zona: 'herraje' }; padre.add(c); return c; };
   const esfera = (padre, rad, px, py, pz, m) => { const e = new THREE.Mesh(new THREE.SphereGeometry(rad, 18, 14), m); e.position.set(px, py, pz); e.castShadow = true; e.userData = { capa: 'huecos', hueco: info, zona: 'herraje' }; padre.add(e); return e; };
@@ -1672,7 +1672,8 @@ export function construirHoja(o, mu, cfg, valHoja, texturas, valCristal) {
       }
     });
   };
-  const sgn = cfg.sentido === 'B' ? -1 : 1, abierta = Math.max(0, Math.min(110, cfg.abierta || 0)), ang = (abierta * Math.PI) / 180, pct = Math.min(1, abierta / 100), izq = cfg.bisagra !== 'der';
+  // bisagra y lado de apertura: los del plano (Planos: «Bisagra al otro lado» / «Abrir al otro lado») salvo que se cambien aquí en el 3D
+  const sgn = cfg.sentido ? (cfg.sentido === 'B' ? -1 : 1) : (o.side < 0 ? -1 : 1), abierta = Math.max(0, Math.min(110, cfg.abierta || 0)), ang = (abierta * Math.PI) / 180, pct = Math.min(1, abierta / 100), izq = cfg.bisagra ? cfg.bisagra !== 'der' : !o.flip;
   const hy = esPuerta ? Math.min(iy1 - 0.1, y0 + 1.0) : cy;
   // hoja con cristal: marco fino + cristal (ventanas y puertas de vidrio)
   const panelVidrio = (padre, w0, px, pz) => {
@@ -2140,7 +2141,7 @@ function muro(m, h0) {
     if (y1 <= y0) continue;
     const w = (x1 - x0) * CM, h = (y1 - y0) * CM, cx = ((x0 + x1) / 2) * CM, cy = ((y0 + y1) / 2) * CM, tt = (m.t || 12) * CM;
     const fr = 0.05, marco = new THREE.MeshStandardMaterial({ color: o.t === 'door' || o.tipo === 'door' ? 0x8a6a4a : 0xf2f2f2, roughness: 0.6 });
-    const parte = (bw, bh, bd, px, py, mat, extra) => { const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat); b.position.set(px, py, 0); b.castShadow = true; b.userData = { capa: 'huecos', hueco: { muroId: m.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t, tip: o.tip, mat: o.mat }, zona: mat === marco ? 'marco' : (mat.transparent ? 'cristal' : 'hoja'), ...(extra || {}) }; mesh.add(b); return b; };
+    const parte = (bw, bh, bd, px, py, mat, extra) => { const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat); b.position.set(px, py, 0); b.castShadow = true; b.userData = { capa: 'huecos', hueco: { flip: !!o.flip, side: o.side, muroId: m.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t, tip: o.tip, mat: o.mat }, zona: mat === marco ? 'marco' : (mat.transparent ? 'cristal' : 'hoja'), ...(extra || {}) }; mesh.add(b); return b; };
     parte(w, fr, tt * 1.02, cx, y1 * CM - fr / 2, marco); parte(w, fr, tt * 1.02, cx, y0 * CM + fr / 2, marco);
     parte(fr, h, tt * 1.02, x0 * CM + fr / 2, cy, marco); parte(fr, h, tt * 1.02, x1 * CM - fr / 2, cy, marco);
     // la hoja o el cristal se construyen aparte (según el tipo: abatible, corredera, plegable…)
@@ -4493,7 +4494,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
         const z = s * (t / 2 + vuelo / 2);
         const tabla = (bw, bh, px, py, bd, pz) => {
           const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mt); b.position.set(px, py, pz); b.castShadow = b.receiveShadow = true;
-          b.userData = { capa: 'huecos', hueco: { muroId: mu.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t, tip: o.tip, mat: o.mat }, zona: 'tapeta' }; holder.add(b);
+          b.userData = { capa: 'huecos', hueco: { flip: !!o.flip, side: o.side, muroId: mu.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t, tip: o.tip, mat: o.mat }, zona: 'tapeta' }; holder.add(b);
         };
         tabla(w + 2 * ancho, ancho, (x0 + x1) / 2, y1 + ancho / 2, vuelo, z);        // dintel
         tabla(ancho, y1 - y0, x0 - ancho / 2, (y0 + y1) / 2, vuelo, z);               // jamba izquierda
@@ -8737,7 +8738,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
           ))}
           <div style={{ fontSize: 11, opacity: 0.65, margin: '0 0 6px' }}>Borde de abajo a {Math.round(parseFloat(selHueco.nuevo.sill) || 0)} cm del suelo · borde de arriba a {Math.round((parseFloat(selHueco.nuevo.sill) || 0) + (parseFloat(selHueco.nuevo.h) || 0))} cm</div>
           {(() => {
-            const esP = selHueco.tipo === 'door', key = selHueco.id || (selHueco.muroId + ':' + selHueco.p), c = huecosCfg[key] || { abierta: 0, bisagra: 'izq', sentido: 'A' }, set = n => setHuecosCfg(t => ({ ...t, [key]: { ...c, ...n } }));
+            const esP = selHueco.tipo === 'door', key = selHueco.id || (selHueco.muroId + ':' + selHueco.p), c = { abierta: 0, bisagra: selHueco.flip ? 'der' : 'izq', sentido: selHueco.side < 0 ? 'B' : 'A', ...(huecosCfg[key] || {}) }, set = n => setHuecosCfg(t => ({ ...t, [key]: { ...c, ...n } }));
             const tip = selHueco.nuevo.tip || (esP ? 'Abatible' : 'Practicable'), tips = esP ? DOOR_TIPS : WIN_TIPS, corredera = /corredera|seccional|enrollable|plegable|basculante/i.test(tip);
             return (
               <div style={{ borderBottom: '1px solid #333', marginBottom: 6, paddingBottom: 6 }}>
