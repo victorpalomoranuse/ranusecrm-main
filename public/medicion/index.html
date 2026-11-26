@@ -3377,6 +3377,43 @@ function addWall(a,b){
   if(w.s==='new'){w.auto=true;aplicarTipo(w)} /* un tabique nuevo toma el grosor del tabique por defecto */
   ws.push(w);return w;
 }
+/* ---- unir dos tramos de muro en línea (un ventanal o un recrecido puede pasar por delante de un muro en T) ---- */
+/* tramo en línea que sigue a w por el extremo nid (mismo grosor, misma dirección) */
+function tramoEnLinea(w,nid){
+  var g=wg(w),r=null;
+  st.v.walls.forEach(function(o){
+    if(o===w||o.arc||(o.a!==nid&&o.b!==nid))return;
+    var go=wg(o);if(Math.abs(go.ux*g.uy-go.uy*g.ux)>0.02)return;
+    if(Math.abs((o.t||12)-(w.t||12))>2)return;
+    r=o;
+  });
+  return r;
+}
+/* da la vuelta a un muro (a↔b) sin mover nada de lo que lleva */
+function invierteMuro(w){
+  var L=wg(w).l,t=w.a;w.a=w.b;w.b=t;
+  st.v.ops.forEach(function(o){if(o.wall!==w.id)return;o.p=f2(L-o.p-o.w);o.flip=!o.flip;o.side=(o.side<0?1:-1)});
+  (st.v.rc||[]).concat(st.v.mm||[]).forEach(function(q){if(q.wall!==w.id)return;var a=q.s0;q.s0=f2(L-q.s1);q.s1=f2(L-a);q.sd=q.sd==='m'?'p':'m'});
+  (st.v.fz||[]).forEach(function(z){if(z.wall===w.id)z.sd=z.sd==='m'?'p':'m'});
+}
+/* une w con el tramo en línea que le sigue por nid; devuelve true si lo ha hecho */
+function unirTramos(w,nid){
+  var w2=tramoEnLinea(w,nid);if(!w2)return false;
+  if(w.a===nid)invierteMuro(w);      /* w: a → nid */
+  if(w2.b===nid)invierteMuro(w2);    /* w2: nid → c */
+  var L1=wg(w).l,L2=wg(w2).l;
+  st.v.ops.forEach(function(o){if(o.wall===w2.id){o.wall=w.id;o.p=f2(o.p+L1)}});
+  (st.v.rc||[]).concat(st.v.mm||[]).forEach(function(q){if(q.wall===w2.id){q.wall=w.id;q.s0=f2(q.s0+L1);q.s1=f2(q.s1+L1)}});
+  (st.v.fz||[]).forEach(function(z){
+    if(z.wall===w.id&&z.sd==='m'){z.x0=f2(z.x0+L2);z.x1=f2(z.x1+L2)}
+    if(z.wall===w2.id){z.wall=w.id;if(z.sd!=='m'){z.x0=f2(z.x0+L1);z.x1=f2(z.x1+L1)}}
+  });
+  /* cualquier otra cosa colgada del tramo que desaparece pasa al muro unido */
+  Object.keys(st.v).forEach(function(k){var arr=st.v[k];if(!Array.isArray(arr)||k==='walls')return;arr.forEach(function(it){if(it&&typeof it==='object'&&it.wall===w2.id)it.wall=w.id})});
+  w.len=(w.len!=null&&w2.len!=null)?f2(w.len+w2.len):null;w.m=false;w.b=w2.b;
+  st.v.walls=st.v.walls.filter(function(o){return o!==w2});
+  return true;
+}
 function splitWall(w,s){
   var g=wg(w),n={id:uid('n'),x:f2(g.a.x+g.ux*s),y:f2(g.a.y+g.uy*s)};
   st.v.nodes.push(n);
@@ -7131,6 +7168,10 @@ function panelSel(focus){
       var gw=wg(wl(o.wall)),hor=Math.abs(gw.ux)>=Math.abs(gw.uy),ini=hor?(gw.ux>0?'izquierda':'derecha'):(gw.uy>0?'arriba':'abajo'),fin=hor?(gw.ux>0?'derecha':'izquierda'):(gw.uy>0?'abajo':'arriba');
       h+='<div class="lab">Ubicar entre las paredes</div><div class="btns tr"><button data-a="opub:ini" title="Pegada a la pared de la '+ini+'">⇤ A la '+ini+'</button><button data-a="opub:cen" title="En el medio del tramo libre entre las dos paredes">↔ Centrar</button><button data-a="opub:fin" title="Pegada a la pared de la '+fin+'">A la '+fin+' ⇥</button></div>';
     })();
+    (function(){ /* el muro sigue en línea más allá de un muro en T: se pueden unir los dos tramos para mover el hueco de lado a lado */
+      var wq=wl(o.wall),ea=tramoEnLinea(wq,wq.a),eb=tramoEnLinea(wq,wq.b);
+      if(ea||eb)h+='<div class="btns tr">'+(ea?'<button data-a="opunir:a" title="El muro y el tramo que le sigue pasan a ser uno solo; el muro en T sigue igual">⇤ Unir con el tramo de este lado</button>':'')+(eb?'<button data-a="opunir:b" title="El muro y el tramo que le sigue pasan a ser uno solo; el muro en T sigue igual">Unir con el tramo de este lado ⇥</button>':'')+'</div><p class="note" style="margin:0 0 8px">Este muro está partido donde llega otro muro (en T). Únelo con el tramo de al lado y la '+(o.t==='door'?'puerta':'ventana')+' se podrá mover y alargar de lado a lado.</p>';
+    })();
     h+=fld('op_w','Ancho (cm)',o.w);
     h+=fld('op_h','Alto (cm)',o.h);
     if(o.t==='win')h+=fld('op_sill','Altura desde el suelo (cm)',o.sill);
@@ -7870,6 +7911,11 @@ function doAction(a,el){
     snap();q1.rot=a==='eqrot0'?0:((((q1.rot||0)+paso)%360)+360)%360;commit();return;
   }
   if(a.indexOf('eqpg:')===0&&s.t==='eq'){var qpg=by(st.v.eq,s.id),dv=a.slice(5).split(',');if(qpg){snap();var mvd=eqPegar(qpg,+dv[0],+dv[1]);if(!mvd){hist.pop();toast('No hay nada en esa dirección, o ya está pegado')}else{commit();toast('Pegado: se ha movido '+fmtU(mvd)+' cm')}}return}
+  if(a.indexOf('opunir:')===0&&s.t==='op'){
+    var oj=opn(s.id),wj=oj&&wl(oj.wall);if(!wj)return;
+    snap();if(!unirTramos(wj,a.slice(7)==='a'?wj.a:wj.b)){hist.pop();toast('No hay un tramo en línea para unir');return}
+    commit();panelSel();toast('Tramos unidos: ahora es un solo muro. Mueve o alarga la '+(oj.t==='door'?'puerta':'ventana')+' de lado a lado');return;
+  }
   if(a.indexOf('opub:')===0&&s.t==='op'){
     var ou=opn(s.id);if(!ou)return;
     var wu=wl(ou.wall),tlu=tramoLibreMuro(wu,ou.p,ou.p+ou.w,0),s0u=tlu.s0,s1u=tlu.s1;
