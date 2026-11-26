@@ -7862,8 +7862,8 @@ function doAction(a,el){
         var comp=(nid===wu.a||nid===wu.b),dd=segDist(q,gu.a,gu.b);
         if(!comp&&dd>wu.t/2+2)return;
         var sc=(q.x-gu.a.x)*gu.ux+(q.y-gu.a.y)*gu.uy,hw=o2.t/2/sen;
-        if(sc+hw<=cu&&sc+hw>s0u)s0u=sc+hw;
-        if(sc-hw>=cu&&sc-hw<s1u)s1u=sc-hw;
+        if(sc+hw<=ou.p+1&&sc+hw>s0u)s0u=sc+hw; /* un muro que queda bajo el hueco (ventanal que pasa por delante de un muro en T) no limita */
+        if(sc-hw>=ou.p+ou.w-1&&sc-hw<s1u)s1u=sc-hw;
       });
     });
     if(!(s1u-s0u>=ou.w)){toast('El tramo libre entre las paredes ('+fmtU(Math.max(0,s1u-s0u))+') es más corto que el hueco');return}
