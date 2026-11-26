@@ -7873,9 +7873,10 @@ function doAction(a,el){
   if(a.indexOf('opub:')===0&&s.t==='op'){
     var ou=opn(s.id);if(!ou)return;
     var wu=wl(ou.wall),tlu=tramoLibreMuro(wu,ou.p,ou.p+ou.w,0),s0u=tlu.s0,s1u=tlu.s1;
-    if(!(s1u-s0u>=ou.w)){toast('El tramo libre entre las paredes ('+fmtU(Math.max(0,s1u-s0u))+') es más corto que el hueco');return}
-    var modo=a.slice(5),pn=modo==='ini'?s0u:modo==='fin'?s1u-ou.w:s0u+(s1u-s0u-ou.w)/2;
-    snap();ou.p=f2(pn);commit();return;
+    /* aunque el hueco sea más largo que el tramo libre, se pega al lado pedido (el otro extremo puede quedar por delante de la pared contraria) */
+    var modo=a.slice(5),Lop=wg(wu).l,pn=modo==='ini'?s0u:modo==='fin'?s1u-ou.w:s0u+(s1u-s0u-ou.w)/2;
+    pn=Math.max(0,Math.min(Lop-ou.w,pn));
+    snap();ou.p=f2(pn);commit();if(s1u-s0u<ou.w-0.5)toast('El hueco ('+fmtU(ou.w)+') es más largo que el tramo libre entre las paredes ('+fmtU(Math.max(0,s1u-s0u))+'): queda pegado a ese lado');return;
   }
   if(a.indexOf('ptmed:')===0&&s.t==='pt'){var qm=by(st.v.pts,s.id),mm=a.slice(6).split(',');if(qm&&mm.length===2){snap();qm.w=+mm[0];qm.d=+mm[1];commit(false);panelSel()}return}
   if(a==='eqflx'||a==='eqfly'){var q1f=by(st.v.eq,s.id);snap();if(a==='eqflx')q1f.fx=!q1f.fx;else q1f.fy=!q1f.fy;commit();return}
@@ -7954,8 +7955,7 @@ function doAction(a,el){
   if(a.indexOf('rcub:')===0&&s.t==='rc'){
     var rcu=by(st.v.rc,s.id),wrc=rcu&&wl(rcu.wall);if(!wrc)return;
     var lrc=rcu.s1-rcu.s0,trc=tramoLibreMuro(wrc,rcu.s0,rcu.s1,rcu.sd==='m'?-1:1);
-    if(!(trc.s1-trc.s0>=lrc-0.01)){toast('El tramo libre entre las paredes ('+fmtU(Math.max(0,trc.s1-trc.s0))+') es más corto que el recrecido');return}
-    var mrc=a.slice(5),n0=mrc==='ini'?trc.s0:mrc==='fin'?trc.s1-lrc:trc.s0+(trc.s1-trc.s0-lrc)/2;
+    var mrc=a.slice(5),n0=mrc==='ini'?trc.s0:mrc==='fin'?trc.s1-lrc:trc.s0+(trc.s1-trc.s0-lrc)/2;n0=Math.max(0,Math.min(wg(wrc).l-lrc,n0));
     snap();rcu.s0=f2(n0);rcu.s1=f2(n0+lrc);commit();return;
   }
   if(a==='rcside'&&s.t==='rc'){var rcx=by(st.v.rc,s.id);if(rcx){snap();rcx.sd=sv;commit()}return}
