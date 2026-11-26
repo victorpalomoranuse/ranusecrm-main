@@ -7483,9 +7483,9 @@ function applyField(key,val,adv,raw){
       var sbO=sfO.inner.reduce(function(a,q){return {x0:Math.min(a.x0,q.x),y0:Math.min(a.y0,q.y)}},{x0:1e9,y0:1e9}),oc={w:2*ov0.rx,h:2*ov0.ry,x:sqO.x0-sbO.x0,y:sqO.y0-sbO.y0};
       if(key==='sp_ow')oc.w=Math.max(5,n);else if(key==='sp_oh')oc.h=Math.max(5,n);else if(key==='sp_x')oc.x=n;else if(key==='sp_y')oc.y=n;
       snap();
-      var ocx=sbO.x0+oc.x+oc.w/2,ocy=sbO.y0+oc.y+oc.h/2,opn=[],oj;
-      for(oj=0;oj<40;oj++){var oaa=oj/40*2*Math.PI;opn.push({x:f2(ocx+oc.w/2*Math.cos(oaa)-snO.x),y:f2(ocy+oc.h/2*Math.sin(oaa)-snO.y)})}
-      qs.pts=opn;commit(false);return;
+      var ocx=sbO.x0+oc.x+oc.w/2,ocy=sbO.y0+oc.y+oc.h/2,ovPts=[],oj;
+      for(oj=0;oj<40;oj++){var oaa=oj/40*2*Math.PI;ovPts.push({x:f2(ocx+oc.w/2*Math.cos(oaa)-snO.x),y:f2(ocy+oc.h/2*Math.sin(oaa)-snO.y)})}
+      qs.pts=ovPts;commit(false);return;
     }
     var snn=nd(qs.n),sq2=spRect(qs),sfa2=snn&&faceAt({x:sq2.cx,y:sq2.cy},qs.k==='s'?'suelos':'techos');if(!sfa2)return;
     var sbb2=sfa2.inner.reduce(function(a,q){return {x0:Math.min(a.x0,q.x),y0:Math.min(a.y0,q.y)}},{x0:1e9,y0:1e9}),scur={bw:qs.bw,bh:qs.bh,x:sq2.x0-sbb2.x0,y:sq2.y0-sbb2.y0};
