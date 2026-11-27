@@ -301,7 +301,7 @@ router.post('/editar', async (req, res) => {
         const rg = await fetch(`${API}/models/${modeloO}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': clave }, body: JSON.stringify({ contents: [{ parts: partes }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'], ...(cfg ? { imageConfig: cfg } : {}) } }) });
         return { rg, jg: await rg.json().catch(() => ({})) };
       };
-      let { rg, jg } = await llamarG({ aspectRatio: prop, imageSize: alta ? '4K' : eco ? '1K' : '2K' });
+      let { rg, jg } = await llamarG({ aspectRatio: prop, imageSize: alta || req.body?.grande === true ? '4K' : eco ? '1K' : '2K' });
       if (!rg.ok && /imageConfig|imageSize|aspect|unknown name|invalid/i.test(JSON.stringify(jg?.error || {}))) ({ rg, jg } = await llamarG({ aspectRatio: prop }));
       if (!rg.ok && /imageConfig|aspect|unknown name|invalid/i.test(JSON.stringify(jg?.error || {}))) ({ rg, jg } = await llamarG(null));
       if (!rg.ok) { console.error('render-ia editar Gemini', rg.status, jg?.error?.message); edicionGemini = null; return res.status(502).json({ error: 'Gemini no ha podido editar la imagen' + (jg?.error?.message ? ': ' + String(jg.error.message).slice(0, 220) : '') }); }

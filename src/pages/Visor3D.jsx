@@ -6451,14 +6451,26 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
         } finally { URL.revokeObjectURL(obj); }
       }));
       const motores = (mejoraPano?.motor || 'gemini') === 'ambos' ? ['gemini', 'openai'] : [mejoraPano?.motor || 'gemini'], NOMBRE = { gemini: 'Gemini', openai: 'ChatGPT' };
-      const carasDe = {};
-      const res = await Promise.allSettled(motores.map(mo => panoPorCaras(new THREE.Vector3(...P.origen.pos), 0, vistas, t => setMejoraPano(m => ({ ...(m || {}), texto: (motores.length > 1 ? NOMBRE[mo] + ': ' : '') + t })), { motor: mo, extra: (mejoraPano?.extra || '').trim(), eco: !!mejoraPano?.eco, alCaras: c => { carasDe[mo] = c; } })));
-      const nuevas = res.map((r, i) => (r.status === 'fulfilled' ? { url: r.value, caras: carasDe[motores[i]], motor: motores[i], eco: !!mejoraPano?.eco, nombre: NOMBRE[motores[i]] + (mejoraPano?.eco ? ' (prueba)' : '') + ((mejoraPano?.extra || '').trim() ? ' · ' + mejoraPano.extra.trim().slice(0, 40) : '') } : null)).filter(Boolean);
+      const carasDe = {}, extraTxt = (mejoraPano?.extra || '').trim();
+      const panoEntero = async (mo, avisa) => {
+        avisa('mandando el 360° entero');
+        const im = await new Promise((ok, ko) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = P.sinIA || P.url; });
+        const W = mejoraPano?.eco ? 2048 : 4096, c = document.createElement('canvas'); c.width = W; c.height = W / 2; c.getContext('2d').drawImage(im, 0, 0, W, W / 2);
+        const TXT = 'Esta imagen es un PANORAMA 360° equirrectangular (proyección esférica): las líneas rectas se ven curvas A PROPÓSITO y el borde izquierdo se une con el derecho. Conviértela en una fotografía real de interiorismo de alta gama (materiales realistas, texturas finas y nítidas, reflejos naturales) conservando EXACTAMENTE la proyección: las mismas curvas, la posición y el tamaño de cada cosa, el horizonte en el centro y los dos bordes laterales tal cual. No enderezces líneas, no recortes, no amplíes. No añadas ni quites objetos, no inventes vistas por las ventanas ni cambies colores de marcos, puertas, paredes o suelo.' + (extraTxt ? ' Además: ' + extraTxt + '.' : '');
+        const r = await api.post('/render-ia/editar', { imagen: c.toDataURL('image/jpeg', 0.9), instruccion: TXT, referencias: [], calidad: !extraTxt, coherencia: vistas.slice(0, 2), motor: mo, economico: !!mejoraPano?.eco, grande: !mejoraPano?.eco }, { timeout: 300000 });
+        // la IA devuelve otra proporción (21:9, 3:2…): se vuelve a 2:1
+        const sal = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = r.data.imagen; });
+        const W2 = Math.max(2048, Math.min(8192, sal.naturalWidth)), c2 = document.createElement('canvas'); c2.width = W2; c2.height = W2 / 2; c2.getContext('2d').drawImage(sal, 0, 0, W2, W2 / 2);
+        return c2.toDataURL('image/jpeg', 0.9);
+      };
+      const entero = mejoraPano?.metodo === 'entero';
+      const res = await Promise.allSettled(motores.map(mo => entero ? panoEntero(mo, t => setMejoraPano(m => ({ ...(m || {}), texto: t }))) : panoPorCaras(new THREE.Vector3(...P.origen.pos), 0, vistas, t => setMejoraPano(m => ({ ...(m || {}), texto: (motores.length > 1 ? NOMBRE[mo] + ': ' : '') + t })), { motor: mo, extra: (mejoraPano?.extra || '').trim(), eco: !!mejoraPano?.eco, alCaras: c => { carasDe[mo] = c; } })));
+      const nuevas = res.map((r, i) => (r.status === 'fulfilled' ? { url: r.value, caras: carasDe[motores[i]], motor: motores[i], eco: !!mejoraPano?.eco && !entero, nombre: NOMBRE[motores[i]] + (entero ? ' · entero' : '') + (mejoraPano?.eco ? ' (prueba)' : '') + ((mejoraPano?.extra || '').trim() ? ' · ' + mejoraPano.extra.trim().slice(0, 40) : '') } : null)).filter(Boolean);
       if (!nuevas.length) throw new Error(res.find(r => r.status === 'rejected')?.reason?.message || 'sin resultado');
       const vista = panoFin.current?.vista?.();
       const versiones = [...(P.versiones || [{ url: P.sinIA || P.url, nombre: 'Sin IA' }]), ...nuevas];
       setPano({ ...P, url: nuevas[0].url, guardado: false, id: undefined, sinIA: P.sinIA || P.url, versiones, vista: vista ? { lon: vista.lon, lat: vista.lat, fov: vista.fov } : P.vista });
-      setMejoraPano(m => ({ refs: m?.refs || [], motor: m?.motor, eco: m?.eco, extra: '' })); setAviso('360° mejorado con IA' + (res.some(r => r.status === 'rejected') ? ' (uno de los motores ha fallado: ' + (res.find(r => r.status === 'rejected').reason?.message || '') + ')' : '') + '. Revísalo, compara versiones y pulsa ⭐ Guardar en la galería.');
+      setMejoraPano(m => ({ refs: m?.refs || [], motor: m?.motor, eco: m?.eco, metodo: m?.metodo, extra: '' })); setAviso('360° mejorado con IA' + (res.some(r => r.status === 'rejected') ? ' (uno de los motores ha fallado: ' + (res.find(r => r.status === 'rejected').reason?.message || '') + ')' : '') + '. Revísalo, compara versiones y pulsa ⭐ Guardar en la galería.');
     } catch (e) { setMejoraPano(m => ({ ...(m || {}), trabajando: false, texto: '' })); setAviso('No se ha podido mejorar el 360°: ' + (e.message || 'error')); }
   };
   const subirCalidadPano = async () => {
@@ -8331,6 +8343,8 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
               <textarea value={mejoraPano.extra || ''} onChange={e => setMejoraPano(m => ({ ...m, extra: e.target.value }))} rows={2} placeholder="Qué quieres cambiar o mejorar (opcional). Ej.: suelo de caucho negro, pared del fondo en microcemento gris, luz más cálida…" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginTop: 6, fontFamily: 'inherit', resize: 'vertical' }} />
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
                 <span style={{ opacity: 0.75 }}>🤖 Motor:</span>
+                <span style={{ opacity: 0.75, marginLeft: 8 }}>Método:</span>
+                {[['caras', 'Por caras'], ['entero', 'Panorama entero']].map(([k, n]) => <button key={k} style={{ ...btn, background: (mejoraPano.metodo || 'caras') === k ? '#6b4fa0' : '#333' }} title={k === 'entero' ? 'El 360° va de una vez a la IA: menos cortes, pero menos resolución (4K) y puede enderezar líneas. Experimental' : '6 fotos a 2K que se continúan entre sí: más detalle (6K)'} onClick={() => setMejoraPano(m => ({ ...m, metodo: k }))}>{n}</button>)}
                 <span style={{ opacity: 0.75, marginLeft: 8 }}>Calidad:</span>
                 {[[true, '🧪 Prueba barata'], [false, '💎 Final']].map(([k, n]) => <button key={n} style={{ ...btn, background: !!mejoraPano.eco === k ? '#6b4fa0' : '#333' }} title={k ? 'Modelo rápido y 4K: prueba instrucciones gastando poco; cuando una te guste, pulsa ⬆️ Subir calidad de esta (no se rehace, se mejora)' : 'Modelo top y 6K directamente'} onClick={() => setMejoraPano(m => ({ ...m, eco: k }))}>{n}</button>)}
                 {[['gemini', 'Gemini Pro'], ['openai', 'ChatGPT'], ['ambos', 'Los dos']].map(([k, n]) => <button key={k} style={{ ...btn, background: (mejoraPano.motor || 'gemini') === k ? '#6b4fa0' : '#333' }} onClick={() => setMejoraPano(m => ({ ...m, motor: k }))}>{n}</button>)}
