@@ -7270,7 +7270,10 @@ function panelSel(focus){
     if(st.view==='acab'||st.view==='alz'){
       h+='<div class="lab" style="margin-top:12px">Acabados</div>';
       ['p','m'].forEach(function(sd){
-        h+='<label class="fld"><span>'+faceName(w,sd)+'</span><select data-t="wf_'+sd+'"><option value="">Sin acabado: se mantiene el existente</option>'+matsAc('acab').map(function(m){return '<option value="'+m.id+'"'+((w.f&&w.f[sd])===m.id?' selected':'')+'>'+m.n+'</option>'}).join('')+'</select></label>'+sisSelHtml('acab',w.fs&&w.fs[sd],'ws_'+sd);
+        var fId=w.f&&w.f[sd],fM=fId?matOf('acab',fId):null,fB=fM?(fM.base||fId):'';
+        h+='<label class="fld"><span>'+faceName(w,sd)+'</span><select data-t="wf_'+sd+'"><option value="">Sin acabado: se mantiene el existente</option>'+matsAc('acab').filter(function(m){return !m.base||m.id===fId&&!fM.cod}).map(function(m){return '<option value="'+m.id+'"'+(fB===m.id?' selected':'')+'>'+esc(m.n)+'</option>'}).join('')+'</select></label>';
+        if(fId){var fHex=/^#[0-9a-f]{6}$/i.test(fM.c)?fM.c:'#e8e2d8';h+='<label class="fld"><span>Código de color (NCS o RAL)</span><div style="display:flex;gap:8px;align-items:center"><input data-t="wc_'+sd+'" list="dl-cod" value="'+esc(fM.cod||'')+'" placeholder="RAL 9010 o NCS S 0502-Y" autocomplete="off" style="flex:1"><input type="color" data-t="wh_'+sd+'" value="'+fHex+'" title="Color tal como se verá en el plano" style="width:46px;height:38px;padding:2px"></div></label><datalist id="dl-cod">'+NCS_PRE.map(function(x){return '<option value="'+x+'">'}).join('')+'</datalist>'}
+        h+=sisSelHtml('acab',w.fs&&w.fs[sd],'ws_'+sd);
       });
     }
     if(st.view==='demol'){
@@ -8320,9 +8323,19 @@ $('side').addEventListener('change',function(e){
     commit(false);
   }else if(t&&t.indexOf('wf_')===0&&st.sel&&st.sel.t==='wall'){
     var wf=wl(st.sel.id);if(!wf)return;
-    snap();wf.f=wf.f||{};
-    if(e.target.value)wf.f[t.slice(3)]=e.target.value;else delete wf.f[t.slice(3)];
-    commit(false);
+    snap();wf.f=wf.f||{};var sdf=t.slice(3),cf=wf.f[sdf]?matOf('acab',wf.f[sdf]):null;
+    if(e.target.value)wf.f[sdf]=(cf&&cf.cod)?colorDe('acab',e.target.value,cf.cod,codigoHex(cf.cod)||cf.c):e.target.value;else delete wf.f[sdf];
+    commit(false);panelSel();
+  }else if(t&&(t.indexOf('wc_')===0||t.indexOf('wh_')===0)&&st.sel&&st.sel.t==='wall'){ /* código de color de una cara del muro */
+    var wc=wl(st.sel.id),sdc=t.slice(3);if(!wc||!wc.f||!wc.f[sdc])return;
+    var cc=matOf('acab',wc.f[sdc]),bc=cc.base||wc.f[sdc];
+    snap();
+    if(t.indexOf('wc_')===0){
+      var codc=e.target.value.trim().toUpperCase();
+      if(!codc)wc.f[sdc]=bc;
+      else{var hxc=codigoHex(codc);if(!hxc){hxc=cc.cod?cc.c:null;toast('No reconozco ese código como NCS ni RAL: elige el color a mano en el cuadro de al lado')}wc.f[sdc]=colorDe('acab',bc,codc,hxc||cc.c,true)}
+    }else{var hxw=e.target.value;wc.f[sdc]=colorDe('acab',bc,cc.cod||('Color '+hxw.toUpperCase()),hxw,true)}
+    commit(false);panelSel();
   }
 });
 $('side').addEventListener('input',function(e){
