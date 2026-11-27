@@ -3196,20 +3196,27 @@ function elevSvg(C,px,el,codes,flat){
       ledV({x:+o.cx||0,y:+o.cy||0},null,o.z0||0,o.alto,cl,'LED');
     });
   }
-  var swT=(st&&st.v)?swTagMap():{};
-  if(st&&st.v)st.v.pts.forEach(function(q){ /* enchufes, interruptores y tomas de este muro y este lado, a su altura */
+  var swT=(st&&st.v)?swTagMap():{},mecH='',mecs=[];
+  /* enchufes, interruptores y tomas de este muro y este lado, a su altura. Se dibujan al final, por delante de la tele y de los bloques */
+  if(st&&st.v)st.v.pts.forEach(function(q){
     if(q.v!=='elec'||q.s==='dem')return;var pd=ptDef(q.k);if(!pd||pd.lin)return;
     var c=ptPos(q),g=wg(el.w),s=(c.x-g.a.x)*g.ux+(c.y-g.a.y)*g.uy,dn=(c.x-g.a.x)*(-g.uy)+(c.y-g.a.y)*g.ux;
     if(s<-5||s>g.l+5||Math.abs(dn)>el.w.t/2+30||(dn>=0?'p':'m')!==el.sd)return;
-    var x=el.rev?L-s:s,zz=q.h!=null?+q.h:(pd.h!=null?pd.h:30),y=H-zz,a=4.5,sl=st.sel&&st.sel.t==='pt'&&st.sel.id===q.id,ce=sl?C.accent:C.ink;
-    /* cotas: al eje del mecanismo desde la pared más cercana y desde el suelo; se tocan para escribirlas (y el mecanismo se mueve) */
-    var dI=x-c0,dD=c1-x,izq=dI<=dD,dh=izq?dI:dD,ex=izq?c0:c1,CM='#4f8196';
-    if(dh>1){h+=dimLine(C,px,ex,y,x,y,fmtU(dh),CM,CM,'k:'+q.id+':x');if(colectaDim&&!flat)dimHits.push({kind:'mecalz',eje:'x',q:q.id,lado:izq?1:-1,rev:!!el.rev,wall:el.w.id,val:dh,x:(el.x||0)+(ex+x)/2,y:(el.y||0)+y-6*px})}
-    if(zz>1){h+=dimLine(C,px,x,H,x,y,fmtU(zz),CM,CM,'k:'+q.id+':z');if(colectaDim&&!flat)dimHits.push({kind:'mecalz',eje:'z',q:q.id,val:zz,rot:true,x:(el.x||0)+x+14*px,y:(el.y||0)+(H+y)/2})}
+    mecs.push({q:q,pd:pd,x:el.rev?L-s:s,zz:q.h!=null?+q.h:(pd.h!=null?pd.h:30)});
+  });
+  mecs.forEach(function(mc){
+    var q=mc.q,pd=mc.pd,x=mc.x,zz=mc.zz,y=H-zz,a=4.5,sl=st.sel&&st.sel.t==='pt'&&st.sel.id===q.id,ce=sl?C.accent:C.ink,CM='#4f8196';
+    /* cota horizontal: hasta lo más cercano a su altura, la pared o el mecanismo de al lado (cotas en cadena, sin montarse) */
+    var ri={d:x-c0,ex:c0},rd={d:c1-x,ex:c1};
+    mecs.forEach(function(o){if(o===mc||Math.abs(o.zz-zz)>15)return;var dx=o.x-x;if(dx<-0.5&&-dx<ri.d)ri={d:-dx,ex:o.x};if(dx>0.5&&dx<rd.d)rd={d:dx,ex:o.x}});
+    var fila=mecs.filter(function(o){return Math.abs(o.zz-zz)<=15}),xm=fila.reduce(function(s2,o){return s2+o.x},0)/fila.length; /* la fila se acota desde la pared más cercana a ella, cada uno hasta el anterior */
+    var izq=(xm-c0)<=(c1-xm),rr=izq?ri:rd,dh=rr.d,ex=rr.ex;
+    if(dh>1){mecH+=dimLine(C,px,ex,y,x,y,fmtU(dh),CM,CM,'k:'+q.id+':x');if(colectaDim&&!flat)dimHits.push({kind:'mecalz',eje:'x',q:q.id,lado:izq?1:-1,rev:!!el.rev,wall:el.w.id,val:dh,x:(el.x||0)+(ex+x)/2,y:(el.y||0)+y-6*px})}
+    if(zz>1){mecH+=dimLine(C,px,x,H,x,y,fmtU(zz),CM,CM,'k:'+q.id+':z');if(colectaDim&&!flat)dimHits.push({kind:'mecalz',eje:'z',q:q.id,val:zz,rot:true,x:(el.x||0)+x+14*px,y:(el.y||0)+(H+y)/2})}
     var etq=(swT[q.id]?swT[q.id].tag+' · ':'')+(pd.n||'');
-    h+='<rect x="'+f2(x-a)+'" y="'+f2(y-a)+'" width="'+f2(2*a)+'" height="'+f2(2*a)+'" rx="1" style="fill:#ffffff;stroke:'+ce+';stroke-width:'+f2((sl?2:1)*px)+'"/>';
-    h+='<g transform="translate('+f2(x)+' '+f2(y)+')">'+ptSym(q.k,ce,Math.min(0.55,a/6))+'</g>';
-    if(etq)h+=adjK('k:'+q.id+':t',txt(C,px,x,y-a-5*px,etq,ce,8.5,600),x,y-a-5*px);
+    mecH+='<rect x="'+f2(x-a)+'" y="'+f2(y-a)+'" width="'+f2(2*a)+'" height="'+f2(2*a)+'" rx="1" style="fill:#ffffff;stroke:'+ce+';stroke-width:'+f2((sl?2:1)*px)+'"/>';
+    mecH+='<g transform="translate('+f2(x)+' '+f2(y)+')">'+ptSym(q.k,ce,Math.min(0.55,a/6))+'</g>';
+    if(etq)mecH+=adjK('k:'+q.id+':t',txt(C,px,x,y-a-5*px,etq,ce,8.5,600),x,y-a-5*px);
   });
   (el.pils||[]).filter(function(q){return !q.att}).forEach(function(q){ /* pilar suelto, delante del muro: a trazos */
     h+='<rect x="'+f2(q.x0)+'" y="0" width="'+f2(q.w)+'" height="'+H+'" style="fill:none;stroke:'+C.dim+';stroke-width:'+f2(1.1*px)+';stroke-dasharray:'+f2(6*px)+' '+f2(4*px)+'"/>';
@@ -3272,7 +3279,7 @@ function elevSvg(C,px,el,codes,flat){
   if(m){var pw=llPos('pared',c1+26*px,yLl,c1-Math.min(Lv*0.12,60),yLl);h+=acabLlamada(C,px,pw.ax,pw.ay,pw.bx,code,m,pw.by);yLl+=62*px}
   llamZ.forEach(function(q){var pq=llPos(q.k||'z',c1+26*px,yLl,q.ax,q.ay);h+=acabLlamada(C,px,pq.ax,pq.ay,pq.bx,q.code,q.m,pq.by);yLl+=62*px});
   Object.keys(ledLl).forEach(function(k){var pl=llPos('l:'+k,c1+26*px,yLl);h+=ledLlamada(C,px,ledLl[k],pl.bx,pl.by);yLl+=70*px});
-  return h+eqaSvg(C,px,el);
+  return h+eqaSvg(C,px,el)+mecH;
 }
 /* nombre del acabado sin el código de color (el NCS o RAL va en la leyenda) */
 function acabNomLimpio(m){
