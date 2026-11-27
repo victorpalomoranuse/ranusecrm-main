@@ -10981,6 +10981,13 @@ function buildModelo3d1(){
   out.partes=(v.sp||[]).filter(function(r){return !(r.k==='t'&&num(r.h)>0)&&r.mat}).map(function(r){var p=spPts(r),m=matOf(r.k==='s'?'suelos':'techos',r.mat);return p&&m?{id:r.id,k:r.k==='s'?'s':'t',nombre:r.nm||'',pts:p.map(function(q){return [f2(q.x),f2(q.y)]}),c:m.c||'#cccccc'}:null}).filter(Boolean);
   out.a_medida=(v.mm||[]).filter(function(m){return m.k!=='hor'}).map(function(m){var q=mmPoly(m);return q?{id:m.id,nombre:mmNombre(m),pts:q.pts.map(function(p){return [f2(p.x),f2(p.y)]}),z0:f2(m.y0||0),z1:f2((m.y0||0)+m.h),luz:!!m.luz}:null}).filter(Boolean);
   out.recrecidos=[];(v.rc||[]).forEach(function(rc){var q=rcPoly(rc);if(!q||q.len<2)return;rcTrozos(rc).forEach(function(t,i){var qt=rcPolyR(rc,t.s0,t.s1);if(!qt)return;out.recrecidos.push({id:rc.id,trozo:i,muro:rc.wall,pts:qt.pts.map(function(p){return [f2(p.x),f2(p.y)]}),t:rc.t||10,z0:f2(t.z0),h:f2(t.z1-t.z0),material:rc.mat||'',estado:rc.s||'new'})})});
+  /* zonas de acabado dibujadas en un alzado: de momento al 3D solo van las de espejo (las de pintura se siguen pintando en el 3D) */
+  out.zonasPared=[];(v.fz||[]).forEach(function(z){
+    var w=wl(z.wall);if(!w)return;var mz=matOf('acab',z.mat);if(!mz||!(z.mat==='esp'||/espejo|luna/i.test(mz.n||'')))return;
+    var g=wg(w),L=g.l,rev=z.sd==='m',s0=Math.max(0,rev?L-z.x1:z.x0),s1=Math.min(L,rev?L-z.x0:z.x1),sg=z.sd==='p'?1:-1,nx=-g.uy*sg,ny=g.ux*sg,o=(w.t||12)/2;
+    if(s1-s0<2||!(z.y1-z.y0>=2))return;
+    out.zonasPared.push({id:z.id,muro:w.id,a:[f2(g.a.x+g.ux*s0+nx*o),f2(g.a.y+g.uy*s0+ny*o)],b:[f2(g.a.x+g.ux*s1+nx*o),f2(g.a.y+g.uy*s1+ny*o)],n:[f2(nx),f2(ny)],z0:f2(z.y0),z1:f2(z.y1),mat:'espejo',nombre:mz.n||'Espejo',c:mz.c||'#bfdde8'});
+  });
   v.pil.forEach(function(p){pilCells(p).forEach(function(c,ci){out.pilares.push({id:p.id+'-'+ci,cx:f2(c.x),cy:f2(c.y),w:p.w,d:p.d,rot:p.rot||0,estado:p.s||'ex'})})});
   v.eq.forEach(function(e){
     if(e.rol==='llega')return; /* la llegada de una escalera es la misma escalera: no se modela dos veces */

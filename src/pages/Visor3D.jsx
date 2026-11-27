@@ -2314,6 +2314,15 @@ export function planta(m, z0) {
     const x = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: rc.estado === 'new' ? 0xf1ece6 : 0xe4e0db, roughness: 0.95 }));
     x.castShadow = x.receiveShadow = true; x.userData = { capa: 'muros', muroId: 'rc-' + rc.id, recrecidoId: rc.id }; g.add(x); // pintable como un muro (su color se guarda con la clave rc-…)
   });
+  // zonas de espejo dibujadas en un alzado de Planos: una luna fina pegada a la cara del muro (refleja como los espejos de deco)
+  (m.zonasPared || []).forEach(z => {
+    const dx = z.b[0] - z.a[0], dz = z.b[1] - z.a[1], L = Math.hypot(dx, dz), H = z.z1 - z.z0;
+    if (!(L >= 2 && H >= 2)) return;
+    const x = new THREE.Mesh(new THREE.BoxGeometry(L * CM, H * CM, 0.006), new THREE.MeshStandardMaterial({ color: '#dfe6ea', roughness: 0.04, metalness: 1, envMapIntensity: 1.6 }));
+    x.position.set(((z.a[0] + z.b[0]) / 2 + z.n[0] * 0.35) * CM, (z.z0 + H / 2) * CM, ((z.a[1] + z.b[1]) / 2 + z.n[1] * 0.35) * CM);
+    x.rotation.y = -Math.atan2(dz, dx); x.receiveShadow = true;
+    x.userData = { capa: 'muros', zonaParedId: z.id, espejoDeco: true }; g.add(x);
+  });
   (m.equipos || []).filter(e => !e.cesped && !e.rack).forEach(e => g.add(maquina(e)));
   return g;
 }
