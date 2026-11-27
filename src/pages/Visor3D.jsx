@@ -8473,6 +8473,16 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={ambiente.kLuces != null} onChange={e => setAmbiente(a => ({ ...a, kLuces: e.target.checked ? 3000 : null }))} /> Misma temperatura para todas las luces</label>
                 {ambiente.kLuces != null && fila('Temperatura', ambiente.kLuces, 2200, 6500, 100, v => setAmbiente(a => ({ ...a, kLuces: v })), ambiente.kLuces + ' K')}
               </>)}
+              <button style={{ ...btn, width: '100%', padding: '9px 10px', marginBottom: 4, background: '#6b6159', fontWeight: 600 }} title="Cielo real de exterior, sol que entra por las ventanas, sombras finas y tono de cámara fotográfica. Pesa poco: no usa efectos caros." onClick={() => {
+                const cielo = hdris.find(h => h.id === 'autumn_field_puresky') || hdris.find(h => /puresky|sky|field|meadow/i.test(h.id)) || hdris.find(h => h.id === 'garden_nook') || null;
+                setRealista(true); setCalidad('alta'); setSombraSuave(true);
+                if (cielo) { setModoAmb('hdri'); setEntorno('hdri:' + cielo.id); } else { setModoAmb('custom'); setEntorno('dia'); }
+                setFondoCielo(true); setHora(11);
+                setAmbiente(a => ({ ...a, exposicion: 1, luces: 1, kLuces: null, solOn: true, solI: 1 }));
+                setFx({ ...FX0, contraste: 1.06, saturacion: 1.03, vineta: 0.12, bloom: 0.12, realce: 0.1 }); setTono('agx');
+                setAviso('Ajuste realista puesto: luz de día real entrando por las ventanas. Mueve la hora para cambiar el sol; para la máxima calidad, usa el render en la nube.');
+              }}>★ Ajuste realista (luz de día real)</button>
+              <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 8 }}>Un clic: cielo de exterior, sol por las ventanas, sombras finas y color de cámara. Después retoca la hora o la exposición si hace falta.</div>
               {sec('Plantillas de luz por espacio', <>
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                   {[
