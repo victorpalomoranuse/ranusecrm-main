@@ -6194,13 +6194,13 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
   // de referencia para que todas tengan el mismo acabado) → se unen en un 360° de 6K. Unas 4 veces más detalle que mandar el 360° entero.
   const TEXTO_CARA = 'Convierte este render 3D en una fotografía real de interiorismo de alta gama: materiales realistas, texturas finas y nítidas, reflejos naturales y acabados limpios. Es una vista gran angular de 110 grados (una cara de un panorama 360): conserva EXACTAMENTE la geometría, la perspectiva, el encuadre y la posición de cada elemento hasta los mismos bordes de la imagen; no corrijas la distorsión del gran angular, no recortes ni amplíes. No añadas ni quites objetos y no cambies máquinas, muebles ni rótulos. Respeta EXACTAMENTE el color y el material de cada cosa: marcos y carpinterías (si son negros u oscuros, siguen negros; no los hagas plateados), puertas, paredes, suelo y techo. Los cristales siguen siendo cristales transparentes con lo que hay detrás; no los conviertas en espejos ni en paredes. No muevas ni dupliques nada.';
   const panoPorCaras = async (pos, yaw, vistas = [], avisa = () => {}, opc = {}) => {
-    const motorC = opc.motor === 'openai' ? 'openai' : 'gemini', textoC = TEXTO_CARA + (opc.extra ? ' Además, en toda la sala: ' + opc.extra + '. Aplícalo de forma coherente en todas las vistas.' : '');
+    const motorC = opc.motor === 'openai' ? 'openai' : 'gemini', textoC = TEXTO_CARA + (opc.ficha ? ' ' + opc.ficha : '') + (opc.extra ? ' Además, en toda la sala: ' + opc.extra + '. Aplícalo de forma coherente en todas las vistas.' : '');
     const a = api3d.current, ocultar = [a.gizmoG, a.cotasG, a.nodoG, a.guiaG];
     const caras = capturarCaras(a.renderer, a.scene, pos, yaw, 1024, ocultar);
     const carga = u => new Promise((ok, ko) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = u; });
     const peque = async u => { const im = await carga(u), c = document.createElement('canvas'); c.width = 768; c.height = 768; c.getContext('2d').drawImage(im, 0, 0, 768, 768); return c.toDataURL('image/jpeg', 0.88); };
     const ia = async (i, coherencia, comp) => {
-      try { const r = await api.post('/render-ia/editar', { imagen: comp?.imagen || caras[i], ...(comp?.mascara ? { mascara: comp.mascara } : {}), instruccion: textoC + (comp?.mascara ? ' Los bordes de esta imagen ya están terminados (son la continuación de las vistas de al lado): CONTINÚA exactamente lo que se ve en ellos (los mismos objetos, materiales, colores y luz) sin cortes.' : ''), referencias: [], calidad: false, coherencia: coherencia.slice(0, 3), motor: motorC, economico: !!opc.eco }, { timeout: 300000 }); return r.data.imagen; }
+      try { const r = await api.post('/render-ia/editar', { imagen: comp?.imagen || caras[i], ...(comp?.mascara ? { mascara: comp.mascara } : {}), instruccion: textoC + (comp?.mascara ? ' Los bordes de esta imagen ya están terminados (son la continuación de las vistas de al lado): CONTINÚA exactamente lo que se ve en ellos (los mismos objetos, materiales, colores y luz) sin cortes.' : ''), referencias: [], calidad: false, coherencia: coherencia.slice(0, 3), motor: motorC, economico: !!opc.eco, contexto: (opc.contexto || []).filter(Boolean) }, { timeout: 300000 }); return r.data.imagen; }
       catch (e) { throw new Error('IA en la cara ' + (i + 1) + ': ' + (e.response?.data?.error || e.message)); }
     };
     const sal = new Array(6), bs = basesCaras(yaw), T = opc.eco ? 1024 : 2048, hechas = [];
@@ -6451,20 +6451,22 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
         } finally { URL.revokeObjectURL(obj); }
       }));
       const motores = (mejoraPano?.motor || 'gemini') === 'ambos' ? ['gemini', 'openai'] : [mejoraPano?.motor || 'gemini'], NOMBRE = { gemini: 'Gemini', openai: 'ChatGPT' };
-      const carasDe = {}, extraTxt = (mejoraPano?.extra || '').trim();
+      const carasDe = {}, extraTxt = (mejoraPano?.extra || '').trim(), posM = new THREE.Vector3(...P.origen.pos);
+      setMejoraPano(m => ({ ...(m || {}), texto: 'preparando la ficha del espacio' }));
+      const ficha = fichaEspacio(posM), planta = plantaArriba(posM), peque = await panoPeque(P.sinIA || P.url);
       const panoEntero = async (mo, avisa) => {
         avisa('mandando el 360° entero');
         const im = await new Promise((ok, ko) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = P.sinIA || P.url; });
         const W = mejoraPano?.eco ? 2048 : 4096, c = document.createElement('canvas'); c.width = W; c.height = W / 2; c.getContext('2d').drawImage(im, 0, 0, W, W / 2);
-        const TXT = 'Esta imagen es un PANORAMA 360° equirrectangular (proyección esférica): las líneas rectas se ven curvas A PROPÓSITO y el borde izquierdo se une con el derecho. Conviértela en una fotografía real de interiorismo de alta gama (materiales realistas, texturas finas y nítidas, reflejos naturales) conservando EXACTAMENTE la proyección: las mismas curvas, la posición y el tamaño de cada cosa, el horizonte en el centro y los dos bordes laterales tal cual. No enderezces líneas, no recortes, no amplíes. No añadas ni quites objetos, no inventes vistas por las ventanas ni cambies colores de marcos, puertas, paredes o suelo.' + (extraTxt ? ' Además: ' + extraTxt + '.' : '');
-        const r = await api.post('/render-ia/editar', { imagen: c.toDataURL('image/jpeg', 0.9), instruccion: TXT, referencias: [], calidad: !extraTxt, coherencia: vistas.slice(0, 2), motor: mo, economico: !!mejoraPano?.eco, grande: !mejoraPano?.eco }, { timeout: 300000 });
+        const TXT = 'Esta imagen es un PANORAMA 360° equirrectangular (proyección esférica): las líneas rectas se ven curvas A PROPÓSITO y el borde izquierdo se une con el derecho. Conviértela en una fotografía real de interiorismo de alta gama (materiales realistas, texturas finas y nítidas, reflejos naturales) conservando EXACTAMENTE la proyección: las mismas curvas, la posición y el tamaño de cada cosa, el horizonte en el centro y los dos bordes laterales tal cual. No enderezces líneas, no recortes, no amplíes. No añadas ni quites objetos, no inventes vistas por las ventanas ni cambies colores de marcos, puertas, paredes o suelo.' + (ficha ? ' ' + ficha : '') + (extraTxt ? ' Además: ' + extraTxt + '.' : '');
+        const r = await api.post('/render-ia/editar', { imagen: c.toDataURL('image/jpeg', 0.9), instruccion: TXT, referencias: [], calidad: !extraTxt, coherencia: vistas.slice(0, 2), contexto: [planta].filter(Boolean), motor: mo, economico: !!mejoraPano?.eco, grande: !mejoraPano?.eco }, { timeout: 300000 });
         // la IA devuelve otra proporción (21:9, 3:2…): se vuelve a 2:1
         const sal = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = r.data.imagen; });
         const W2 = Math.max(2048, Math.min(8192, sal.naturalWidth)), c2 = document.createElement('canvas'); c2.width = W2; c2.height = W2 / 2; c2.getContext('2d').drawImage(sal, 0, 0, W2, W2 / 2);
         return c2.toDataURL('image/jpeg', 0.9);
       };
       const entero = mejoraPano?.metodo === 'entero';
-      const res = await Promise.allSettled(motores.map(mo => entero ? panoEntero(mo, t => setMejoraPano(m => ({ ...(m || {}), texto: t }))) : panoPorCaras(new THREE.Vector3(...P.origen.pos), 0, vistas, t => setMejoraPano(m => ({ ...(m || {}), texto: (motores.length > 1 ? NOMBRE[mo] + ': ' : '') + t })), { motor: mo, extra: (mejoraPano?.extra || '').trim(), eco: !!mejoraPano?.eco, alCaras: c => { carasDe[mo] = c; } })));
+      const res = await Promise.allSettled(motores.map(mo => entero ? panoEntero(mo, t => setMejoraPano(m => ({ ...(m || {}), texto: t }))) : panoPorCaras(new THREE.Vector3(...P.origen.pos), 0, vistas, t => setMejoraPano(m => ({ ...(m || {}), texto: (motores.length > 1 ? NOMBRE[mo] + ': ' : '') + t })), { motor: mo, extra: (mejoraPano?.extra || '').trim(), eco: !!mejoraPano?.eco, ficha, contexto: [planta, peque], alCaras: c => { carasDe[mo] = c; } })));
       const nuevas = res.map((r, i) => (r.status === 'fulfilled' ? { url: r.value, caras: carasDe[motores[i]], motor: motores[i], eco: !!mejoraPano?.eco && !entero, nombre: NOMBRE[motores[i]] + (entero ? ' · entero' : '') + (mejoraPano?.eco ? ' (prueba)' : '') + ((mejoraPano?.extra || '').trim() ? ' · ' + mejoraPano.extra.trim().slice(0, 40) : '') } : null)).filter(Boolean);
       if (!nuevas.length) throw new Error(res.find(r => r.status === 'rejected')?.reason?.message || 'sin resultado');
       const vista = panoFin.current?.vista?.();
@@ -6473,6 +6475,45 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
       setMejoraPano(m => ({ refs: m?.refs || [], motor: m?.motor, eco: m?.eco, metodo: m?.metodo, extra: '' })); setAviso('360° mejorado con IA' + (res.some(r => r.status === 'rejected') ? ' (uno de los motores ha fallado: ' + (res.find(r => r.status === 'rejected').reason?.message || '') + ')' : '') + '. Revísalo, compara versiones y pulsa ⭐ Guardar en la galería.');
     } catch (e) { setMejoraPano(m => ({ ...(m || {}), trabajando: false, texto: '' })); setAviso('No se ha podido mejorar el 360°: ' + (e.message || 'error')); }
   };
+  // Ficha del espacio para la IA, sacada del plano: sala, medidas, máquinas, huecos, espejos y luces (así entiende la sala entera y no se inventa cosas)
+  const fichaEspacio = (posM) => {
+    const m = api3d.current?.modelo; if (!m) return '';
+    const pls = m.plantas || [m], offs = api3d.current.offsPl || [];
+    const dentro = (x, y, pts) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+    for (let ip = 0; ip < pls.length; ip++) {
+      const pl = pls[ip], [ox, oy] = offs[ip] || [0, 0], x = posM.x / CM - ox, y = posM.z / CM - oy;
+      const sala = (pl.salas || []).find(s => s.pts?.length >= 3 && dentro(x, y, s.pts)); if (!sala) continue;
+      const P = sala.pts, xs = P.map(p => p[0]), ys = P.map(p => p[1]), ancho = (Math.max(...xs) - Math.min(...xs)) / 100, largo = (Math.max(...ys) - Math.min(...ys)) / 100, alto = (pl.altura || m.altura || 260) / 100;
+      const f = n => n.toFixed(2).replace('.', ',').replace(/,?0+$/, '');
+      const eq = (pl.equipos || []).filter(e => !e.cesped && dentro(e.cx, e.cy, P)).map(e => e.nombre || e.nm || e.n || e.modelo).filter(Boolean);
+      const cuenta = {}; eq.forEach(n => { cuenta[n] = (cuenta[n] || 0) + 1; });
+      const cerca = (px, py) => P.some((p, i) => { const q = P[(i + 1) % P.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1, t = Math.max(0, Math.min(1, ((px - p[0]) * (q[0] - p[0]) + (py - p[1]) * (q[1] - p[1])) / (L * L))); return Math.hypot(p[0] + t * (q[0] - p[0]) - px, p[1] + t * (q[1] - p[1]) - py) < 20; });
+      const huecos = [];
+      (pl.muros || []).forEach(mu => { const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, v = [(mu.b[0] - mu.a[0]) / L, (mu.b[1] - mu.a[1]) / L]; (mu.ab || []).forEach(o => { const c = mu.a[0] + v[0] * (o.p + o.w / 2), d = mu.a[1] + v[1] * (o.p + o.w / 2); if (!cerca(c, d)) return; const esP = (o.tipo || o.t) === 'door'; huecos.push((esP ? 'puerta' : 'ventana') + ' de ' + f(o.w / 100) + ' × ' + f(o.h / 100) + ' m' + ((o.sill || 0) > 5 ? ' a ' + f(o.sill / 100) + ' m del suelo' : '') + (o.mat ? ' (' + String(o.mat).toLowerCase() + ')' : '') + (o.nm ? ' «' + o.nm + '»' : '')); }); });
+      const espejos = (pl.zonasPared || []).filter(z => z.mat === 'espejo').length;
+      const leds = (pl.luces || []).filter(l => l.kid === 'led' && l.vs && l.vs.some(p => dentro(p[0], p[1], P) || cerca(p[0], p[1]))).length;
+      return 'FICHA DEL ESPACIO (sacada del plano real, respétala): ' + (sala.nombre ? '«' + sala.nombre + '», ' : '') + 'sala de unos ' + f(ancho) + ' × ' + f(largo) + ' m y ' + f(alto) + ' m de alto. '
+        + (eq.length ? 'Equipamiento (no hay más): ' + Object.entries(cuenta).map(([n, k]) => (k > 1 ? k + ' × ' : '') + n).join(', ') + '. ' : 'No hay más mobiliario que el que se ve. ')
+        + (huecos.length ? 'Huecos: ' + huecos.join('; ') + '. ' : '')
+        + (espejos ? espejos + ' espejo(s) en pared. ' : '') + (leds ? leds + ' tira(s) LED. ' : '')
+        + 'Por puertas y ventanas se ve exactamente lo que hay en la imagen (cielo, terreno u otras salas del plano): NO inventes paisajes, terrazas, jardines, muebles de exterior ni edificios. Nada que no esté en esta ficha o en la imagen.';
+    }
+    return '';
+  };
+  // Planta de la sala vista desde arriba (sin techos) para que la IA sepa qué hay en cada sitio
+  const plantaArriba = (posM) => {
+    const a = api3d.current, r = a.renderer, ocultos = [];
+    a.scene.traverse(o => { if (o.visible && (o.userData?.capa === 'techos' || o === a.gizmoG || o === a.cotasG || o === a.nodoG || o === a.guiaG)) { ocultos.push(o); o.visible = false; } });
+    const tamPrev = r.getSize(new THREE.Vector2()), prPrev = r.getPixelRatio(), tgPrev = r.getRenderTarget();
+    try {
+      const S = 5, cam = new THREE.OrthographicCamera(-S, S, S, -S, 0.1, 50); cam.position.set(posM.x, 12, posM.z); cam.up.set(0, 0, -1); cam.lookAt(posM.x, 0, posM.z); cam.updateMatrixWorld(true);
+      r.setRenderTarget(null); r.setPixelRatio(1); r.setSize(768, 768, false); r.render(a.scene, cam);
+      const c = document.createElement('canvas'); c.width = c.height = 768; const g = c.getContext('2d'); g.drawImage(r.domElement, 0, 0);
+      g.fillStyle = '#e11'; g.beginPath(); g.arc(384, 384, 9, 0, Math.PI * 2); g.fill(); // punto rojo = donde está la cámara del 360°
+      return c.toDataURL('image/jpeg', 0.85);
+    } catch { return null; } finally { r.setPixelRatio(prPrev); r.setSize(tamPrev.x, tamPrev.y); r.setRenderTarget(tgPrev); ocultos.forEach(o => { o.visible = true; }); }
+  };
+  const panoPeque = async (url) => { try { const im = await new Promise((ok, ko) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = ko; i.src = url; }); const c = document.createElement('canvas'); c.width = 1024; c.height = 512; c.getContext('2d').drawImage(im, 0, 0, 1024, 512); return c.toDataURL('image/jpeg', 0.82); } catch { return null; } };
   const subirCalidadPano = async () => {
     const P = pano, v = (P?.versiones || []).find(x => x.url === P.url); if (!v?.caras || mejoraPano?.trabajando) return;
     if (!window.confirm('Se sube la calidad de ESTA versión (' + v.nombre + ') sin cambiarla: cada una de las 6 fotos pasa por ' + (v.motor === 'openai' ? 'ChatGPT' : 'Gemini Pro') + ' en modo «solo calidad» y el 360° sale a 6K. Unos 0,70–1,50 €. ¿Seguir?')) return;

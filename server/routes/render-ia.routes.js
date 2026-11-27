@@ -264,11 +264,14 @@ router.post('/editar', async (req, res) => {
     const refs = (Array.isArray(referencias) ? referencias : []).slice(0, 3).map(x => DATA_IMG.exec(String(x || ''))).filter(Boolean);
     // otras vistas del MISMO espacio (ya editadas): lo que cambió en ellas debe verse igual aquí cuando esa parte salga en la imagen
     const coh = (Array.isArray(coherencia) ? coherencia : []).slice(0, 3).map(x => DATA_IMG.exec(String(x || ''))).filter(Boolean);
+    // imágenes de CONTEXTO (planta desde arriba, 360° entero en pequeño): solo para entender el espacio
+    const ctx = (Array.isArray(req.body?.contexto) ? req.body.contexto : []).slice(0, 2).map(x => DATA_IMG.exec(String(x || ''))).filter(Boolean);
     const prompt = [
       'Eres un retocador profesional de renders de interiorismo. Edita la primera imagen aplicando SOLO este cambio: «' + texto + '».',
       mk ? 'El cambio se limita a la zona marcada con la máscara: no toques nada fuera de ella.' : 'Aplica el cambio conservando todo lo demás.',
       'Mantén exactamente la composición, la perspectiva, la iluminación, los materiales y todos los elementos que no se mencionan.',
       refs.length ? 'Las imágenes adicionales son referencias de lo que hay que incorporar (' + refs.length + '): no las pegues tal cual, intégralas con la perspectiva, la escala, la luz y las sombras de la escena.' : '',
+      ctx.length ? 'Después de la primera imagen' + (refs.length ? ' y de las referencias' : '') + ' van ' + ctx.length + ' imagen(es) de CONTEXTO del mismo espacio (una planta vista desde arriba y/o el panorama 360° entero en pequeño): sirven SOLO para que entiendas el espacio completo (qué hay en cada sitio, qué queda a la espalda y qué hay al otro lado de puertas y ventanas). No las copies ni cambies el encuadre de la primera imagen.' : '',
       'Las paredes y techos de pintura lisa deben quedar perfectamente uniformes: sin manchas, nubes, «aguas», vetas, ruido ni textura añadida (un degradado suave de la luz sí es normal).',
       coh.length ? 'Las ÚLTIMAS ' + coh.length + ' imágenes adjuntas son OTRAS VISTAS del mismo espacio, ya con los cambios aprobados. La primera imagen debe quedar COHERENTE con ellas: (1) la misma iluminación (misma temperatura de color, misma intensidad y mismo efecto de los focos, las tiras LED y los halos), (2) los mismos colores y acabados de paredes, suelos, techos y materiales, (3) la misma decoración y los mismos objetos en las zonas que se vean también en esas vistas, y (4) las MISMAS MÁQUINAS: cada máquina o equipo que aparezca en alguna de esas vistas debe ser exactamente el mismo modelo (misma forma, color, acabado, detalles, rótulos y logotipos) cuando salga en la primera imagen. ORIENTACIÓN Y POSICIÓN: de las vistas de referencia toma SOLO el diseño, el color, los detalles y los rótulos de cada máquina; su posición, su orientación (hacia dónde mira), su escala y su perspectiva son las de la PRIMERA imagen y no se tocan. No gires, no espejes y no muevas ninguna máquina ni objeto. No inventes nada que no aparezca en la primera imagen ni en esas vistas. No copies su encuadre ni su composición: mantén el de la primera imagen.' : '',
       'RESPETA LA ILUMINACIÓN EXISTENTE: los focos y downlights, las tiras LED, las luces indirectas y su brillo, los halos, los reflejos y las sombras deben quedar exactamente como están (misma intensidad, misma posición, misma temperatura). No añadas, quites, apagues ni intensifiques ninguna luz, y no aclares ni oscurezcas la escena.',
@@ -296,7 +299,7 @@ router.post('/editar', async (req, res) => {
       if (mk) { try { mascaraBN = (await sharp(Buffer.from(mk[1], 'base64')).ensureAlpha().extractChannel(3).negate().png().toBuffer()).toString('base64'); } catch { /* sin guía de zona */ } }
       const partes = [{ text: prompt + (mascaraBN ? ' La imagen en blanco y negro que va después del render indica la zona a cambiar (blanco = zona que cambia, negro = no se toca); no la dibujes en el resultado.' : '') + ' Devuelve la imagen editada completa, con el mismo encuadre y proporción.' }, { inlineData: { mimeType: m[1], data: m[2] } }];
       if (mascaraBN) partes.push({ inlineData: { mimeType: 'image/png', data: mascaraBN } });
-      refs.concat(coh).forEach(x => partes.push({ inlineData: { mimeType: x[1], data: x[2] } }));
+      refs.concat(ctx, coh).forEach(x => partes.push({ inlineData: { mimeType: x[1], data: x[2] } }));
       const llamarG = async (cfg) => {
         const rg = await fetch(`${API}/models/${modeloO}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': clave }, body: JSON.stringify({ contents: [{ parts: partes }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'], ...(cfg ? { imageConfig: cfg } : {}) } }) });
         return { rg, jg: await rg.json().catch(() => ({})) };
@@ -315,7 +318,7 @@ router.post('/editar', async (req, res) => {
       if (fidelidad && modeloO !== 'gpt-image-2') fd.append('input_fidelity', 'high');
       const usa = conRefs && (refs.length || coh.length);
       fd.append(usa ? 'image[]' : 'image', new Blob([Buffer.from(m[2], 'base64')], { type: m[1] }), 'render.' + (m[1] === 'image/png' ? 'png' : 'jpg'));
-      if (usa) { refs.forEach((x, i) => fd.append('image[]', new Blob([Buffer.from(x[2], 'base64')], { type: x[1] }), 'referencia' + (i + 1) + '.' + (x[1] === 'image/png' ? 'png' : 'jpg'))); coh.forEach((x, i) => fd.append('image[]', new Blob([Buffer.from(x[2], 'base64')], { type: x[1] }), 'vista' + (i + 1) + '.' + (x[1] === 'image/png' ? 'png' : 'jpg'))); }
+      if (usa) { refs.forEach((x, i) => fd.append('image[]', new Blob([Buffer.from(x[2], 'base64')], { type: x[1] }), 'referencia' + (i + 1) + '.' + (x[1] === 'image/png' ? 'png' : 'jpg'))); ctx.forEach((x, i) => fd.append('image[]', new Blob([Buffer.from(x[2], 'base64')], { type: x[1] }), 'contexto' + (i + 1) + '.' + (x[1] === 'image/png' ? 'png' : 'jpg'))); coh.forEach((x, i) => fd.append('image[]', new Blob([Buffer.from(x[2], 'base64')], { type: x[1] }), 'vista' + (i + 1) + '.' + (x[1] === 'image/png' ? 'png' : 'jpg'))); }
       if (mk) fd.append('mask', new Blob([Buffer.from(mk[1], 'base64')], { type: 'image/png' }), 'mascara.png');
       const rr = await fetch('https://api.openai.com/v1/images/edits', { method: 'POST', headers: { Authorization: 'Bearer ' + clave }, body: fd });
       return { rr, jj: await rr.json().catch(() => ({})) };
