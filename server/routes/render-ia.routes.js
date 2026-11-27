@@ -270,7 +270,7 @@ router.post('/editar', async (req, res) => {
       const corto = Math.floor(lado / Math.max(ratio, 1 / ratio) / 16) * 16;
       tamSalida = ratio >= 1 ? lado + 'x' + corto : corto + 'x' + lado;
     }
-    let modeloO = alta ? 'gpt-image-2' : process.env.OPENAI_IMAGE_MODEL || imagenOpenAI || 'gpt-image-1';
+    let modeloO = alta ? 'gpt-image-2' : process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2';
     let b64g = null;
     if (motor === 'gemini') {
       modeloO = await modeloEdicionGemini(clave);
@@ -311,6 +311,7 @@ router.post('/editar', async (req, res) => {
       if (lista.length && lista[0] !== modeloO) { modeloO = lista[0]; imagenOpenAI = modeloO; ({ rr, jj } = await llamar()); }
     }
     if (!rr.ok && /input_fidelity|unknown|unsupported/i.test(JSON.stringify(jj?.error || {}))) ({ rr, jj } = await llamar({ fidelidad: false }));
+    if (!rr.ok && !b64g && modeloO === 'gpt-image-2' && !alta) { console.error('render-ia editar gpt-image-2', rr.status, jj?.error?.message); modeloO = imagenOpenAI || 'gpt-image-1'; ({ rr, jj } = await llamar()); } // si el nuevo no puede (p. ej. con máscara), se usa el anterior
     if (!rr.ok && (refs.length || coh.length)) ({ rr, jj } = await llamar({ fidelidad: false, conRefs: false })); // si no admite varias imágenes, se edita sin las referencias
     if (!rr.ok) { console.error('render-ia editar', rr.status, jj?.error?.message); return res.status(502).json({ error: 'ChatGPT no ha podido editar la imagen' + (jj?.error?.message ? ': ' + String(jj.error.message).slice(0, 220) : '') }); }
     const b64 = jj?.data?.[0]?.b64_json;

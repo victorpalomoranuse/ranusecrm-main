@@ -6,6 +6,32 @@ import api from '../services/api';
 // original, seguir editando sobre él y guardar la que guste en la galería. Sin zona marcada, la instrucción se aplica a toda la imagen.
 const ORO = '#c9a46c';
 const carga = src => new Promise((ok, ko) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => ko(new Error('No se pudo cargar la imagen')); i.src = src; });
+// Solo lo que ha cambiado: la IA repinta TODA la imagen en cada edición y, encadenando cambios, se va manchando y perdiendo detalle.
+// Se compara el resultado con la imagen anterior y solo se toma de la IA la zona que de verdad cambia (o la zona pintada);
+// el resto se copia tal cual de la versión anterior a tamaño completo. Si cambia casi todo (p. ej. «hazlo de noche»), se deja el resultado entero.
+const soloLoCambiado = (base, sal, W0, H0, pintura) => {
+  const out = document.createElement('canvas'); out.width = W0; out.height = H0; const go = out.getContext('2d');
+  const mk = document.createElement('canvas'); mk.width = W0; mk.height = H0; const gm = mk.getContext('2d');
+  if (pintura) {
+    gm.filter = 'blur(' + Math.max(2, Math.round(W0 / 600)) + 'px)'; gm.drawImage(pintura, 0, 0, W0, H0);
+  } else {
+    const w = 384, h = Math.max(8, Math.round(384 * H0 / W0));
+    const lee = im => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.filter = 'blur(1.5px)'; g.drawImage(im, 0, 0, w, h); return g.getImageData(0, 0, w, h).data; };
+    const a = lee(base), b = lee(sal), n = w * h, med = [0, 0, 0];
+    for (let i = 0; i < n; i++) for (let c = 0; c < 3; c++) med[c] += (b[i * 4 + c] - a[i * 4 + c]) / n; // desvío global de color (se ignora: no es un cambio de objeto)
+    let m = new Uint8Array(n), cambiados = 0;
+    for (let i = 0; i < n; i++) { let d = 0; for (let c = 0; c < 3; c++) d = Math.max(d, Math.abs(b[i * 4 + c] - a[i * 4 + c] - med[c])); m[i] = d > 22 ? 1 : 0; cambiados += m[i]; }
+    if (cambiados / n > 0.55) return null;
+    for (let it = 0; it < 4; it++) { const m2 = m.slice(); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { if (m[y * w + x]) continue; if ((x > 0 && m[y * w + x - 1]) || (x < w - 1 && m[y * w + x + 1]) || (y > 0 && m[(y - 1) * w + x]) || (y < h - 1 && m[(y + 1) * w + x])) m2[y * w + x] = 1; } m = m2; } // se ensancha un poco la zona
+    const pc = document.createElement('canvas'); pc.width = w; pc.height = h; const gp = pc.getContext('2d'), id = gp.createImageData(w, h);
+    for (let i = 0; i < n; i++) id.data[i * 4 + 3] = m[i] ? 255 : 0;
+    gp.putImageData(id, 0, 0);
+    gm.filter = 'blur(' + Math.max(3, Math.round(W0 / 160)) + 'px)'; gm.drawImage(pc, 0, 0, W0, H0);
+  }
+  gm.filter = 'none'; gm.globalCompositeOperation = 'source-in'; gm.drawImage(sal, 0, 0, W0, H0);
+  go.drawImage(base, 0, 0, W0, H0); go.drawImage(mk, 0, 0);
+  return out.toDataURL('image/jpeg', 0.96);
+};
 const aDataUrl = (img, ancho, alto, tipo = 'image/png', calidad) => { const c = document.createElement('canvas'); c.width = ancho; c.height = alto; c.getContext('2d').drawImage(img, 0, 0, ancho, alto); return c.toDataURL(tipo, calidad); };
 const leeArchivo = f => new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsDataURL(f); });
 
@@ -169,7 +195,9 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
           const r = await api.post('/render-ia/editar', { imagen, mascara, instruccion: instr, referencias: calidadSola ? [] : refs, calidad: calidadSola, altaResolucion, coherencia, motor: mo }, { timeout: 280000 });
           const sal = await carga(r.data.imagen);
           // Gemini puede devolver otra proporción o tamaño: siempre se vuelve al tamaño del original
-          const url = altaResolucion && mo === 'openai' ? r.data.imagen : aDataUrl(sal, W0, H0, 'image/jpeg', 0.93);
+          let url = null;
+          if (!calidadSola) { try { url = soloLoCambiado(base, sal, W0, H0, pintado ? lienzo.current : null); } catch { /* imagen sin permiso de lectura: se usa entera */ } }
+          if (!url) url = altaResolucion && mo === 'openai' ? r.data.imagen : aDataUrl(sal, W0, H0, 'image/jpeg', 0.95);
           return { url, mo };
         } catch (e) { return { error: NOMBRE_MOTOR[mo] + ': ' + (e.response?.data?.error || e.message || 'no se pudo editar') }; }
       }));
