@@ -1618,6 +1618,24 @@ const ACABADOS_COMBI = {
   tapizado: ['Tapizado / terciopelo', { rough: 1 }, 'tapiz, terciopelo, cuero'],
   melamina: ['Panel lacado / melamina', { rough: 0.5, clearcoat: 0.2 }, 'panel'],
 };
+// Asistente de prompt del 360° con IA: plantillas y apartados (foto, luz, materiales, añadir, no tocar)
+const PROMPT_FOTO = { revista: 'fotografía profesional de interiorismo, cámara full frame, nitidez alta, aspecto de revista de arquitectura', natural: 'fotografía real de interiorismo, aspecto natural y cálido, como hecha por un fotógrafo de inmobiliaria de alta gama', comercial: 'fotografía comercial muy luminosa y limpia, colores vivos pero naturales, nitidez alta', ninguna: '' };
+const PROMPT_LUZ = { tal: 'respeta la iluminación del render tal cual (mismas luces, misma intensidad y temperatura)', dia: 'luz natural de día suave entrando por las ventanas, con las luces interiores encendidas en tono cálido; sombras suaves y realistas, sin zonas quemadas', tarde: 'luz de tarde cálida y dorada entrando por las ventanas, ambiente acogedor, luces interiores encendidas', noche: 'de noche: fuera oscuro, el espacio iluminado solo por sus luces (tiras LED y focos) en tono cálido, con brillos y halos realistas', estudio: 'luz de estudio fotográfico uniforme y suave, sin sombras duras, colores muy fieles' };
+const PROMPT_PLANTILLAS = [
+  { n: 'Solo realismo (no cambia nada)', foto: 'revista', luz: 'tal', add: '' },
+  { n: 'Día natural', foto: 'revista', luz: 'dia', add: '' },
+  { n: 'Tarde cálida', foto: 'natural', luz: 'tarde', add: '' },
+  { n: 'Noche con LED', foto: 'revista', luz: 'noche', add: '' },
+  { n: 'Catálogo comercial', foto: 'comercial', luz: 'estudio', add: '' },
+];
+const PROMPT_EXTRAS = ['una toalla gris doblada', 'una botella de agua', 'una planta verde en maceta', 'una esterilla enrollada', 'un reloj de pared minimalista', 'cuadros decorativos sencillos'];
+const componerPrompt = (c) => [
+  PROMPT_FOTO[c.foto] ? 'FOTO: ' + PROMPT_FOTO[c.foto] + '.' : '',
+  'LUZ: ' + (PROMPT_LUZ[c.luz] || PROMPT_LUZ.tal) + (c.luzExtra ? '. ' + c.luzExtra : '') + '.',
+  'MATERIALES: respeta exactamente los materiales y colores del render, pero con textura real y detalle fino' + (c.mat ? ': ' + c.mat : '') + '.',
+  c.add ? 'AÑADIR: ' + c.add + '. Solo eso, discreto y a escala.' : '',
+  'NO TOCAR: la posición y el tamaño de máquinas, muebles, puertas, ventanas y espejos.',
+].filter(Boolean).join('\n');
 const NCS_PRE = ['S 0500-N', 'S 0502-Y', 'S 0502-B', 'S 0505-Y20R', 'S 1002-Y', 'S 1002-R', 'S 1500-N', 'S 2005-Y20R', 'S 2500-N', 'S 3005-Y50R', 'S 4500-N', 'S 7500-N', 'RAL 9010', 'RAL 9003', 'RAL 9016', 'RAL 7035', 'RAL 7044', 'RAL 7016', 'RAL 9005'];
 function codigoHex(cod) {
   const t = String(cod || '').trim().toUpperCase();
@@ -6513,6 +6531,12 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
       return c.toDataURL('image/jpeg', 0.85);
     } catch { return null; } finally { r.setPixelRatio(prPrev); r.setSize(tamPrev.x, tamPrev.y); r.setRenderTarget(tgPrev); ocultos.forEach(o => { o.visible = true; }); }
   };
+  const materialesDel3D = () => {
+    const vals = new Set(); const mete = o => Object.values(o || {}).forEach(v => { if (typeof v === 'string') vals.add(v); else if (v && typeof v === 'object') Object.values(v).forEach(w => typeof w === 'string' && vals.add(w)); });
+    ['muros', 'salas', 'techos', 'pilares'].forEach(k => mete(acab[k])); ['todosMuros', 'todosSuelos', 'todosTechos'].forEach(k => acab[k] && vals.add(acab[k]));
+    const nombres = [...vals].map(v => { if (String(v).startsWith('tex:')) { const t = texturas.find(x => 'tex:' + x.id === v); return t ? String(t.nombre).toLowerCase() : null; } return null; }).filter(Boolean);
+    return [...new Set(nombres)].slice(0, 8).join(', ');
+  };
   const panoPeque = async (url) => { try { const im = await new Promise((ok, ko) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = ko; i.src = url; }); const c = document.createElement('canvas'); c.width = 1024; c.height = 512; c.getContext('2d').drawImage(im, 0, 0, 1024, 512); return c.toDataURL('image/jpeg', 0.82); } catch { return null; } };
   const subirCalidadPano = async () => {
     const P = pano, v = (P?.versiones || []).find(x => x.url === P.url); if (!v?.caras || mejoraPano?.trabajando) return;
@@ -8381,7 +8405,39 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
               <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
                 {renders.filter(r => r.tipo !== '360' && r.tipo !== 'maqueta').slice(0, 24).map(r => { const on = mejoraPano.refs.includes(r.id); return <img key={r.id} src={r.thumb || r.url} alt={r.nombre} title={r.nombre} onClick={() => setMejoraPano(m => ({ ...m, refs: on ? m.refs.filter(x => x !== r.id) : m.refs.length < 3 ? [...m.refs, r.id] : m.refs }))} style={{ height: 64, borderRadius: 4, cursor: 'pointer', outline: on ? '3px solid #b48cf0' : '1px solid #444', opacity: on ? 1 : 0.7 }} />; })}
               </div>
-              <textarea value={mejoraPano.extra || ''} onChange={e => setMejoraPano(m => ({ ...m, extra: e.target.value }))} rows={2} placeholder="Qué quieres cambiar o mejorar (opcional). Ej.: suelo de caucho negro, pared del fondo en microcemento gris, luz más cálida…" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginTop: 6, fontFamily: 'inherit', resize: 'vertical' }} />
+              {(() => {
+                const c = { foto: 'revista', luz: 'tal', mat: '', add: '', luzExtra: '', ...(mejoraPano.pl || {}) }, pon = n => setMejoraPano(m => { const pl = { ...c, ...n }; return { ...m, pl, extra: componerPrompt(pl) }; });
+                let mias = []; try { mias = JSON.parse(localStorage.getItem('ranusePlantillas360') || '[]'); } catch { /* sin almacenamiento */ }
+                const sel = { ...btn, padding: '3px 6px', fontSize: 12 };
+                return (
+                  <div style={{ background: '#1d1926', borderRadius: 6, padding: 8, marginTop: 6, display: 'grid', gap: 6, fontSize: 12 }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <b>📝 Plantilla:</b>
+                      {PROMPT_PLANTILLAS.map(p => <button key={p.n} style={{ ...sel, background: '#333' }} onClick={() => pon({ foto: p.foto, luz: p.luz, add: p.add, luzExtra: '', mat: c.mat || materialesDel3D() })}>{p.n}</button>)}
+                      {mias.map((p, i) => <span key={'m' + i} style={{ display: 'inline-flex' }}><button style={{ ...sel, background: '#3d2f5a' }} title="Tu plantilla" onClick={() => setMejoraPano(m => ({ ...m, extra: p.t, pl: p.pl || m.pl }))}>⭐ {p.n}</button><button style={{ ...sel, background: '#3d2f5a', opacity: 0.6 }} title="Borrar plantilla" onClick={() => { if (!window.confirm('¿Borrar la plantilla «' + p.n + '»?')) return; try { localStorage.setItem('ranusePlantillas360', JSON.stringify(mias.filter((_, j) => j !== i))); } catch { /* sin almacenamiento */ } setMejoraPano(m => ({ ...m })); }}>✕</button></span>)}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ opacity: 0.75 }}>📷 Foto</span><select value={c.foto} onChange={e => pon({ foto: e.target.value })} style={sel}><option value="revista">Revista de arquitectura</option><option value="natural">Natural y cálida</option><option value="comercial">Comercial luminosa</option><option value="ninguna">(sin estilo)</option></select>
+                      <span style={{ opacity: 0.75, marginLeft: 6 }}>💡 Luz</span><select value={c.luz} onChange={e => pon({ luz: e.target.value })} style={sel}><option value="tal">Como en el render</option><option value="dia">Día natural</option><option value="tarde">Tarde cálida</option><option value="noche">Noche con LED</option><option value="estudio">Estudio fotográfico</option></select>
+                      <input value={c.luzExtra} onChange={e => pon({ luzExtra: e.target.value })} placeholder="Algo más de luz (opcional): LED más intensas…" style={{ ...sel, flex: 1, minWidth: 160 }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ opacity: 0.75, whiteSpace: 'nowrap' }}>🧱 Materiales</span><input value={c.mat} onChange={e => pon({ mat: e.target.value })} placeholder="Ej.: suelo de caucho con su grano, madera del panel con veta natural…" style={{ ...sel, flex: 1 }} />
+                      <button style={sel} title="Rellena con los materiales que tienes puestos en el 3D" onClick={() => pon({ mat: materialesDel3D() })}>↻ Del 3D</button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ opacity: 0.75 }}>➕ Añadir</span>
+                      {PROMPT_EXTRAS.map(x => <button key={x} style={{ ...sel, background: c.add.includes(x) ? '#6b4fa0' : '#333', fontSize: 11 }} onClick={() => pon({ add: c.add.includes(x) ? c.add.split(', ').filter(y => y !== x).join(', ') : [c.add, x].filter(Boolean).join(', ') })}>{x}</button>)}
+                      <input value={c.add} onChange={e => pon({ add: e.target.value })} placeholder="u otra cosa…" style={{ ...sel, flex: 1, minWidth: 140 }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ opacity: 0.55, flex: 1 }}>El texto de abajo se escribe solo; puedes retocarlo a mano antes de generar.</span>
+                      <button style={sel} disabled={!(mejoraPano.extra || '').trim()} onClick={() => { const n = (window.prompt('Nombre para esta plantilla:', '') || '').trim(); if (!n) return; try { localStorage.setItem('ranusePlantillas360', JSON.stringify([...mias.filter(p => p.n !== n), { n, t: mejoraPano.extra, pl: c }].slice(-12))); } catch { /* sin almacenamiento */ } setMejoraPano(m => ({ ...m })); }}>💾 Guardar como plantilla</button>
+                    </div>
+                  </div>
+                );
+              })()}
+              <textarea value={mejoraPano.extra || ''} onChange={e => setMejoraPano(m => ({ ...m, extra: e.target.value }))} rows={5} placeholder="Elige una plantilla arriba o escribe qué quieres (opcional). Vacío = solo realismo." style={{ ...btn, width: '100%', boxSizing: 'border-box', marginTop: 6, fontFamily: 'inherit', resize: 'vertical' }} />
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
                 <span style={{ opacity: 0.75 }}>🤖 Motor:</span>
                 <span style={{ opacity: 0.75, marginLeft: 8 }}>Método:</span>
