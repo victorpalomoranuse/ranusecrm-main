@@ -6329,6 +6329,43 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
       return r || false;
     } catch (e) { setAviso('No se ha podido meter el cambio en el panorama: ' + (e.message || 'error')); return false; }
   };
+  // 360° directo del tiempo real (sin IA, hasta 8K) desde donde está la cámara; luego se mejora entero por caras o se retoca por vistas
+  const hacer360Directo = () => {
+    if (!avisaCalidadTour()) return;
+    const a = api3d.current; setGenerando360(true); setAviso('Sacando el 360° del render en tiempo real…');
+    setTimeout(() => {
+      try {
+        const dir = new THREE.Vector3(); a.cam.getWorldDirection(dir);
+        const pos = a.cam.position.clone();
+        let url = null;
+        for (const t of [4096, 2048, 1024]) { try { url = capturarEquirect(a.renderer, a.scene, pos, 0, t, [a.gizmoG, a.cotasG, a.nodoG, a.guiaG], t >= 4096 ? 0.88 : 0.92); break; } catch (e) { if (t === 1024) throw e; } }
+        setPano({ url, guardado: false, meta: metaActual(), origen: { pos: [pos.x, pos.y, pos.z] }, vista: { lon: Math.PI + Math.atan2(dir.x, dir.z), lat: 0 } }); setAviso('');
+      } catch (e) { setAviso('No se ha podido sacar el 360°: ' + (e.message || 'error')); }
+      setGenerando360(false);
+    }, 60);
+  };
+  // ✨ todo el 360° por IA (Nano Banana Pro, 6 caras) desde el mismo punto, con hasta 3 imágenes tuyas como estilo
+  const [mejoraPano, setMejoraPano] = useState(null); // { refs: [], trabajando, texto }
+  const mejorarPanoCaras = async () => {
+    const P = pano; if (!P?.origen || mejoraPano?.trabajando) return;
+    if (!window.confirm('Se mejora el 360° entero con IA (Nano Banana Pro): 6 imágenes, unos 1–2 min y menos de 1 € aprox.' + (mejoraPano?.refs?.length ? ' Usará ' + mejoraPano.refs.length + ' de tus imágenes como estilo.' : ' Sin imágenes de estilo.') + ' ¿Seguir?')) return;
+    setMejoraPano(m => ({ ...(m || {}), trabajando: true, texto: 'preparando' }));
+    try {
+      const vistas = await Promise.all(renders.filter(r => (mejoraPano?.refs || []).includes(r.id)).slice(0, 3).map(async r => {
+        const blob = await (await fetch(r.url)).blob(), obj = URL.createObjectURL(blob);
+        try {
+          const img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = obj; });
+          const k = Math.min(1, 1024 / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
+          c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          return c.toDataURL('image/jpeg', 0.85);
+        } finally { URL.revokeObjectURL(obj); }
+      }));
+      const url = await panoPorCaras(new THREE.Vector3(...P.origen.pos), 0, vistas, t => setMejoraPano(m => ({ ...(m || {}), texto: t })));
+      const vista = panoFin.current?.vista?.();
+      setPano({ ...P, url, guardado: false, id: undefined, sinIA: P.sinIA || P.url, vista: vista ? { lon: vista.lon, lat: vista.lat, fov: vista.fov } : P.vista });
+      setMejoraPano(null); setAviso('360° mejorado con IA. Revísalo y pulsa ⭐ Guardar en la galería.');
+    } catch (e) { setMejoraPano(m => ({ ...(m || {}), trabajando: false, texto: '' })); setAviso('No se ha podido mejorar el 360°: ' + (e.message || 'error')); }
+  };
   const hacer360 = () => {
     const a = api3d.current; setGenerando360(true);
     setTimeout(() => {
@@ -7672,6 +7709,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
           <button style={bTop} disabled={!modoRender || renderizando || estado !== 'listo'} onClick={exportarFullHD} title="Exporta 1920 × 1080 y guarda una copia en la galería">{renderizando ? 'Exportando…' : '3 · Exportar Full HD'}</button>
           <button style={{ ...bTop, ...(galAbierta ? bOn : {}) }} onClick={() => { setRenderAbierto(false); setGalAbierta(v => !v); }} title="Selecciona una imagen de la galería y pulsa Editar con IA (otro clic lo cierra)">4 · Postproducción IA</button>
           <button style={bTop} disabled={generandoParada || generando360 || estado !== 'listo'} onClick={() => { setGalAbierta(false); setTourPipeline(true); }}>5 · Crear tour</button>
+          <button style={bTop} disabled={generandoParada || generando360 || estado !== 'listo'} onClick={hacer360Directo} title="Saca un panorama 360° del render en tiempo real (hasta 8K, sin IA) desde donde está la cámara. Después puedes mejorarlo entero con IA o retocarlo por vistas">{generando360 ? 'Sacando 360°…' : '🌐 360° directo'}</button>
         </>}
         <button style={{ ...bTop, ...(ayudaAbierta ? bOn : {}) }} onClick={() => setAyudaAbierta(v => !v)} title="Tutorial, preguntar cómo se hace algo y lista de atajos">? Ayuda</button>
       </div>
@@ -8165,10 +8203,21 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
             <b style={{ flex: 1 }}>🌐 Panorama 360° <span style={{ fontWeight: 400, opacity: 0.6, fontSize: 12 }}>arrastra para mirar alrededor · rueda para acercar</span></b>
             {!pano.guardado && !pano.id && <button style={{ ...btn, background: '#8c8076' }} onClick={async () => { const r = await guardarRender('360', pano.url, pano.meta); if (r) setPano(p => ({ ...p, guardado: true })); }}>⭐ Guardar en la galería</button>}
             {pano.guardado && <span style={{ color: '#7bd88f' }}>Guardado ✓</span>}
+            {pano.origen && <button style={{ ...btn, background: '#6b4fa0' }} disabled={!!mejoraPano?.trabajando} onClick={() => setMejoraPano(m => (m ? (m.trabajando ? m : null) : { refs: [] }))} title="Pasa el 360° entero por la IA (Nano Banana Pro, 6 caras) desde el mismo punto">{mejoraPano?.trabajando ? '✨ ' + (mejoraPano.texto || 'trabajando') + '…' : '✨ Mejorar todo con IA'}</button>}
+            {pano.sinIA && <button style={btn} onClick={() => setPano(p => ({ ...p, url: p.sinIA, sinIA: p.url, guardado: false, id: undefined, vista: panoFin.current?.vista?.() || p.vista }))} title="Cambia entre la versión con IA y la del render en tiempo real para comparar">⇄ Comparar con/sin IA</button>}
             <button style={{ ...btn, background: '#8c8076' }} disabled={preparandoVista} onClick={editarVistaPano} title="Saca como foto lo que estás mirando, la editas con IA como cualquier render y el cambio vuelve a meterse en el panorama. Se guarda como panorama nuevo: el original no se toca">{preparandoVista ? 'Preparando…' : '✏️ Editar esta vista con IA'}</button>
             <a style={{ ...btn, textDecoration: 'none' }} href={pano.url} download={(titulo || 'plano') + '-panorama-360.jpg'}>Descargar</a>
-            <button style={btn} onClick={() => setPano(null)}>Cerrar</button>
+            <button style={btn} disabled={!!mejoraPano?.trabajando} onClick={() => { setPano(null); setMejoraPano(null); }}>Cerrar</button>
           </div>
+          {mejoraPano && !mejoraPano.trabajando && (
+            <div style={{ background: '#241f2e', color: '#fff', borderRadius: 8, padding: 8, fontSize: 12 }}>
+              <div style={{ marginBottom: 6 }}><b>Imágenes de estilo (opcional, hasta 3):</b> la IA copiará su acabado. Sin elegir ninguna, solo da realismo.</div>
+              <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
+                {renders.filter(r => r.tipo !== '360' && r.tipo !== 'maqueta').slice(0, 24).map(r => { const on = mejoraPano.refs.includes(r.id); return <img key={r.id} src={r.thumb || r.url} alt={r.nombre} title={r.nombre} onClick={() => setMejoraPano(m => ({ ...m, refs: on ? m.refs.filter(x => x !== r.id) : m.refs.length < 3 ? [...m.refs, r.id] : m.refs }))} style={{ height: 64, borderRadius: 4, cursor: 'pointer', outline: on ? '3px solid #b48cf0' : '1px solid #444', opacity: on ? 1 : 0.7 }} />; })}
+              </div>
+              <button style={{ ...btn, background: '#6b4fa0', fontWeight: 700, marginTop: 6 }} onClick={mejorarPanoCaras}>✨ Mejorar el 360° {mejoraPano.refs.length ? 'con ' + mejoraPano.refs.length + ' de estilo' : 'sin estilo'}</button>
+            </div>
+          )}
           <div ref={panoCont} style={{ flex: 1, minHeight: 0, borderRadius: 8, overflow: 'hidden', background: '#000' }} />
           <div style={{ color: '#fff', opacity: 0.5, fontSize: 11 }}>La imagen descargada es un panorama equirrectangular estándar: se abre en cualquier visor 360 (Facebook, Google Fotos, Kuula, etc.).</div>
         </div>
