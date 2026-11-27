@@ -3097,6 +3097,7 @@ function elevSvg(C,px,el,codes,flat){
     if(m.k==='mue'||m.k==='baj')h+=ln(mx0+mw/2,my,mx0+mw/2,my+m.h,col,0.8*px)+ln(mx0,my+m.h*0.5,mx0+mw,my+m.h*0.5,col,0.6*px);
     h+=txt(C,px,mx0+mw/2,my+Math.min(m.h/2,18*px)+4*px,mmCod(m)+' '+mmNombre(m),col,10,600);
   });
+  var llamZ=[];
   (st&&st.v&&st.v.fz||[]).forEach(function(z){
     if(z.wall!==el.w.id||z.sd!==el.sd)return;
     var zm=matOf('acab',z.mat),zx=z.x0,zw=z.x1-z.x0,zy=H-z.y1,zh=z.y1-z.y0;
@@ -3110,7 +3111,7 @@ function elevSvg(C,px,el,codes,flat){
       G(0,gy,zx,gy,zx,'l');G(zx+zw,gy,L,gy,L-zx-zw,'r');G(gx,zy+zh,gx,H,z.y0,'b');G(gx,0,gx,zy,H-z.y1,'t');
     }
     h+='<rect x="'+f2(zx)+'" y="'+f2(zy)+'" width="'+f2(zw)+'" height="'+f2(zh)+'" style="fill:none;stroke:'+(slz?C.accent:col)+';stroke-width:'+f2((slz?2.6:0.9)*px)+(slz?'':';stroke-dasharray:'+f2(5*px)+' '+f2(3*px))+'"/>';
-    if(zw/px>26&&zh/px>14)h+=txt(C,px,zx+zw/2,zy+zh/2+4*px,(codes[z.mat]||''),C.label,10,700);
+    llamZ.push({ax:zx+zw*0.75,ay:zy+Math.min(zh*0.35,60),code:codes[z.mat]||'',m:zm});
   });
   /* recrecidos de este muro y este lado: con su trama (rayado a 45°), sin texto; el material va en la leyenda */
   ((st&&st.v&&st.v.rc)||[]).forEach(function(rc){
@@ -3214,7 +3215,9 @@ function elevSvg(C,px,el,codes,flat){
   /* título */
   var code=el.mat?(codes[el.mat]||''):'';
   h+=txt(C,px,L/2,(items.length?yt:yd)-22*px,'ALZADO '+el.id+(el.room?' · '+el.room:''),C.label,13,600);
-  if(m)h+=acabLlamada(C,px,L-Math.min(L*0.12,60),H*0.3,L+26*px,code,m);
+  var yLl=H*0.22;
+  if(m){h+=acabLlamada(C,px,L-Math.min(L*0.12,60),yLl,L+26*px,code,m);yLl+=62*px}
+  llamZ.forEach(function(q){h+=acabLlamada(C,px,q.ax,q.ay,L+26*px,q.code,q.m,yLl);yLl+=62*px});
   return h+eqaSvg(C,px,el);
 }
 /* nombre del acabado sin el código de color (el NCS o RAL va en la leyenda) */
@@ -3224,16 +3227,17 @@ function acabNomLimpio(m){
   return n||String(m.n||'');
 }
 /* llamada decorativa: flechita desde la pared, círculo con el color y debajo qué es */
-function acabLlamada(C,px,ax,ay,bx,code,m){
+function acabLlamada(C,px,ax,ay,bx,code,m,by){
+  if(by==null)by=ay;
   var c=/^#[0-9a-f]{6}$/i.test(m.c||'')?m.c:'#d9d0c6',r=7*px,partes=acabNomLimpio(m).split(' · '),st0=function(s){return s.replace('text-anchor="middle"','text-anchor="start"')};
-  var h=ln(ax,ay,bx-r,ay,C.label,0.7*px,'round');
+  var h=ln(ax,ay,bx-r,by,C.label,0.7*px,'round');
   h+='<circle cx="'+f2(ax)+'" cy="'+f2(ay)+'" r="'+f2(1.8*px)+'" style="fill:'+C.label+'"/>';
-  h+='<circle cx="'+f2(bx)+'" cy="'+f2(ay)+'" r="'+f2(r)+'" style="fill:'+c+';stroke:'+C.label+';stroke-width:'+f2(0.7*px)+'"/>';
-  if(m.tx&&m.tx.uri)h+='<clipPath id="cl'+String(m.id).replace(/[^a-z0-9]/gi,'')+'"><circle cx="'+f2(bx)+'" cy="'+f2(ay)+'" r="'+f2(r-0.5*px)+'"/></clipPath><image href="'+m.tx.uri+'" x="'+f2(bx-r)+'" y="'+f2(ay-r)+'" width="'+f2(2*r)+'" height="'+f2(2*r)+'" preserveAspectRatio="xMidYMid slice" clip-path="url(#cl'+String(m.id).replace(/[^a-z0-9]/gi,'')+')"/>';
-  var y=ay+r+13*px,x=bx-r;
+  h+='<circle cx="'+f2(bx)+'" cy="'+f2(by)+'" r="'+f2(r)+'" style="fill:'+c+';stroke:'+C.label+';stroke-width:'+f2(0.7*px)+'"/>';
+  if(m.tx&&m.tx.uri)h+='<clipPath id="cl'+String(m.id).replace(/[^a-z0-9]/gi,'')+'"><circle cx="'+f2(bx)+'" cy="'+f2(by)+'" r="'+f2(r-0.5*px)+'"/></clipPath><image href="'+m.tx.uri+'" x="'+f2(bx-r)+'" y="'+f2(by-r)+'" width="'+f2(2*r)+'" height="'+f2(2*r)+'" preserveAspectRatio="xMidYMid slice" clip-path="url(#cl'+String(m.id).replace(/[^a-z0-9]/gi,'')+')"/>';
+  var y=by+r+13*px,x=bx-r;
   if(code){h+=st0(txt(C,px,x,y,code,C.label,10.5,700));y+=12*px}
   partes.forEach(function(p,i){h+=st0(txt(C,px,x,y,p,i?C.dim:C.label,9.5,i?400:500));y+=11*px});
-  if(m.cod)h+=st0(txt(C,px,x,y,String(m.cod),C.dim,8.5,500));
+  if(m.cod&&!/^Color #/i.test(m.cod))h+=st0(txt(C,px,x,y,String(m.cod),C.dim,8.5,500));
   return h;
 }
 function eqaSvg(C,px,el){
@@ -7429,6 +7433,8 @@ function panelSel(focus){
     h+='<div class="rowh"><strong>Acabado por zonas</strong><span class="muted">alzado '+(fal?fal.id:'')+'</span></div>';
     h+='<p class="note">Un trozo de pared con un material distinto. En la planta de Acabados se marca con una trama que remite a este alzado.</p>';
     h+='<label class="fld"><span>Material</span><select data-t="fz_mat">'+matsDe('acab').map(function(m){return '<option value="'+m.id+'"'+(m.id===fz.mat?' selected':'')+'>'+esc(m.n)+'</option>'}).join('')+'</select></label>';
+    var fzm=matOf('acab',fz.mat),fzh=/^#[0-9a-f]{6}$/i.test(fzm.c)?fzm.c:'#cccccc';
+    h+='<label class="fld"><span>Color (NCS o RAL, o elígelo)</span><div style="display:flex;gap:8px;align-items:center"><input data-t="fzc" list="dl-cod" value="'+esc(fzm.cod&&!/^Color #/i.test(fzm.cod)?fzm.cod:'')+'" placeholder="RAL 9010 o NCS S 0502-Y" autocomplete="off" style="flex:1"><input type="color" data-t="fzx" value="'+fzh+'" title="Color tal como se verá" style="width:46px;height:38px;padding:2px"></div></label><datalist id="dl-cod">'+NCS_PRE.map(function(x){return '<option value="'+x+'">'}).join('')+'</datalist>';
     h+=fld('fz_w','Ancho (cm)',f2(fz.x1-fz.x0))+fld('fz_h','Alto (cm)',f2(fz.y1-fz.y0));
     h+='<p class="note">La posición se ajusta en el alzado: arrástralo, o toca una de las cotas azules (a las paredes, al suelo o al techo) y escribe la distancia.</p>';
     h+='<p class="note">Superficie: '+m2(areaZona(fz)/10000)+' m²</p>';
@@ -8440,6 +8446,13 @@ $('side').addEventListener('change',function(e){
     commit(false);panelSel();return;
   }
   if(t==='esc_vis'&&st.sel&&st.sel.t==='eq'){var ev=by(st.v.eq,st.sel.id);if(ev&&ev.bl&&ev.bl.esc){snap();ev.vis=e.target.value||undefined;if(!ev.vis)delete ev.vis;ev.bl=escBl(ev.bl.esc,ev.rol||'sube',ev.vis);commit()}return}
+  if((t==='fzc'||t==='fzx')&&st.sel&&st.sel.t==='fz'){ /* color del trozo: con código (NCS/RAL) o elegido a mano */
+    var zq=by(st.v.fz||[],st.sel.id);if(!zq)return;
+    var zc0=matOf('acab',zq.mat),zb=zc0.base||zq.mat;snap();
+    if(t==='fzc'){var zcod=e.target.value.trim().toUpperCase();if(!zcod)zq.mat=zb;else{var zhx=codigoHex(zcod);if(!zhx){zhx=zc0.c;toast('No reconozco ese código como NCS ni RAL: elige el color a mano en el cuadro de al lado')}zq.mat=colorDe('acab',zb,zcod,zhx,true)}}
+    else{var zhx2=e.target.value;zq.mat=colorDe('acab',zb,(zc0.cod&&!/^Color #/i.test(zc0.cod))?zc0.cod:('Color '+zhx2.toUpperCase()),zhx2,true)}
+    commit(false);panelSel();return;
+  }
   if(t==='rc_ac'&&st.sel&&st.sel.t==='rc'){var rca=by(st.v.rc,st.sel.id);if(rca){snap();if(e.target.value)rca.ac=e.target.value;else delete rca.ac;commit(false)}return}
   if(t==='rc_mat'&&st.sel&&st.sel.t==='rc'){var rcm=by(st.v.rc,st.sel.id);if(rcm){snap();rcm.mat=e.target.value.trim();commit(false)}return}
   if((t==='eq_cat'||t==='eq_nom')&&st.sel&&st.sel.t==='eq'){
