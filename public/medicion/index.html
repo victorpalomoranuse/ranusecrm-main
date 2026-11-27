@@ -3086,20 +3086,20 @@ function elevSvg(C,px,el,codes,flat){
     if(wpx>46)h+=txt(C,px,cx,y0+o.h/2+10*px,fmtU(o.w)+'×'+fmtU(o.h)+(o.t==='win'&&o.sill?' ↑'+fmtU(o.sill):''),C.label,9.5,500);
   });
   /* tiras LED verticales (de suelo a techo) pegadas a este muro y en este lado: las de Planos y las hechas en el modelador 3D */
-  function ledV(c,lado,z0,alto,cl,tg){
+  function ledV(c,lado,z0,alto,cl,tg,q){
     var g=wg(el.w),s=(c.x-g.a.x)*g.ux+(c.y-g.a.y)*g.uy,dn=(c.x-g.a.x)*(-g.uy)+(c.y-g.a.y)*g.ux;
     if(s<-5||s>g.l+5||Math.abs(dn)>el.w.t/2+25)return;
     if(((lado==null?dn:lado)>=0?'p':'m')!==el.sd)return;
     var x=el.rev?L-s:s,y1=H-Math.max(0,z0||0),y0=Math.max(0,y1-Math.min(H,alto));
     h+='<rect x="'+f2(x-3)+'" y="'+f2(y0)+'" width="6" height="'+f2(y1-y0)+'" style="fill:'+cl+';fill-opacity:'+(flat?'.25':'.18')+';stroke:none"/>'+ln(x,y0,x,y1,cl,2.2*px,'round');
     if(tg)h+=txt(C,px,x+8*px,y0+14*px,tg,cl,10,700);
-    alzLeds.push(x);
+    alzLeds.push({x:x,q:q||null});
   }
   if(st&&st.v){
     st.v.pts.forEach(function(q){
       if(!ledVert(q)||q.s==='dem')return;
       var c=ptPos(q),c2=ptPos2(q),g=wg(el.w);
-      ledV(c,(c2.x-c.x)*(-g.uy)+(c2.y-c.y)*g.ux,0,q.hv>0?q.hv:H,lumColor(ptMont(q))||C.warn,lumTagMap()[q.id]||'');
+      ledV(c,(c2.x-c.x)*(-g.uy)+(c2.y-c.y)*g.ux,0,q.hv>0?q.hv:H,lumColor(ptMont(q))||C.warn,lumTagMap()[q.id]||'',q);
     });
     ((st.v.escena3d&&st.v.escena3d.objetos)||[]).forEach(function(o){ /* del modelador 3D: piezas LED o emisivas, finas y altas */
       var esL=/^#[0-9a-fA-F]{6}!$/.test(String(o.color||''))||o.tipo==='led'||!!o.emis;
@@ -3135,10 +3135,15 @@ function elevSvg(C,px,el,codes,flat){
     h+=ln(0,yd,L,yd,dcol,0.9*px)+ln(0,-2*px,0,yd-3*px,dcol,0.9*px)+ln(L,-2*px,L,yd-3*px,dcol,0.9*px)+tick(0,yd)+tick(L,yd)+txt(C,px,L/2,yd-5*px,fmtU(L),C.label,11,600);
   }
   if(alzLeds.length){ /* distancias de las tiras LED verticales entre sí y a las esquinas, bajo el alzado */
-    var xsL=[0].concat(alzLeds.slice().sort(function(a,b){return a-b})).concat([L]),yl=H+16*px;
+    var ldO=[{x:0,q:null}].concat(alzLeds.slice().sort(function(a,b){return a.x-b.x})).concat([{x:L,q:null}]),xsL=ldO.map(function(a){return a.x}),yl=H+16*px;
     h+=ln(0,yl,L,yl,dcol,0.9*px);
     xsL.forEach(function(x){h+=ln(x,H+2*px,x,yl+3*px,dcol,0.9*px)+tick(x,yl)});
-    for(var ix=1;ix<xsL.length;ix++)if(xsL[ix]-xsL[ix-1]>0.5)h+=txt(C,px,(xsL[ix]+xsL[ix-1])/2,yl+13*px,fmtU(xsL[ix]-xsL[ix-1]),C.label,10,500);
+    for(var ix=1;ix<xsL.length;ix++)if(xsL[ix]-xsL[ix-1]>0.5){
+      h+=txt(C,px,(xsL[ix]+xsL[ix-1])/2,yl+13*px,fmtU(xsL[ix]-xsL[ix-1]),C.label,10,500);
+      /* tocar el número: se escribe la distancia y la tira se mueve (también en la planta). Se mueve la de la derecha; si es la esquina, la de la izquierda */
+      var mueve=ldO[ix].q?{q:ldO[ix].q,lado:1}:(ldO[ix-1].q?{q:ldO[ix-1].q,lado:-1}:null);
+      if(colectaDim&&!flat&&mueve)dimHits.push({kind:'ledalz',q:mueve.q.id,lado:mueve.lado,wall:el.w.id,rev:!!el.rev,val:xsL[ix]-xsL[ix-1],x:(el.x||0)+(xsL[ix]+xsL[ix-1])/2,y:(el.y||0)+yl+9*px});
+    }
   }
   /* cota vertical */
   var xv=-16*px;
@@ -5085,6 +5090,14 @@ function openDimEd(h){
 function commitDimEd(){
   if(!dimEd)return;
   var h=dimEd,n=fromU(num(qd.value));closeDimEd();
+  if(h.kind==='ledalz'){ /* distancia de una tira LED vertical en el alzado: la tira se mueve a lo largo de su muro */
+    var lq=by(st.v.pts,h.q),lw=wl(h.wall);if(!lq||!lw)return;
+    if(!(n>=0&&n<=5000)){toast('Escribe una medida válida');return}
+    if(Math.abs(n-h.val)<0.05)return;
+    var dAlz=(n-h.val)*h.lado,ds=h.rev?-dAlz:dAlz,gL=wg(lw);
+    snap();lq.dx=f2(lq.dx+gL.ux*ds);lq.dy=f2(lq.dy+gL.uy*ds);if(lq.dx2!=null){lq.dx2=f2(lq.dx2+gL.ux*ds);lq.dy2=f2(lq.dy2+gL.uy*ds)}
+    commit(false);toast('Tira movida '+fmtU(Math.abs(ds))+' '+UNL()+' (también en la planta)');return;
+  }
   if(h.kind==='pilsz'){ /* tamaño de un pilar: se escribe el ancho o el fondo */
     var pz=pl(h.pil);if(!pz)return;
     if(!(n>=1&&n<=2000)){toast('Escribe una medida válida');return}
