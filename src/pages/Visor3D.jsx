@@ -1424,6 +1424,60 @@ export function capturarEquirect(renderer, scene, pos, yaw, tam, ocultar, calida
     rt?.dispose(); mat?.dispose(); quad?.geometry.dispose();
   }
 }
+// Panorama por caras: en vez de mandar a la IA el 360° entero (estirado y con poco detalle), se sacan 6 fotos normales de gran angular
+// (4 alrededor, techo y suelo; 110° para que se solapen), la IA mejora cada una a 2K y se vuelven a unir en un panorama grande.
+// Las caras se solapan 10° por lado: en la unión se mezclan con un degradado para que no se note la costura.
+export const FOV_CARAS = 110;
+export function basesCaras(yaw) {
+  const cam = new THREE.PerspectiveCamera(FOV_CARAS, 1, 0.05, 800), out = [];
+  const dirs = [0, 1, 2, 3].map(k => new THREE.Vector3(Math.sin(yaw + k * Math.PI / 2), 0, Math.cos(yaw + k * Math.PI / 2)));
+  const fr = dirs[0];
+  [...dirs.map(d => [d, new THREE.Vector3(0, 1, 0)]), [new THREE.Vector3(0, 1, 0), fr.clone().negate()], [new THREE.Vector3(0, -1, 0), fr.clone()]].forEach(([d, up]) => {
+    cam.position.set(0, 0, 0); cam.up.copy(up); cam.lookAt(d); cam.updateMatrixWorld(true);
+    const e = cam.matrixWorld.elements;
+    out.push({ r: [e[0], e[1], e[2]], u: [e[4], e[5], e[6]], f: [-e[8], -e[9], -e[10]], q: cam.quaternion.clone() });
+  });
+  return out;
+}
+export function capturarCaras(renderer, scene, pos, yaw, tam, ocultar, calidadJpeg = 0.92) {
+  const targetPrev = renderer.getRenderTarget(), xrPrev = renderer.xr.enabled, tamPrev = renderer.getSize(new THREE.Vector2()), prPrev = renderer.getPixelRatio(), vis = ocultar.map(o => o && o.visible);
+  const cam = new THREE.PerspectiveCamera(FOV_CARAS, 1, 0.05, 800);
+  try {
+    renderer.xr.enabled = false; ocultar.forEach(o => { if (o) o.visible = false; });
+    renderer.setRenderTarget(null); renderer.setPixelRatio(1); renderer.setSize(tam, tam, false);
+    return basesCaras(yaw).map(b => { cam.position.copy(pos); cam.quaternion.copy(b.q); cam.updateMatrixWorld(true); renderer.render(scene, cam); return renderer.domElement.toDataURL('image/jpeg', calidadJpeg); });
+  } finally {
+    renderer.xr.enabled = xrPrev; renderer.setPixelRatio(prPrev); renderer.setSize(tamPrev.x, tamPrev.y);
+    ocultar.forEach((o, i) => { if (o) o.visible = vis[i]; }); renderer.setRenderTarget(targetPrev);
+  }
+}
+// imgs: las 6 caras (ya mejoradas) en el mismo orden que basesCaras. signoX: convenio de giro del panorama (el mismo que capturarEquirect)
+export function unirCaras(renderer, imgs, yaw, ancho, signoX = -1, calidadJpeg = 0.9) {
+  const targetPrev = renderer.getRenderTarget(), xrPrev = renderer.xr.enabled, tamPrev = renderer.getSize(new THREE.Vector2()), prPrev = renderer.getPixelRatio();
+  const bs = basesCaras(yaw), texs = imgs.map(im => { const t = new THREE.Texture(im); t.colorSpace = THREE.NoColorSpace; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.anisotropy = 8; t.needsUpdate = true; return t; });
+  const uniforms = { yaw: { value: yaw }, sx: { value: signoX }, th: { value: Math.tan(FOV_CARAS * Math.PI / 360) } };
+  let suma = '';
+  bs.forEach((b, i) => {
+    uniforms['t' + i] = { value: texs[i] }; uniforms['r' + i] = { value: new THREE.Vector3(...b.r) }; uniforms['u' + i] = { value: new THREE.Vector3(...b.u) }; uniforms['f' + i] = { value: new THREE.Vector3(...b.f) };
+    suma += `{ float z = dot(w, f${i}); if (z > 0.0) { vec2 p = vec2(dot(w, r${i}), dot(w, u${i})) / (z * th); float m = max(abs(p.x), abs(p.y)); if (m < 1.0) { float k = 1.0 - smoothstep(0.66, 0.99, m) + 1e-4; c += texture2D(t${i}, p * 0.5 + 0.5).rgb * k; s += k; } } }\n`;
+  });
+  const decl = bs.map((_, i) => `uniform sampler2D t${i}; uniform vec3 r${i}; uniform vec3 u${i}; uniform vec3 f${i};`).join('\n');
+  const mat = new THREE.ShaderMaterial({
+    uniforms, depthTest: false, depthWrite: false, toneMapped: false,
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: `uniform float yaw; uniform float sx; uniform float th;\n${decl}\nvarying vec2 vUv;\nvoid main() { float lon = (vUv.x - 0.5) * 6.2831853 + yaw; float lat = (vUv.y - 0.5) * 3.1415926; vec3 d = vec3(cos(lat) * sin(lon), sin(lat), cos(lat) * cos(lon)); vec3 w = vec3(sx * d.x, d.y, d.z); vec3 c = vec3(0.0); float s = 0.0;\n${suma}gl_FragColor = vec4(s > 0.0 ? c / s : vec3(0.0), 1.0); }`,
+  });
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat), qs = new THREE.Scene(); qs.add(quad);
+  try {
+    renderer.xr.enabled = false; renderer.setRenderTarget(null); renderer.setPixelRatio(1); renderer.setSize(ancho, ancho / 2, false);
+    renderer.render(qs, new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1));
+    return renderer.domElement.toDataURL('image/jpeg', calidadJpeg);
+  } finally {
+    renderer.xr.enabled = xrPrev; renderer.setPixelRatio(prPrev); renderer.setSize(tamPrev.x, tamPrev.y); renderer.setRenderTarget(targetPrev);
+    texs.forEach(t => t.dispose()); mat.dispose(); quad.geometry.dispose();
+  }
+}
+if (typeof window !== 'undefined') window.__panoCaras = { capturarCaras, unirCaras, capturarEquirect: (...x) => capturarEquirect(...x) };
 // Visor 360 sencillo: arrastrar para mirar alrededor, rueda para acercar (también con el dedo en el móvil)
 export function abrirVisor360(cont, url) {
   const w = cont.clientWidth || 800, h = cont.clientHeight || 450;
@@ -6043,7 +6097,32 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
     if (!lista.length) { setAviso('No hay salas en el modelo para repartir paradas.'); return; }
     setTourCfg({ salas: lista, ia: false, proy: false, cal: 2048, refs: renders.filter(r => r.tipo !== '360' && r.meta?.camara).slice(0, 3).map(r => r.id) });
   };
-  const tourAuto = async (elegidas, usarIA, refsIds = [], proy = false, cal = 2048) => {
+  // Panorama con IA por caras (Nano Banana Pro): 6 fotos de 110° → la IA mejora cada una a 2K (la de delante primero; las demás la usan
+  // de referencia para que todas tengan el mismo acabado) → se unen en un 360° de 6K. Unas 4 veces más detalle que mandar el 360° entero.
+  const TEXTO_CARA = 'Convierte este render 3D en una fotografía real de interiorismo de alta gama: materiales realistas, texturas finas y nítidas, reflejos naturales y acabados limpios. Es una vista gran angular de 110 grados (una cara de un panorama 360): conserva EXACTAMENTE la geometría, la perspectiva, el encuadre y la posición de cada elemento hasta los mismos bordes de la imagen; no corrijas la distorsión del gran angular, no recortes ni amplíes. No añadas ni quites objetos y no cambies máquinas, muebles ni rótulos.';
+  const panoPorCaras = async (pos, yaw, vistas = [], avisa = () => {}) => {
+    const a = api3d.current, ocultar = [a.gizmoG, a.cotasG, a.nodoG, a.guiaG];
+    const caras = capturarCaras(a.renderer, a.scene, pos, yaw, 1024, ocultar);
+    const carga = u => new Promise((ok, ko) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = u; });
+    const peque = async u => { const im = await carga(u), c = document.createElement('canvas'); c.width = 768; c.height = 768; c.getContext('2d').drawImage(im, 0, 0, 768, 768); return c.toDataURL('image/jpeg', 0.88); };
+    const ia = async (i, coherencia) => {
+      try { const r = await api.post('/render-ia/editar', { imagen: caras[i], instruccion: TEXTO_CARA, referencias: [], calidad: false, coherencia: coherencia.slice(0, 3), motor: 'gemini' }, { timeout: 300000 }); return r.data.imagen; }
+      catch (e) { throw new Error('IA en la cara ' + (i + 1) + ': ' + (e.response?.data?.error || e.message)); }
+    };
+    const sal = new Array(6);
+    avisa('cara 1 de 6 (la de delante)');
+    sal[0] = await ia(0, vistas);
+    const delante = await peque(sal[0]);
+    avisa('caras 2 a 4 (alrededor)');
+    await Promise.all([1, 2, 3].map(async i => { sal[i] = await ia(i, [delante, ...vistas].slice(0, 3)); }));
+    const lado = await peque(sal[1]);
+    avisa('techo y suelo');
+    await Promise.all([4, 5].map(async i => { sal[i] = await ia(i, [delante, lado, ...vistas].slice(0, 3)); }));
+    avisa('uniendo las 6 caras');
+    const imgs = await Promise.all(sal.map(carga));
+    for (const ancho of [6144, 4096]) { try { return unirCaras(a.renderer, imgs, yaw, ancho); } catch (e) { if (ancho === 4096) throw e; } }
+  };
+  const tourAuto = async (elegidas, usarIA, refsIds = [], proy = false, cal = 2048, porCaras = false) => {
     const a = api3d.current, m = a.modelo; if (!m || generandoParada) return;
     if (!usarIA && !avisaCalidadTour()) return;
     const pls = m.plantas || [m], offs = a.offsPl || [];
@@ -6072,7 +6151,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
     };
     let paso = 380, pts = reparte(paso); while (pts.length > 30 && paso < 1200) { paso = Math.round(paso * 1.2); pts = reparte(paso); }
     if (!pts.length) { setAviso('No he encontrado salas donde colocar paradas.'); return; }
-    if (!window.confirm('Voy a generar ' + pts.length + ' paradas en las salas que has elegido (una cada ' + (paso / 100).toFixed(1).replace('.', ',') + ' m, lejos de paredes y máquinas).' + (usarIA ? (refsIds.length ? '\n\nSe usarán ' + refsIds.length + ' de tus renders como referencia de materiales, color y luz (no copia su composición).' : '') + '\n\nCada parada pasa por la IA en modo fiel: solo da realismo a materiales y luz, sin inventar nada. Tarda 1-3 minutos POR PARADA (unos ' + Math.round(pts.length * 2) + ' min en total) y gasta crédito de ChatGPT en cada una. No cierres esta pestaña.' : ' Tarda un par de minutos y no hay que tocar nada.') + (proy && refsIds.length ? '\n\nSe pegarán ' + refsIds.length + ' de tus renders al modelo: cada panorámica llevará tus imágenes donde sus cámaras veían, y el resto saldrá del modelo.' : '') + '\n\n¿Seguimos?')) return;
+    if (!window.confirm('Voy a generar ' + pts.length + ' paradas en las salas que has elegido (una cada ' + (paso / 100).toFixed(1).replace('.', ',') + ' m, lejos de paredes y máquinas).' + (usarIA ? (refsIds.length ? '\n\nSe usarán ' + refsIds.length + ' de tus renders como referencia de materiales, color y luz (no copia su composición).' : '') + '\n\n' + (porCaras ? 'MODO POR CARAS (Nano Banana Pro): cada parada son 6 imágenes de IA (≈1–2 € por parada, unos ' + Math.round(pts.length * 1.5) + ' € en total) y tarda 2–5 min por parada. ' : '') + 'Cada parada pasa por la IA en modo fiel: solo da realismo a materiales y luz, sin inventar nada. Tarda 1-3 minutos POR PARADA (unos ' + Math.round(pts.length * 2) + ' min en total) y gasta crédito de ChatGPT en cada una. No cierres esta pestaña.' : ' Tarda un par de minutos y no hay que tocar nada.') + (proy && refsIds.length ? '\n\nSe pegarán ' + refsIds.length + ' de tus renders al modelo: cada panorámica llevará tus imágenes donde sus cámaras veían, y el resto saldrá del modelo.' : '') + '\n\n¿Seguimos?')) return;
     setGenerandoParada(true);
     // Tus renders elegidos como referencia: se bajan una vez (a 1024 px) y acompañan a cada panorámica
     let vistas = [];
@@ -6105,7 +6184,9 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
       await new Promise(r => setTimeout(r, 120));
       try {
         let url;
-        if (usarIA) {
+        if (usarIA && porCaras) {
+          url = await panoPorCaras(new THREE.Vector3(p.x, p.y, p.z), 0, vistas, t => setAviso('Tour con IA por caras: parada ' + (hechas + 1) + ' de ' + pts.length + ' («' + p.nombre + '») · ' + t + '…'));
+        } else if (usarIA) {
           const base = capturarEquirect(a.renderer, a.scene, new THREE.Vector3(p.x, p.y, p.z), 0, 768, [a.gizmoG, a.cotasG, a.nodoG, a.guiaG]);
           const carga = u => new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = u; });
           const redim = (img, w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); return c.toDataURL('image/png'); };
@@ -7985,12 +8066,13 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
             ))}
             <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}><input type="checkbox" checked={tourCfg.ia} onChange={e => setTourCfg(c => ({ ...c, ia: e.target.checked }))} style={{ marginTop: 3 }} /><span><b>Dar realismo con IA (modo fiel)</b><br /><span style={{ opacity: 0.65, fontSize: 12 }}>Usa tus referencias para mejorar el acabado. Revisa el resultado: la IA puede alterar detalles. La generación tiene coste.</span></span></label>
+              {tourCfg.ia && <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', margin: '6px 0 0 22px' }}><input type="checkbox" checked={!!tourCfg.caras} onChange={e => setTourCfg(c => ({ ...c, caras: e.target.checked }))} style={{ marginTop: 3 }} /><span><b>Máxima calidad: por caras (Nano Banana Pro)</b> <span style={{ color: '#e0b04a', fontSize: 11 }}>prueba</span><br /><span style={{ opacity: 0.65, fontSize: 12 }}>La IA mejora 6 fotos (alrededor, techo y suelo) y se unen en un 360° de 6K: mucho más detalle y sin estirar. Unos 1–2 € y 2–5 min por parada.</span></span></label>}
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', marginTop: 8 }}><input type="checkbox" checked={!!tourCfg.proy} onChange={e => setTourCfg(c => ({ ...c, proy: e.target.checked }))} style={{ marginTop: 3 }} /><span><b>Pegar mis renders al modelo (giro libre con mis imágenes)</b><br /><span style={{ opacity: 0.65, fontSize: 12 }}>Cada panorámica lleva TUS renders ya mejorados donde sus cámaras veían; lo que ningún render cubre sale del modelo. Se eligen abajo (hasta 12). No gasta crédito de IA.</span></span></label>
             </div>
             <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}><b>Calidad del panorama</b>
               <select value={tourCfg.ia ? 2048 : (tourCfg.cal || 2048)} disabled={tourCfg.ia} onChange={e => setTourCfg(c => ({ ...c, cal: Number(e.target.value) }))} style={{ background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: 6, padding: '3px 6px' }}>
                 <option value={2048}>Normal (4K)</option><option value={4096}>Alta (8K)</option></select></div>
-            <div style={{ opacity: 0.6, fontSize: 11, margin: '2px 0 0', lineHeight: 1.35 }}>{tourCfg.ia ? 'Con IA el panorama sale a 4K; para más calidad desactiva la IA.' : 'Más calidad pesa más y tarda más; en el móvil del cliente se ajusta solo.'}</div>
+            <div style={{ opacity: 0.6, fontSize: 11, margin: '2px 0 0', lineHeight: 1.35 }}>{tourCfg.ia ? (tourCfg.caras ? 'Por caras el panorama sale a 6K.' : 'Con IA el panorama sale a 4K; para más calidad desactiva la IA.') : 'Más calidad pesa más y tarda más; en el móvil del cliente se ajusta solo.'}</div>
             {(tourCfg.ia || tourCfg.proy) && (() => {
               const gal = renders.filter(r => r.tipo !== '360' && (!tourCfg.proy || r.meta?.camara)).slice(0, 24), refs = tourCfg.refs || [], tope = tourCfg.proy ? 12 : 3;
               if (!gal.length) return null;
@@ -8014,7 +8096,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
               );
             })()}
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button style={{ ...btn, flex: 1, background: '#3f7d3a' }} disabled={!tourCfg.salas.some(s => s.sel)} onClick={() => { const cfg = tourCfg; setTourCfg(null); tourAuto(new Set(cfg.salas.filter(s => s.sel).map(s => s.key)), cfg.ia, cfg.ia || cfg.proy ? (cfg.refs || []) : [], !!cfg.proy, cfg.ia ? 2048 : (cfg.cal || 2048)); }}>Generar paradas</button>
+              <button style={{ ...btn, flex: 1, background: '#3f7d3a' }} disabled={!tourCfg.salas.some(s => s.sel)} onClick={() => { const cfg = tourCfg; setTourCfg(null); tourAuto(new Set(cfg.salas.filter(s => s.sel).map(s => s.key)), cfg.ia, cfg.ia || cfg.proy ? (cfg.refs || []) : [], !!cfg.proy, cfg.ia ? 2048 : (cfg.cal || 2048), !!(cfg.ia && cfg.caras)); }}>Generar paradas</button>
               <button style={btn} onClick={() => setTourCfg(null)}>Cancelar</button>
             </div>
           </div>
