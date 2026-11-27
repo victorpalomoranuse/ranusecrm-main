@@ -2761,7 +2761,7 @@ function tramosTxt(g){
   return n+(n===1?' tramo':' tramos')+(t.length&&t.length<=12?': '+t.join(' + ')+' m':'');
 }
 function lumTagMap(){var m={};lumGroups().forEach(function(g){g.ids.forEach(function(id){m[id]=g.tag})});return m}
-function swTagMap(){var m={},i=0;st.v.pts.forEach(function(q){if(isSw(q)){i++;m[q.id]={tag:'I'+i,i:i}}});return m}
+function swTagMap(){var m={},i=0,gr=cnGrupos(),num={};st.v.pts.forEach(function(q){if(!isSw(q))return;var g=gr[q.id],k=g&&g.length>1?g[0]:q.id;if(!num[k]){i++;num[k]=i}m[q.id]={tag:'I'+num[k],i:num[k],conm:!!(g&&g.length>1)}});return m} /* los conmutadores de un mismo circuito llevan la misma referencia */
 function cnList(){return (st.v.cn||[]).filter(function(c){var a=by(st.v.pts,c.a),b=by(st.v.pts,c.b);return a&&b&&isSw(a)&&b.v==='ilum'&&b.s!=='dem'})}
 function ptMid(q){var d=ptDef(q.k),c=ptPos(q);if(d&&d.lin){var mi=ptMidInfo(q);return {x:mi.x,y:mi.y}}return c}
 function cnPts(c){
@@ -2775,10 +2775,11 @@ function cnGrupos(){ /* interruptores que encienden alguna luz en común = un ci
   var porLuz={};lista.forEach(function(c){(porLuz[c.b]=porLuz[c.b]||[]).push(c.a)});
   Object.keys(porLuz).forEach(function(b){var s=porLuz[b];for(var i=1;i<s.length;i++){var x=raiz(s[0]),y=raiz(s[i]);if(x!==y)pa[y]=x}});
   var g={};Object.keys(pa).forEach(function(a){var k=raiz(a);(g[k]=g[k]||[]).push(a)});
-  var de={};Object.keys(g).forEach(function(k){var tm=swTagMap();g[k].sort(function(x,y){return ((tm[x]||{}).i||0)-((tm[y]||{}).i||0)});g[k].forEach(function(a){de[a]=g[k]})});
+  var orden={};st.v.pts.forEach(function(q,ix){orden[q.id]=ix});
+  var de={};Object.keys(g).forEach(function(k){g[k].sort(function(x,y){return (orden[x]||0)-(orden[y]||0)});g[k].forEach(function(a){de[a]=g[k]})});
   return de;
 }
-function cnCol(c){var gr=cnGrupos()[c.a],m=swTagMap()[gr&&gr.length?gr[0]:c.a];return CNC[((m?m.i:1)-1)%CNC.length]}
+function cnCol(c){var m=swTagMap()[c.a];return CNC[((m?m.i:1)-1)%CNC.length]}
 function cnCurva(a,b,kmax,fk){
   var dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy)||1,nx=-dy/l,ny=dx/l,k=Math.min((fk||0.2)*l,kmax||80),mx=(a.x+b.x)/2+nx*k,my=(a.y+b.y)/2+ny*k,p=[];
   for(var i=0;i<=12;i++){var t=i/12;p.push({x:(1-t)*(1-t)*a.x+2*t*(1-t)*mx+t*t*b.x,y:(1-t)*(1-t)*a.y+2*t*(1-t)*my+t*t*b.y})}
@@ -6042,7 +6043,13 @@ function tap(w){
   if(st.tool==='cn'){
     if(st.view!=='ilum')return;
     var hq=pickPt(w,18/st.k);
-    if(hq&&isSw(hq)){st.cnFrom=hq.id;st.sel={t:'pt',id:hq.id};toast('Toca las luminarias que enciende '+swTagMap()[hq.id].tag);panelSel();render();return}
+    if(hq&&isSw(hq)&&st.cnFrom&&st.cnFrom!==hq.id&&by(st.v.pts,st.cnFrom)){ /* interruptor → otro interruptor = conmutado: los dos encienden las mismas luces */
+      var c1=st.cnFrom,c2=hq.id,lz={};(st.v.cn||[]).forEach(function(c){if(c.a===c1||c.a===c2)lz[c.b]=1});
+      if(!Object.keys(lz).length){toast('Une primero las luces a uno de los dos interruptores y después toca el otro');st.cnFrom=c2;st.sel={t:'pt',id:c2};panelSel();render();return}
+      snap();st.v.cn=st.v.cn||[];[c1,c2].forEach(function(a){Object.keys(lz).forEach(function(b){if(!st.v.cn.some(function(c){return c.a===a&&c.b===b}))st.v.cn.push({id:uid('c'),a:a,b:b})})});
+      st.cnFrom=null;st.sel=null;commit(false);panelSel();toast('Conmutados: los dos interruptores llevan la misma referencia ('+((swTagMap()[c1]||{}).tag||'')+') y encienden las mismas luces');return;
+    }
+    if(hq&&isSw(hq)){st.cnFrom=hq.id;st.sel={t:'pt',id:hq.id};toast('Toca las luminarias que enciende '+swTagMap()[hq.id].tag+'. Para un conmutado, toca después el otro interruptor');panelSel();render();return}
     if(hq&&hq.v==='ilum'){
       if(!st.cnFrom){toast('Toca primero un interruptor o conmutador');return}
       snap();st.v.cn=st.v.cn||[];
