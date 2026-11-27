@@ -3960,8 +3960,8 @@ function ln(x1,y1,x2,y2,stroke,sw,cap,extra){
 }
 /* ── ajustar cotas y etiquetas por lámina: cada una se puede ocultar, mover y volver a poner (se guarda en el plano, por lámina) ── */
 var ADJ=null,adjHits=[];
-var CAT_COTA={w:'Cotas de los muros',p:'Distancias de los pilares',e:'Distancias de las máquinas',t:'Etiquetas de puertas y ventanas',s:'Zonas: nombres y medidas',l:'Cotas de las luces',m:'Cotas de los mecanismos',a:'Cotas puestas a mano',r:'Cotas de los recrecidos',y:'Cotas de los alzados',k:'Mecanismos del alzado (cotas y nombres)'};
-var CAT_VISTA={y:['alz'],k:['alz'],l:['ilum'],m:['elec'],a:['ilum'],r:['interv'],t:['actual','demol','interv','acab','techos','suelos'],e:['actual','distrib','interv','demol'],w:['actual','demol','interv','cotas']};
+var CAT_COTA={w:'Cotas de los muros',p:'Distancias de los pilares',e:'Distancias de las máquinas',t:'Etiquetas de puertas y ventanas',s:'Zonas: nombres y medidas',l:'Cotas de las luces',m:'Cotas de los mecanismos',a:'Cotas puestas a mano',r:'Cotas de los recrecidos',y:'Cotas de los alzados',u:'Tipos de muro (etiquetas)',k:'Mecanismos del alzado (cotas y nombres)'};
+var CAT_VISTA={y:['alz'],u:['interv'],k:['alz'],l:['ilum'],m:['elec'],a:['ilum'],r:['interv'],t:['actual','demol','interv','acab','techos','suelos'],e:['actual','distrib','interv','demol'],w:['actual','demol','interv','cotas']};
 function ocVista(view){return (st.v.oc&&st.v.oc[view])||{}}
 function mvVista(view){return (st.v.mv&&st.v.mv[view])||{}}
 function catCota(key){var c=key.charAt(0);return c==='q'?'e':c==='z'?'s':c}
@@ -4003,6 +4003,7 @@ function descCota(key){
   var DIRC={l:'a la izquierda',r:'a la derecha',u:'hacia arriba',d:'hacia abajo'};
   if(t==='l'||t==='m'){var pq=by(st.v.pts,p[1]);return (t==='l'?'Luz':'Mecanismo')+(pq&&pq.nm?' '+pq.nm:'')+' · distancia '+(DIRC[sub]||'')}
   if(t==='a')return 'Cota puesta a mano';
+  if(t==='u')return 'Etiqueta del tipo de muro';
   if(t==='k'){var kq=by(st.v.pts,p[1]),kd=kq&&ptDef(kq.k);return (kd?kd.n:'Mecanismo')+' · '+({x:'distancia a la pared',z:'altura',t:'nombre'}[sub]||'cota')}
   if(t==='y')return 'Alzado · '+({sup:'cota de arriba',led:'distancias de las tiras',alt:'altura'}[p[3]]||'cota');
   if(t==='r')return 'Recrecido · '+({l:'largo',e:'espesor',a:'hueco antes',b:'hueco hasta el final'}[sub]||'cota');
@@ -4440,6 +4441,12 @@ function scene0(C,k,view,o){
   if(view==='ilum'){var mml=mmSvg(C,px,sel,o,function(m){return !!m.luz});h+=mml.h;zlab+=mml.z;h+=spLedSvg(C,px,sel,o)}
   if(view==='ilum'||view==='techos')h+=canalSvg(C,px,view,o);
   if(view==='acab'){var mma=mmSvg(C,px,sel,o,function(m){return m.k==='pan'||!!m.mat});h+=mma.h;zlab+=mma.z}
+  if(view==='interv'){var TMp=tiposMuro();v.walls.forEach(function(w){
+    var kT=TMp.de[w.id];if(!kT||!wallVis(w,view)||w.arc)return;
+    var g=wg(w),ce=wallCent(view),mx=(g.a.x+g.b.x)/2,my=(g.a.y+g.b.y)/2,nx=-g.uy,ny=g.ux;if(((ce.x-mx)*nx+(ce.y-my)*ny)<0){nx=-nx;ny=-ny}
+    var sh=Math.min(45,g.l*0.25),off=w.t/2+13*px,cx=mx+nx*off+g.ux*sh,cy=my+ny*off+g.uy*sh,tp=TMp.tipos[kT],bw=22*px,bh=11*px;
+    zlab+=adjK('u:'+w.id,'<rect x="'+f2(cx-bw/2)+'" y="'+f2(cy-bh/2)+'" width="'+f2(bw)+'" height="'+f2(bh)+'" rx="'+f2(5.5*px)+'" style="fill:'+tp.c+';stroke:none"/>'+txt(C,px,cx,cy+3.2*px,tp.tag,'#ffffff',8.5,700,tp.c),cx,cy);
+  })}
   if(rcVis(view)){
     (v.rc||[]).forEach(function(rc){
       var q=rcPoly(rc);if(!q||q.len<1)return;
@@ -7592,7 +7599,7 @@ function panelSel(focus){
     h+=fld('w_ang','Ángulo (°) respecto a la horizontal',Math.round(angMuro(w)*10)/10);
     h+='<div class="seg3" style="margin:0 0 6px">'+[['a','Gira desde el inicio'],['c','Desde el centro'],['b','Desde el final']].map(function(p){return '<button data-a="angpiv" data-s="'+p[0]+'" aria-pressed="'+((st.angPiv||'a')===p[0])+'">'+p[1]+'</button>'}).join('')+'</div>';
     h+='<div class="btns">'+[[-90,'−90°'],[-15,'−15°'],[-1,'−1°'],[1,'+1°'],[15,'+15°'],[90,'+90°']].map(function(p){return '<button data-a="angd" data-s="'+p[0]+'">'+p[1]+'</button>'}).join('')+'<button data-a="angort">Enderezar a 0° / 90°</button></div>';
-    h+='<label class="fld"><span>Tipo de muro o tabique (sale en los detalles)</span><select data-t="w_tipo"><option value="">Sin definir'+(w.s==='new'?' (tabique de pladur 2+2)':'')+'</option>'+Object.keys(DLIB).filter(function(k){return DLIB[k].wall}).map(function(k){return '<option value="'+k+'"'+(w.tipo===k?' selected':'')+'>'+esc(DLIB[k].n)+'</option>'}).join('')+'</select></label>'+cuandoHtml(w.tipo||(w.s==='new'?'TAB-new':null));
+    h+='<label class="fld"><span>Tipo de muro o tabique (sale en los detalles)</span><input data-t="w_tnm" value="'+esc(w.tnm||'')+'" placeholder="Escríbelo a mano (o elígelo abajo)" autocomplete="off" style="margin-bottom:6px"><select data-t="w_tipo"><option value="">Sin definir'+(w.s==='new'?' (tabique de pladur 2+2)':'')+'</option>'+Object.keys(DLIB).filter(function(k){return DLIB[k].wall}).map(function(k){return '<option value="'+k+'"'+(w.tipo===k?' selected':'')+'>'+esc(DLIB[k].n)+'</option>'}).join('')+'</select></label>'+cuandoHtml(w.tipo||(w.s==='new'?'TAB-new':null));
     h+=fld('w_h','Altura de este muro (cm)',w.h,fmt(wallH()))+'<p class="note" style="margin:0 0 6px">Vacío = altura general ('+fmt(wallH())+' cm). Cuenta para los m² y para SketchUp.</p>';
     h+='<div class="lab">¿Una cara más alta o más baja que la otra?</div>'+['p','m'].map(function(sd){return fld('w_hc_'+sd,'Altura · '+faceName(w,sd)+' (cm)',w.hc&&w.hc[sd],fmt(wh(w)))}).join('')+'<p class="note" style="margin:0 0 6px">Vacío = la altura del muro. Los m² de pintura, alicatado y picado de cada cara usan su propia altura.</p>';
     var aA=adjOf(w,w.a),aB=adjOf(w,w.b);
@@ -8556,6 +8563,7 @@ $('side').addEventListener('change',function(e){
   }
   if(t==='eq_lock'&&st.sel&&st.sel.t==='eq'){var ql=by(st.v.eq,st.sel.id);if(ql){snap();ql.lock=!!e.target.checked;commit(false)}return}
   if(t==='pil_dir'&&st.sel&&st.sel.t==='pil'){var pd=pl(st.sel.id);if(pd){snap();pd.dir=e.target.value==='v'?'v':'h';commit(false);panelSel()}return}
+  if(t==='w_tnm'&&st.sel&&st.sel.t==='wall'){var wn=wl(st.sel.id);if(wn){snap();var tv=e.target.value.trim().slice(0,60);if(tv)wn.tnm=tv;else delete wn.tnm;commit(false);panelSel()}return}
   if(t==='w_tipo'&&st.sel&&st.sel.t==='wall'){var wq=wl(st.sel.id);if(wq){snap();if(e.target.value)wq.tipo=e.target.value;else delete wq.tipo;delete wq.tm;aplicarTipo(wq);commit(false);panelSel();drawDet();if(wq.tipo&&espesorTipo(wq.tipo))toast('Grosor del muro: '+fmt(espesorTipo(wq.tipo)*10)+' mm, según las capas del tipo elegido')}return}
   if(t==='alt_g'){var ng=num(e.target.value);if(!(ng>=100&&ng<=1000)){toast('Escribe una altura entre 100 y 1000 cm');return}snap();st.v.altura=ng;try{$('v-altura').value=ng}catch(_){}commit(false);panelSel();toast('Altura de las paredes: '+fmt(ng)+' cm');return}
   if(t&&/^dr_/.test(t)&&st.sel&&st.sel.t==='dr'){
@@ -10216,6 +10224,17 @@ function detGeo(id,Wmax,Hmax){
    ['E-red','Paredes','Espejo redondo retroiluminado','red','Tablero redondo mayor que el espejo para ocultar la tira LED. Alimentador accesible.']
   ].forEach(function(d){DLIB[d[0]]={id:d[0],grp:'Encuentros',n:d[2],geo:d[3],layers:[],note:d[4]}});
 })();
+var TMCOL=['#1f6f78','#a96a12','#7048e8','#c2255c','#2b8a3e','#5f3dc4','#d9480f','#0b7285'];
+function tiposMuro(){
+  var tipos={},orden=[],de={};
+  (st.v.walls||[]).forEach(function(w){
+    var nm=String(w.tnm||'').trim()||(w.tipo&&DLIB[w.tipo]?DLIB[w.tipo].n:'');if(!nm)return;
+    var k=nm.toLowerCase().replace(/\s+/g,' ');
+    if(!tipos[k]){tipos[k]={n:nm,tag:'TM'+(orden.length+1),c:TMCOL[orden.length%TMCOL.length],ml:0};orden.push(k)}
+    tipos[k].ml+=wg(w).l;de[w.id]=k;
+  });
+  return {tipos:tipos,orden:orden,de:de};
+}
 function detState(){var v=st.v;if(!v.det)v.det={off:{},extra:[],over:{}};return v.det}
 function detAuto(){
   var v=st.v,ids=[],seen={};
@@ -10562,7 +10581,7 @@ function sheetPage(doc,view,idx,total,o){
   var y=mg+10*f,limit=cy0-4*f,rh=5.6*f+(A3?0:0.4),xL=px0,xR=PW-mg-5*f;
   function room(h){return y+h<=limit}
   /* «Leyenda» agrupa todos los cuadros de referencia: estados, materiales, sistemas, equipos, luminarias, simbología… */
-  var SECT_LEY={'Recrecidos':'ley_mat','Leyenda':'ley_est','Suelos':'ley_mat','Techos':'ley_mat','Sistemas / obra':'ley_mat','Acabados':'ley_mat','Luminarias':'ley_lum','Encendidos':'ley_lum','Simbología':'ley_sim','Equipos':'ley_eq','Obra a medida':'ley_eq'};
+  var SECT_LEY={'Recrecidos':'ley_mat','Tipos de muro':'ley_mat','Leyenda':'ley_est','Suelos':'ley_mat','Techos':'ley_mat','Sistemas / obra':'ley_mat','Acabados':'ley_mat','Luminarias':'ley_lum','Encendidos':'ley_lum','Simbología':'ley_sim','Equipos':'ley_eq','Obra a medida':'ley_eq'};
   function leyOn(k){return infoOn('leyenda')&&infoOn(k)} /* 'leyenda' es el interruptor general de los planos antiguos; ahora cada bloque se elige por separado */
   function sect(t){
     if(SECT_LEY[t]&&!leyOn(SECT_LEY[t]))return false;
@@ -10663,6 +10682,15 @@ function sheetPage(doc,view,idx,total,o){
       y+=3*f;
     }
   }
+
+  /* tipos de muro (Implantación): código y color iguales para el mismo tipo */
+  if(view==='interv'){var TMl=tiposMuro();if(TMl.orden.length&&sect('Tipos de muro')){
+    TMl.orden.forEach(function(k){if(!room(rh*1.2))return;var tp=TMl.tipos[k];
+      p.rect(xL,y+0.7*f,11,3.8*f,tp.c,null,0);p.text(xL+5.5,y+3.4*f,tp.tag,body*0.8,{col:'#ffffff',anchor:'middle',bold:true});
+      p.text(xL+14,y+3.6*f,fitTxt(tp.n,pw-14-18,false,body*25.4/72),body,{col:INK});
+      p.text(xR,y+3.6*f,m2(tp.ml/100)+' ml',body,{col:INK,anchor:'end',bold:true});y+=rh*1.2;
+    });y+=3*f;
+  }}
 
   /* acabados de pared (acab y alzados) */
   var areaA={};
