@@ -1452,6 +1452,40 @@ export function capturarCaras(renderer, scene, pos, yaw, tam, ocultar, calidadJp
     ocultar.forEach((o, i) => { if (o) o.visible = vis[i]; }); renderer.setRenderTarget(targetPrev);
   }
 }
+// Continuar una cara a partir de las ya hechas (sin fantasmas): en la cara nueva se pinta, en la franja que comparte con las caras ya mejoradas,
+// lo que la IA ya dibujó allí, y se devuelve una máscara que marca esa franja para CONSERVARLA (la IA solo inventa el resto y continúa lo que ve).
+// base: imagen de la cara sin IA; hechas: [{ img, b }] caras ya mejoradas con su base de basesCaras; b: base de esta cara.
+export function reproyectarCara(renderer, base, hechas, b, tam) {
+  const targetPrev = renderer.getRenderTarget(), xrPrev = renderer.xr.enabled, tamPrev = renderer.getSize(new THREE.Vector2()), prPrev = renderer.getPixelRatio();
+  const tx = im => { const t = new THREE.Texture(im); t.colorSpace = THREE.NoColorSpace; t.generateMipmaps = false; t.minFilter = THREE.LinearFilter; t.needsUpdate = true; return t; };
+  const hs = hechas.slice(0, 5), texs = [tx(base), ...hs.map(h => tx(h.img))], th = Math.tan(FOV_CARAS * Math.PI / 360);
+  const uniforms = { tb: { value: texs[0] }, th: { value: th }, modo: { value: 0 }, r: { value: new THREE.Vector3(...b.r) }, u: { value: new THREE.Vector3(...b.u) }, f: { value: new THREE.Vector3(...b.f) } };
+  let suma = '';
+  hs.forEach((h, j) => {
+    uniforms['t' + j] = { value: texs[j + 1] }; uniforms['r' + j] = { value: new THREE.Vector3(...h.b.r) }; uniforms['u' + j] = { value: new THREE.Vector3(...h.b.u) }; uniforms['f' + j] = { value: new THREE.Vector3(...h.b.f) };
+    suma += `{ float z = dot(w, f${j}); if (z > 0.0) { vec2 p = vec2(dot(w, r${j}), dot(w, u${j})) / (z * th); float m = max(abs(p.x), abs(p.y)); float k = 1.0 - smoothstep(0.9, 0.97, m); if (k > 0.0 && m < best) { best = m; col = texture2D(t${j}, p * 0.5 + 0.5).rgb; cob = k; } } }\n`;
+  });
+  const decl = hs.map((_, j) => `uniform sampler2D t${j}; uniform vec3 r${j}; uniform vec3 u${j}; uniform vec3 f${j};`).join('\n');
+  const mat = new THREE.ShaderMaterial({
+    uniforms, depthTest: false, depthWrite: false, toneMapped: false,
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: `uniform sampler2D tb; uniform float th; uniform float modo; uniform vec3 r; uniform vec3 u; uniform vec3 f;\n${decl}\nvarying vec2 vUv;\nvoid main() { vec2 q = vUv * 2.0 - 1.0; vec3 w = normalize(f + q.x * th * r + q.y * th * u); float best = 9.0, cob = 0.0; vec3 col = vec3(0.0);\n${suma} cob *= smoothstep(0.52, 0.62, max(abs(q.x), abs(q.y))); vec3 c = mix(texture2D(tb, vUv).rgb, col, cob); gl_FragColor = modo > 0.5 ? vec4(vec3(cob), 1.0) : vec4(c, 1.0); }`,
+  });
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat), qs = new THREE.Scene(), cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1); qs.add(quad);
+  try {
+    renderer.xr.enabled = false; renderer.setRenderTarget(null); renderer.setPixelRatio(1); renderer.setSize(tam, tam, false);
+    renderer.render(qs, cam); const imagen = renderer.domElement.toDataURL('image/jpeg', 0.93);
+    uniforms.modo.value = 1; renderer.render(qs, cam);
+    const cv = document.createElement('canvas'); cv.width = cv.height = tam; const g = cv.getContext('2d'); g.drawImage(renderer.domElement, 0, 0);
+    const id = g.getImageData(0, 0, tam, tam); let hay = 0;
+    for (let i = 0; i < id.data.length; i += 4) { const v = id.data[i]; id.data[i] = id.data[i + 1] = id.data[i + 2] = 0; id.data[i + 3] = v; if (v > 128) hay++; } // alfa 255 = se conserva; 0 = la IA lo inventa
+    g.putImageData(id, 0, 0);
+    return { imagen, mascara: hay > tam * 4 ? cv.toDataURL('image/png') : null };
+  } finally {
+    renderer.xr.enabled = xrPrev; renderer.setPixelRatio(prPrev); renderer.setSize(tamPrev.x, tamPrev.y); renderer.setRenderTarget(targetPrev);
+    texs.forEach(t => t.dispose()); mat.dispose(); quad.geometry.dispose();
+  }
+}
 // imgs: las 6 caras (ya mejoradas) en el mismo orden que basesCaras. signoX: convenio de giro del panorama (el mismo que capturarEquirect)
 export function unirCaras(renderer, imgs, yaw, ancho, signoX = -1, calidadJpeg = 0.9) {
   const targetPrev = renderer.getRenderTarget(), xrPrev = renderer.xr.enabled, tamPrev = renderer.getSize(new THREE.Vector2()), prPrev = renderer.getPixelRatio();
@@ -1478,7 +1512,7 @@ export function unirCaras(renderer, imgs, yaw, ancho, signoX = -1, calidadJpeg =
     texs.forEach(t => t.dispose()); mat.dispose(); quad.geometry.dispose();
   }
 }
-if (typeof window !== 'undefined') window.__panoCaras = { capturarCaras, unirCaras, capturarEquirect: (...x) => capturarEquirect(...x) };
+if (typeof window !== 'undefined') window.__panoCaras = { capturarCaras, unirCaras, reproyectarCara, basesCaras, capturarEquirect: (...x) => capturarEquirect(...x) };
 // Visor 360 sencillo: arrastrar para mirar alrededor, rueda para acercar (también con el dedo en el móvil)
 export function abrirVisor360(cont, url, ini) {
   const w = cont.clientWidth || 800, h = cont.clientHeight || 450;
@@ -6165,19 +6199,26 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
     const caras = capturarCaras(a.renderer, a.scene, pos, yaw, 1024, ocultar);
     const carga = u => new Promise((ok, ko) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = u; });
     const peque = async u => { const im = await carga(u), c = document.createElement('canvas'); c.width = 768; c.height = 768; c.getContext('2d').drawImage(im, 0, 0, 768, 768); return c.toDataURL('image/jpeg', 0.88); };
-    const ia = async (i, coherencia) => {
-      try { const r = await api.post('/render-ia/editar', { imagen: caras[i], instruccion: textoC, referencias: [], calidad: false, coherencia: coherencia.slice(0, 3), motor: motorC, economico: !!opc.eco }, { timeout: 300000 }); return r.data.imagen; }
+    const ia = async (i, coherencia, comp) => {
+      try { const r = await api.post('/render-ia/editar', { imagen: comp?.imagen || caras[i], ...(comp?.mascara ? { mascara: comp.mascara } : {}), instruccion: textoC + (comp?.mascara ? ' Los bordes de esta imagen ya están terminados (son la continuación de las vistas de al lado): CONTINÚA exactamente lo que se ve en ellos (los mismos objetos, materiales, colores y luz) sin cortes.' : ''), referencias: [], calidad: false, coherencia: coherencia.slice(0, 3), motor: motorC, economico: !!opc.eco }, { timeout: 300000 }); return r.data.imagen; }
       catch (e) { throw new Error('IA en la cara ' + (i + 1) + ': ' + (e.response?.data?.error || e.message)); }
     };
-    const sal = new Array(6);
+    const sal = new Array(6), bs = basesCaras(yaw), T = opc.eco ? 1024 : 2048, hechas = [];
+    const bases = await Promise.all(caras.map(carga));
+    // cada ronda continúa lo ya hecho: la franja compartida con las caras mejoradas se le da hecha y se conserva (así no salen fantasmas ni cortes)
+    const ronda = async (idx, coh) => {
+      await Promise.all(idx.map(async i => { const comp = hechas.length ? reproyectarCara(a.renderer, bases[i], hechas, bs[i], T) : null; sal[i] = await ia(i, coh, comp); }));
+      for (const i of idx) hechas.push({ img: await carga(sal[i]), b: bs[i] });
+    };
     avisa('cara 1 de 6 (la de delante)');
-    sal[0] = await ia(0, vistas);
+    await ronda([0], vistas);
     const delante = await peque(sal[0]);
-    avisa('caras 2 a 4 (alrededor)');
-    await Promise.all([1, 2, 3].map(async i => { sal[i] = await ia(i, [delante, ...vistas].slice(0, 3)); }));
-    const lado = await peque(sal[1]);
-    avisa('techo y suelo');
-    await Promise.all([4, 5].map(async i => { sal[i] = await ia(i, [delante, lado, ...vistas].slice(0, 3)); }));
+    avisa('caras 2 y 4 (a los lados, continuando la de delante)');
+    await ronda([1, 3], [delante, ...vistas].slice(0, 3));
+    avisa('cara 3 (detrás, uniendo los lados)');
+    await ronda([2], [delante, ...vistas].slice(0, 3));
+    avisa('techo y suelo (cerrando el 360°)');
+    await ronda([4, 5], [delante, ...vistas].slice(0, 3));
     avisa('uniendo las 6 caras');
     opc.alCaras?.(sal.slice());
     const imgs = await Promise.all(sal.map(carga));
