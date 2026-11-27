@@ -1862,6 +1862,59 @@ function codColorHtml(z,view){
   var m=matOf(view,z.mat),hex=/^#[0-9a-f]{6}$/i.test(m.c)?m.c:'#e8e2d8';
   return '<label class="fld"><span>Código de color (NCS o RAL)</span><div style="display:flex;gap:8px;align-items:center"><input data-t="z_cod" list="dl-cod" value="'+esc(m.cod||'')+'" placeholder="NCS S 0502-Y o RAL 9010" autocomplete="off" style="flex:1"><input type="color" data-t="z_hex" value="'+hex+'" title="Color tal como se verá en el plano" style="width:46px;height:38px;padding:2px"></div></label><datalist id="dl-cod">'+NCS_PRE.map(function(x){return '<option value="'+x+'">'}).join('')+'</datalist><p class="note" style="margin:0 0 6px">Escribe el código y el color se calcula solo (en NCS es aproximado); si quieres afinarlo, cámbialo con el cuadro de color. Cada código tiene su propia referencia (T1, T2…) en la leyenda.</p>';
 }
+/* ── colores y suelos del Combinador de colores de Ranuse (los base y los propios del estudio) ── */
+var COMBO=null,comboEspera=[];
+function comboCargar(cb){
+  if(COMBO){cb(COMBO);return}
+  comboEspera.push(cb);if(comboEspera.length>1)return;
+  var res={colores:[],suelos:[]},pend=2+(CRM?1:0),fin=function(){if(--pend>0)return;var cu=res._cu||{};delete res._cu;(cu.colores||[]).forEach(function(c){res.colores.push({id:'my_'+c.id,n:c.n,ncs:'',hex:c.hex,usos:c.mats||'',propio:true})});(cu.suelos||[]).forEach(function(s){var b=s.eq&&res.colores.filter(function(c){return c.id===s.eq})[0];var hx=b?b.hex:s.hex;if(!hx)return;res.suelos.push({id:'my_'+s.id,n:s.n,hex:hx,ncs:b?b.ncs:'',tex:s.tex,img:'',propio:true})});COMBO=res;var l=comboEspera;comboEspera=[];l.forEach(function(f){f(res)})};
+  fetch('/combinador/colores.json').then(function(x){return x.json()}).then(function(j){(j.colores||[]).forEach(function(c){res.colores.push({id:c.id,n:c.n,ncs:c.ncs||'',hex:c.hex,usos:c.usos||''})})}).catch(function(){}).then(fin);
+  fetch('/combinador/suelos.json').then(function(x){return x.json()}).then(function(j){(j.suelos||[]).forEach(function(s){res.suelos.push(s)})}).catch(function(){}).then(fin);
+  if(CRM){comboCustom=function(cu){res._cu=cu||{};comboCustom=null;fin()};
+    setTimeout(function(){if(comboCustom)comboCustom({})},6000);crmPost({type:'pedirCombinador'})}
+}
+var comboCustom=null;
+/* una foto de suelo (o un color liso) como textura del plano: loseta de 100 × 100 */
+function comboSueloTx(s,listo){
+  var id='rs_'+s.id,ya=TXLIB.filter(function(q){return q.id===id})[0];if(ya){listo(ya);return}
+  var hex=/^#[0-9a-f]{6}$/i.test(s.hex||'')?s.hex:'#777777';
+  var c=document.createElement('canvas');c.width=c.height=96;var x=c.getContext('2d');
+  var fin=function(){var tx={id:id,n:s.n,c:hex,uri:c.toDataURL('image/jpeg',0.85),tw:100,w:96,h:96,grupo:'Suelo'};TXLIB.push(tx);try{prepTxRgb(tx,c)}catch(e){}listo(tx)};
+  x.fillStyle=hex;x.fillRect(0,0,96,96);
+  if(!s.img){fin();return}
+  var im=new Image();im.onload=function(){try{x.drawImage(im,0,0,96,96)}catch(e){}fin()};im.onerror=fin;im.src=s.img;
+}
+function comboAbrir(view){
+  var m0=document.getElementById('combomod');if(m0)m0.remove();
+  var mv=view==='alz'?'acab':view,m=document.createElement('div');m.id='combomod';m.className='dxfmod';
+  m.innerHTML='<div class="dxfbox" style="max-width:560px"><header><h3>Colores y suelos Ranuse</h3><p class="note" style="margin:0">Los del Combinador de colores, con su código NCS. Toca uno y pinta con él.</p></header><div id="combo-b" style="padding:14px 18px;max-height:62vh;overflow:auto"><p class="note">Cargando…</p></div><footer><span style="flex:1"></span><button id="combo-x">Cerrar</button></footer></div>';
+  document.body.appendChild(m);
+  var cierra=function(){m.remove()};$('combo-x').addEventListener('click',cierra);m.addEventListener('mousedown',function(e){if(e.target===m)cierra()});
+  comboCargar(function(d){
+    var b=$('combo-b');if(!b)return;
+    var actual=st.pal[mv],am=actual?matOf(mv,actual):null,base=(am&&!am.tx&&am.g!=='sis')?(am.base||am.id):'';
+    var bases=matsAc(mv).filter(function(q){return !q.base});if(!bases.some(function(q){return q.id===base}))base=(bases.filter(function(q){return q.id===(mv==='suelos'?'micro':'pint')})[0]||bases[0]||{}).id;
+    var chip=function(k,id,n,sw,sub){return '<button data-combo="'+k+':'+esc(id)+'" style="display:flex;gap:8px;align-items:center;text-align:left;min-height:44px;padding:6px 8px"><span class="sw" style="flex:none;width:30px;height:30px;border-radius:6px;background:'+sw+'"></span><span style="font-size:12px;line-height:1.25">'+esc(n)+(sub?'<br><span class="muted" style="font-size:10.5px">'+esc(sub)+'</span>':'')+'</span></button>'};
+    var h='';
+    if(mv==='suelos'&&d.suelos.length)h+='<div class="lab">Suelos técnicos (loseta 100 × 100)</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-bottom:12px">'+d.suelos.map(function(s){return chip('s',s.id,s.n+(s.propio?' ★':''),s.img?'url('+s.img+') center/cover':s.hex,s.ncs)}).join('')+'</div>';
+    h+='<div class="lab">Colores NCS · se aplican como</div><div class="btns" id="combo-base" style="margin-bottom:8px">'+bases.map(function(q){return '<button data-cbase="'+q.id+'" aria-pressed="'+(q.id===base)+'">'+esc(q.n)+'</button>'}).join('')+'</div>';
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px">'+d.colores.map(function(c){return chip('c',c.id,c.n+(c.propio?' ★':''),c.hex,c.ncs||c.usos)}).join('')+'</div>';
+    if(!d.colores.length&&!d.suelos.length)h='<p class="note">No se han podido cargar los colores del combinador.</p>';
+    else h+='<p class="note" style="margin-top:10px">★ = añadido por el estudio en el combinador.</p>';
+    b.innerHTML=h;
+    b.addEventListener('click',function(e){
+      var bb=e.target.closest('[data-cbase]');if(bb){base=bb.getAttribute('data-cbase');[].forEach.call(b.querySelectorAll('[data-cbase]'),function(x){x.setAttribute('aria-pressed',String(x===bb))});return}
+      var q=e.target.closest('[data-combo]');if(!q)return;
+      var k=q.getAttribute('data-combo').split(':'),cid=k.slice(1).join(':');
+      var listo=function(id,nom){st.pal[mv]=id;st.tool='paint';cierra();try{drawPal()}catch(er){}toolbar();hint();panelSel();render();toast('«'+nom+'» elegido: toca '+(mv==='suelos'||mv==='techos'?'dentro de una sala':'una cara de muro')+' para pintarlo')};
+      if(k[0]==='s'){var s=d.suelos.filter(function(x){return x.id===cid})[0];if(!s)return;comboSueloTx(s,function(tx){listo(tx.id,s.n)});return}
+      var c=d.colores.filter(function(x){return x.id===cid})[0];if(!c)return;
+      snap();var cod=c.ncs?('NCS '+c.ncs.replace(/^NCS\s*/i,'')):c.n,bm=matOf(mv,base),id=colorDe(mv,base,cod,c.hex,true),cp=(st.v.cpal||[]).filter(function(x){return x.id===id})[0];
+      if(cp)cp.n=(bm.n+' · '+c.n+(c.ncs?' '+c.ncs:'')).slice(0,60);
+      commit(false);listo(id,cp?cp.n:c.n);
+    });
+  });
+}
 function nuevoColor(view,alCrear){
   var m0=document.getElementById('colmod');if(m0)m0.remove();
   var base=matsAc(view).filter(function(x){return !x.base})[0]||{id:'',n:'Pintura',c:'#e8e2d8'};
@@ -7019,7 +7072,7 @@ function drawPal(){
     }
     var chipPal=function(m){return '<button data-pal="'+m.id+'" aria-pressed="'+(st.pal[mv]===m.id&&st.tool==='paint')+'"><span class="sw" style="background:'+(m.tx?'url('+m.tx.uri+') center/cover':m.c)+'"></span>'+esc(m.n)+'</button>'};
     var hPal=function(t,n){return '<div style="grid-column:1/-1;font:600 11px Montserrat,system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#8a8077;margin:8px 0 2px">'+t+'</div><div class="note" style="grid-column:1/-1;margin:0 0 4px">'+n+'</div>'};
-    $('pal').innerHTML=hPal('Acabado','Lo que se ve. Si solo tocas acabados, no se añade obra: se respeta lo que hay.')+matsAc(mv).map(chipPal).join('')+(mv==='suelos'||mv==='techos'||mv==='acab'||mv==='alz'?'<button data-newcol="'+(mv==='alz'?'acab':mv)+'" title="Añade otro color o variante de material solo para este plano"><span class="sw" style="background:conic-gradient(#e8d9c4,#cfd8dc,#d9c4cf,#e8d9c4)"></span>+ Otro color…</button>':'')+(matsSis(mv).length?hPal('Sistema / obra','Lo que hay debajo (opcional). Se pinta aparte y no cambia el acabado.')+matsSis(mv).map(chipPal).join(''):'');
+    $('pal').innerHTML=hPal('Acabado','Lo que se ve. Si solo tocas acabados, no se añade obra: se respeta lo que hay.')+matsAc(mv).map(chipPal).join('')+(mv==='suelos'||mv==='techos'||mv==='acab'||mv==='alz'?'<button data-combo-abrir="1" title="Los colores NCS y los suelos del Combinador de colores de Ranuse"><span class="sw" style="background:linear-gradient(135deg,#2d2c2c 0 33%,#cecec8 33% 66%,#b9a58a 66%)"></span>Colores y suelos Ranuse…</button><button data-newcol="'+(mv==='alz'?'acab':mv)+'" title="Añade otro color o variante de material solo para este plano"><span class="sw" style="background:conic-gradient(#e8d9c4,#cfd8dc,#d9c4cf,#e8d9c4)"></span>+ Otro color…</button>':'')+(matsSis(mv).length?hPal('Sistema / obra','Lo que hay debajo (opcional). Se pinta aparte y no cambia el acabado.')+matsSis(mv).map(chipPal).join(''):'');
     var up=$('txup');up.hidden=false;
     $('tx-del-s').innerHTML=TXLIB.map(function(t){return '<option value="'+esc(t.id)+'">'+esc(t.n)+'</option>'}).join('');
     $('tx-del').hidden=$('tx-del-s').hidden=!TXLIB.length;
@@ -7087,6 +7140,7 @@ $('pal-all').addEventListener('click',function(){
   commit();
 });
 $('pal').addEventListener('click',function(e){
+  if(e.target.closest('[data-combo-abrir]')){comboAbrir(st.view);return}
   var nb=e.target.closest('[data-newcol]');if(nb){nuevoColor(nb.getAttribute('data-newcol'));return}
   var b=e.target.closest('[data-pal]');if(!b)return;
   st.pal[st.view==='alz'?'acab':st.view]=b.getAttribute('data-pal');st.tool=(st.view==='ilum'||st.view==='elec')?'pt':'paint';st.led=null;st.ledPts=null;
@@ -12447,6 +12501,7 @@ if(CRM){
       toast(m.message||'No se pudieron guardar las fotos');
     }else if(m.type==='bloqueProductoError'){
       delete genProd[m.id];panelSel();toast(m.message||'No se pudo guardar el bloque');
+    }else if(m.type==='combinador'){if(comboCustom)comboCustom(m.custom);
     }else if(m.type==='bloque'){
       if(m.id&&m.bloque){bloquesFull[m.id]=m.bloque;render()}
       if(pendLib&&m.id===pendLib.id&&m.bloque){var pl0=pendLib;pendLib=null;bibElegido(pl0.prod,pl0.c,m.bloque)}

@@ -81,6 +81,10 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
           responder({ type: 'xlsxListo' });
         } catch (err) { responder({ type: 'xlsxError', message: 'No se pudo crear el Excel' }); }
       }
+      else if (m.type === 'pedirCombinador') { // colores y suelos propios del estudio (los del Combinador de colores)
+        try { const { data } = await api.get('/combinador/custom'); responder({ type: 'combinador', custom: data.custom || {} }); }
+        catch { responder({ type: 'combinador', custom: {} }); }
+      }
       else if (m.type === 'pedirBloque' && m.id) {
         try { const { data } = await api.get(`/medicion/bloque/${m.id}`); responder({ type: 'bloque', id: m.id, bloque: data.bloque }); }
         catch { responder({ type: 'error', message: 'No se pudo cargar el bloque de ese producto' }); }
