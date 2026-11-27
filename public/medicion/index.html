@@ -5260,6 +5260,13 @@ qdd.addEventListener('click',function(e){
   commit(false);toolbar();render();
   toast('Cota quitada de esta lámina. Para volver a ponerla: «Ajustar cotas» → Mostrar (o deshacer).');
 });
+function cotaMenu(hc){
+  closeQE();dimEd={k:hc.k,x:hc.x,y:hc.y,val:0,soloMenu:true};qd.hidden=true;
+  var L0=Math.max(60,Math.min(W-60,st.tx+hc.x*st.k))+'px',T0=Math.max(20,Math.min(H-30,st.ty+hc.y*st.k))+'px';
+  qdd.hidden=false;qdd.style.left=L0;qdd.style.top=T0;qdd.style.marginTop='10px';
+  $('qdm').hidden=false;$('qdm').style.left=L0;$('qdm').style.top=T0;$('qdm').style.marginTop='42px';
+}
+function cotaCerca(wp,radPx){var b=null,bd=(radPx||12)/st.k;adjHits.forEach(function(hh){var dd=Math.hypot(hh.x-wp.x,hh.y-wp.y);if(dd<bd){bd=dd;b=hh}});return b}
 function openDimEd(h){
   closeQE();dimEd=h;
   qd.value=toU(h.val);qd.hidden=false;
@@ -5613,6 +5620,7 @@ function doPinch(){
 svg.addEventListener('pointerdown',function(e){
   e.preventDefault();
   var p=loc(e);
+  if(dimEd&&dimEd.soloMenu)closeDimEd(); /* el menú de una cota se cierra al tocar en otro sitio */
   if(st.tool==='select'&&!st.cotasAdj&&!(e.pointerType==='mouse'&&e.button!==0)){ /* doble toque sobre una cota: se edita (el dblclick del navegador no siempre llega porque el primer toque vuelve a dibujar el plano) */
     var tAhora=Date.now(),tPrev=svg._ultTap;svg._ultTap={t:tAhora,x:p.x,y:p.y};
     if(tPrev&&tAhora-tPrev.t<450&&Math.hypot(p.x-tPrev.x,p.y-tPrev.y)<10){
@@ -5641,7 +5649,7 @@ svg.addEventListener('pointerdown',function(e){
     if(lh){var lo0=(st.v.llam||{})[lh.k]||{};snap();gesture={type:'dragLlam',id:e.pointerId,h:lh,w0:wl0,o0:{dx:lo0.dx||0,dy:lo0.dy||0,px:lo0.px||0,py:lo0.py||0},moved:false,sx:p.x,sy:p.y};return}
   }
   if(st.view==='alz'&&st.tool==='select'&&!pan&&!st.cotasAdj){
-    var wz0=toW(p),enNum=dimHits.some(function(hh){var dx=(wz0.x-hh.x)*st.k,dy=(wz0.y-hh.y)*st.k;return (hh.rot||hh.ux===0)?(Math.abs(dx)<14&&Math.abs(dy)<26):(Math.abs(dx)<24&&Math.abs(dy)<11)}),az=enNum?null:alzPick(wz0); /* tocar un número de cota: se escribe, no se arrastra lo de debajo */
+    var wz0=toW(p),enNum=dimHits.some(function(hh){var dx=(wz0.x-hh.x)*st.k,dy=(wz0.y-hh.y)*st.k;return (hh.rot||hh.ux===0)?(Math.abs(dx)<14&&Math.abs(dy)<26):(Math.abs(dx)<24&&Math.abs(dy)<11)})||!!cotaCerca(wz0,12),az=enNum?null:alzPick(wz0); /* tocar un número de cota: se escribe, no se arrastra lo de debajo */
     if(az){snap();st.sel=az.sel;st.multi=[];gesture={type:'alzDrag',id:e.pointerId,h:az,w0:wz0,moved:false,sx:p.x,sy:p.y};panelSel();render();return}
   }
   if(st.cotasAdj&&st.tool==='select'&&!pan){
@@ -6532,6 +6540,7 @@ function tap(w){
     var dhit=null;
     dimHits.forEach(function(h){var dx=(w.x-h.x)*st.k,dy=(w.y-h.y)*st.k;if((h.rot||h.ux===0)?(Math.abs(dx)<14&&Math.abs(dy)<26):(Math.abs(dx)<24&&Math.abs(dy)<11))dhit=h});
     if(dhit){openDimEd(dhit);return}
+    if(st.tool==='select'&&!st.cotasAdj){var hcm=cotaCerca(w,12);if(hcm){cotaMenu(hcm);return}}
     var lw=labelHit(w);
     if(lw){openQE(lw.id);return}
   }
