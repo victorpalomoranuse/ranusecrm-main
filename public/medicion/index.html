@@ -490,13 +490,13 @@ body.crm .top .brand{display:none}
     <aside class="side" id="side">
       <button class="side-close" id="b-side-close">✕ Cerrar panel</button>
       <section class="blk"><h2>Selección</h2><div id="sel"></div></section>
-      <section class="blk" id="tamblk">
+      <section class="blk" id="tamblk" data-en="distrib,elec,ilum,techos,suelos,acab,interv,actual,demol">
         <h2>Tamaños</h2>
         <p class="note" style="margin:0 0 8px">Ajusta a la vez el tamaño de lo que se dibuja en el plano y en las láminas. 100 % = tamaño normal. Se guarda en este plano.</p>
         <div id="tam-lista"></div>
         <div class="btns"><button id="tam-reset" type="button">Volver a 100 %</button></div>
       </section>
-      <section class="blk">
+      <section class="blk" data-en="actual,distrib">
         <h2>Visita</h2>
         <label class="fld"><span>Proyecto</span><input id="v-nombre" placeholder="Gimnasio de Javier"></label>
         <label class="fld"><span>Cliente</span><input id="v-cliente" placeholder="Nombre del cliente"></label>
@@ -549,7 +549,7 @@ body.crm .top .brand{display:none}
           <div class="btns"><button class="pri" id="lc-save">Guardar</button><button id="lc-del">Quitar</button></div>
         </details>
       </section>
-      <section class="blk" id="eqblk">
+      <section class="blk" id="eqblk" data-en="actual,distrib,interv,alz">
         <h2>Biblioteca de bloques</h2>
         <p class="note">Elige una pieza y toca el plano para colocarla. Los productos del catálogo llevan referencia y bloque; los de «Biblioteca» son genéricos (sanitarios, cocina, mobiliario…) y se pueden cambiar luego por un producto real.</p>
         <div class="lab">Obra a medida</div>
@@ -583,8 +583,8 @@ body.crm .top .brand{display:none}
           <p class="note" id="dxf-st"></p>
         </details>
       </section>
-      <section class="blk"><h2>Comprobaciones</h2><div id="chk"></div></section>
-      <section class="blk"><h2>Resumen</h2><div id="sum"></div></section>
+      <section class="blk" data-en="actual,distrib,interv"><h2>Comprobaciones</h2><div id="chk"></div></section>
+      <section class="blk" data-en="actual,demol,interv,distrib"><h2>Resumen</h2><div id="sum"></div></section>
       <section class="blk">
         <h2>Guardar</h2>
         <p class="note" id="saved">Se guarda solo en este dispositivo.</p>
@@ -595,7 +595,7 @@ body.crm .top .brand{display:none}
           <button id="b-new">Nueva visita</button>
         </div>
       </section>
-      <section class="blk" id="calblk">
+      <section class="blk" id="calblk" data-en="acab,suelos,techos,interv">
         <h2>Memoria de calidades</h2>
         <p class="note">Mecanismos, grifería, sanitarios, iluminación… elegidos del catálogo, sin dibujarlos en el plano. Salen en una lámina aparte y en las cantidades para el presupuesto.</p>
         <div id="cal-list"></div>
@@ -611,7 +611,7 @@ body.crm .top .brand{display:none}
         </details>
         <div class="btns"><button id="b-pdfcal">Memoria de calidades (PDF)</button></div>
       </section>
-      <section class="blk" id="detblk">
+      <section class="blk" id="detblk" data-en="acab,techos,interv,alz">
         <h2>Detalles constructivos</h2>
         <p class="note">Secciones tipo según los materiales que has elegido en suelos, techos y acabados. Edita capas y espesores; salen en el PDF.</p>
         <div id="det-list"></div>
@@ -626,7 +626,7 @@ body.crm .top .brand{display:none}
         <label class="fld"><span>Distancias de los bloques (en Distribución)</span><select id="x-eqloc"><option value="1">Solo al muro más cercano (limpio)</option><option value="2">Al muro y entre bloques (muchas cifras)</option><option value="0">Ninguna</option></select></label>
         <label class="fld"><span>Tamaño de textos y etiquetas en las láminas</span><select id="x-txk"><option value="auto">Automático (se ajusta a la escala)</option><option value="0.8">Pequeño (planos muy llenos)</option><option value="1">Normal</option><option value="1.35">Grande</option></select></label>
         <label class="fld"><span>Estructura del techo en Iluminación y Electricidad</span><select id="x-estr"><option value="todo">Vigas, correas y tragaluces</option><option value="vigas">Solo vigas y correas (sin tragaluces)</option><option value="no">Ninguna (plano limpio)</option></select></label>
-        <label class="fld"><span>Cotas de luminarias a paredes</span><select id="x-ldim"><option value="1">Sí</option><option value="0">No</option></select></label>
+        <label class="fld"><span>Cotas de luminarias y mecanismos a paredes</span><select id="x-ldim"><option value="1">Sí</option><option value="0">No</option></select></label>
         <label class="fld"><span>Marcas de alzado en planta</span><select id="x-marks"><option value="1">Sí (distribución y acabados)</option><option value="0">No</option></select></label>
         <label class="fld"><span>Cotas</span><select id="x-dims"><option value="ext">Con líneas de cota por fuera</option><option value="dob">Con dos líneas: interior y exterior</option><option value="int">Con líneas de cota por dentro</option><option value="simple">Solo el número en cada muro</option></select></label>
         <label class="fld"><span>Decimales en las cotas</span><select id="x-dec"><option value="0">Al centímetro, más limpio (213 · 145 · 0,93 m)</option><option value="1">Con milímetros cuando los hay (212,5 · 145 · 0,932 m)</option></select></label>
@@ -2823,6 +2823,14 @@ function pickCn(p,tol){
 function lumExtras(C,px,view,o){
   var h='',sel=o.sel,sw=swTagMap();
   if(view!=='ilum'&&view!=='elec')return '';
+  if(view==='elec'&&o.ldim!==false&&st.v.ld!=='0'){ /* electricidad: cada mecanismo con una sola cota, hasta la esquina o la pared más cercana a lo largo de su muro */
+    st.v.pts.forEach(function(q){
+      if(q.v!=='elec'||q.s==='dem')return;var d=ptDef(q.k);if(!d||d.lin)return;
+      var c=ptPos(q),r0=5.5*px*1.9*ptSz(q)*1.25,ds=lumDims(q).filter(function(m){return m.d>15&&m.d>r0+2}).sort(function(a,b){return a.d-b.d});
+      if(!ds.length)return;var m=ds[0];
+      h+=dimLine(C,px,c.x+m.dx*r0,c.y+m.dy*r0,m.x,m.y,fmtU(m.d),'#6f9db0','#4f8196');
+    });
+  }
   if(view==='ilum'){
     var tg=lumTagMap(),showD=o.ldim!==false&&st.v.ld!=='0';
     if(st.v.cnVer!==false||(sel&&sel.t==='cn'))cnEdges().forEach(function(ed){ var c=ed.c; /* encendidos: líneas muy finas y claras (la seleccionada sí destaca); se pueden ocultar en la paleta */
@@ -3873,6 +3881,12 @@ function pilRay(ox,oy,dx,dy,skip,view){
   });
   return best==null?null:{d:best,otro:otro,bloque:bloque};
 }
+/* ---------- qué información lleva cada lámina: cada pestaña enseña solo lo suyo (plano limpio) ----------
+   cmuros: cotas de los muros · crc: cotas de los recrecidos · huecos: etiquetas P1/V1 y cuadro de carpinterías · ctl: diagonales de control */
+var CAPAS_VISTA={cmuros:['actual','demol','interv','cotas'],crc:['interv'],huecos:['actual','demol','interv'],ctl:['actual','cotas']};
+function capaEn(view,k){return (CAPAS_VISTA[k]||[]).indexOf(view)>=0}
+/* las cotas de los muros: en su lámina siempre; en las demás, solo trabajando en pantalla y si se activa «Cotas de los muros: sí» */
+function cotasMurosEn(view,o){return capaEn(view,'cmuros')||(!!st.verCotasMuros&&!(o&&o.flat))}
 function pilDims(C,px,view,sel,suave,ocup){
   var h='';
   st.v.pil.forEach(function(p,ip){
@@ -4119,7 +4133,7 @@ function scene0(C,k,view,o){
     if(dlPre)return dlPre;
     dlPre={ocup:[],ok:{},lin:[],pos:{}};
     var cn=(o.dims&&o.dims!=='simple')?wallCent(view):null;
-    var oc=((view==='suelos'||view==='techos')||((view==='acab'||view==='elec'||view==='ilum'||view==='distrib')&&!o.flat))&&!st.verCotasMuros;
+    var oc=!cotasMurosEn(view,o);
     if(!cn||oc)return dlPre;
     var wsd=dimWalls(view).slice().sort(function(a,b){var sa=o.sel&&o.sel.t==='wall'&&o.sel.id===a.id?1e9:0,sb=o.sel&&o.sel.t==='wall'&&o.sel.id===b.id?1e9:0;return (wLen(b)+sb)-(wLen(a)+sa)});
     wsd.forEach(function(w){ /* líneas de cota de cada pared: el número de otra pared no se pone encima de ellas */
@@ -4192,7 +4206,7 @@ function scene0(C,k,view,o){
         h+='<polygon points="'+qt.pts.map(function(p){return f2(p.x)+','+f2(p.y)}).join(' ')+'" style="fill:'+colr+';fill-opacity:'+(arriba?'.06':'.22')+';stroke:'+colr+';stroke-width:'+f2((slr?2.6:1.3)*px)+(arriba?';stroke-dasharray:'+f2(5*px)+' '+f2(4*px):'')+'"/>';
       });
       /* cotas del recrecido: su largo y los huecos hasta el recrecido anterior (o el principio del muro) y hasta el final del muro */
-      if(!((ocultoK(view,'w:rc:'+rc.id)&&!o.adj)||(ocultoK(view,'w:'+rc.wall)&&!o.adj)||!(o.dims&&o.dims!=='simple')||((((view==='suelos'||view==='techos')||((view==='acab'||view==='elec'||view==='ilum'||view==='distrib')&&!o.flat))&&!st.verCotasMuros))))(function(){ /* las cotas del recrecido siguen a las de su muro: si las cotas de los muros están ocultas (o la de ese muro), tampoco salen */
+      if(!((ocultoK(view,'w:rc:'+rc.id)&&!o.adj)||(ocultoK(view,'w:'+rc.wall)&&!o.adj)||!(o.dims&&o.dims!=='simple')||!(capaEn(view,'crc')||(!!st.verCotasMuros&&!o.flat))))(function(){ /* las cotas del recrecido siguen a las de su muro: si las cotas de los muros están ocultas (o la de ese muro), tampoco salen */
         var gq=wg(q.w),o2=q.w.t/2+(rc.t||10);
         function PP(s,d){return {x:gq.a.x+gq.ux*s+q.nx*d,y:gq.a.y+gq.uy*s+q.ny*d}}
         var a1=PP(Math.max(0,Math.min(gq.l,rc.s0)),o2+26*px),b1=PP(Math.max(0,Math.min(gq.l,rc.s1)),o2+26*px);
@@ -4544,14 +4558,14 @@ function scene0(C,k,view,o){
       }
     }
   }
-  (o.noctl?[]:v.ctl).forEach(function(c){
+  ((o.noctl||!capaEn(view,'ctl'))?[]:v.ctl).forEach(function(c){
     var a=nd(c.a),b=nd(c.b),calc=Math.hypot(b.x-a.x,b.y-a.y),diff=c.len!=null?calc-c.len:0,bad=c.len!=null&&Math.abs(diff)>3;
     h+=ln(a.x,a.y,b.x,b.y,c.len==null?C.warn:(bad?C.dem:C.ok),1.5*px,'butt',';stroke-dasharray:'+f2(6*px)+' '+f2(4*px));
     var s=c.len==null?'?':fmtU(c.len)+(bad?' (plano '+fmtU(calc)+')':'');
     h+=txt(C,px,(a.x+b.x)/2,(a.y+b.y)/2-6*px,s,c.len==null?C.warn:(bad?C.dem:C.ok),12,500);
   });
   var cent=(o.dims&&o.dims!=='simple')?wallCent(view):null;
-  var ocultaCM=((view==='suelos'||view==='techos')||((view==='acab'||view==='elec'||view==='ilum'||view==='distrib')&&!o.flat))&&!st.verCotasMuros; /* trabajando en pantalla, en suelos y techos solo se ven las medidas de las zonas (las de los muros se activan con el botón); al exportar salen todas */
+  var ocultaCM=!cotasMurosEn(view,o); /* trabajando en pantalla, en suelos y techos solo se ven las medidas de las zonas (las de los muros se activan con el botón); al exportar salen todas */
   (ocultaCM?[]:(cent?dimWalls(view):v.walls)).forEach(function(w){
     if(!wallVis(w,view))return;
     if(w.arc){ // una sola cota por arco: longitud y radio
@@ -6896,6 +6910,21 @@ function hint(){
   if(st.tool==='pt'&&st.view==='ilum'&&st.ledPts&&st.ledPts.length)t=((st.ledModo||'poli')==='poli'?'Toca los puntos de la tira. Para acabar, toca otra vez el último punto, pulsa Intro o «Terminar tira». Esc cancela.':'Toca el punto final de la tira. Esc cancela.');
   $('hint').textContent=t;
 }
+/* panel, barra de abajo y herramientas: en cada pestaña solo lo que se usa en ella */
+var HERR_OBRA=['pen','door','rc','win','pillar','diag'],HERR_OBRA_ID=['b-curve','b-libre'],VISTAS_OBRA=['actual','demol','interv','distrib','cotas'];
+function panelVista(){
+  var vw=st.view,obra=VISTAS_OBRA.indexOf(vw)>=0,cm=capaEn(vw,'cmuros');
+  var bl=document.querySelectorAll('#side .blk[data-en]');for(var i=0;i<bl.length;i++){var en=bl[i].getAttribute('data-en').split(',');bl[i].hidden=en.indexOf(vw)<0}
+  HERR_OBRA.forEach(function(k){var b=document.querySelector('#tools button[data-tool="'+k+'"]');if(b)b.hidden=!obra});
+  HERR_OBRA_ID.forEach(function(k){if($(k))$(k).hidden=!obra});
+  ['b-cesped','b-rack'].forEach(function(k){if($(k))$(k).hidden=['actual','distrib','interv'].indexOf(vw)<0});
+  var eqb=document.querySelector('#tools button[data-tool="equip"]');if(eqb)eqb.hidden=['actual','distrib','interv','demol','alz'].indexOf(vw)<0;
+  if(!obra&&HERR_OBRA.indexOf(st.tool)>=0)st.tool='select';
+  if(eqb&&eqb.hidden&&st.tool==='equip')st.tool='select';
+  /* barra de abajo: «Muros nuevos como» solo donde se dibujan muros; los ajustes de cotas, solo donde hay cotas de muros */
+  function verPar(id,on){var e=$(id);if(!e)return;e.hidden=!on;var p=e.previousElementSibling;if(p&&p.tagName==='SPAN'&&!p.id)p.hidden=!on}
+  verPar('defstate',obra);verPar('dimsel',cm);verPar('dimbase',cm);if($('dimnote'))$('dimnote').hidden=!cm;
+}
 function toolbar(){
   if(st.tool!=='brush')st.pincel=null;
   try{lamEtiqueta()}catch(e){}
@@ -6919,7 +6948,7 @@ function toolbar(){
   var baseTxt=st.v.cb==='int'?'medida de la cara interior (hueco libre)':'medida a ejes de muro';
   $('dimnote').textContent=st.dims==='simple'?'Cota escrita por fuera · '+baseTxt:st.dims==='dob'?'Dos líneas por fuera: de cara interior a cara interior, y encima la exterior (de cara exterior a cara exterior)':st.dims==='ext'?'Líneas de cota por fuera · '+baseTxt:'Líneas de cota por dentro · '+baseTxt;
   if(st.tool==='paint'&&$('t-paint').hidden)st.tool='select';
-  $('eqblk').hidden=false;
+  panelVista();
   drawPal();
   drawCat();drawLum();hint();
 }
@@ -7203,8 +7232,9 @@ function panelSel(focus){
     h+='<p class="note">Bloque colocado en el alzado: es solo de dibujo; la cantidad para el presupuesto sale de las máquinas colocadas en planta.</p>';
     h+='<div class="btns"><button class="danger" data-a="del">Borrar del alzado</button></div>';
   }else if(!s){
+    if(VISTAS_OBRA.indexOf(st.view)<0){h='<p class="note">Toca un elemento del plano para editarlo.</p>'}else{ /* medir muros y la altura general: solo en las pestañas donde se dibujan muros */
     h='<p class="note">Toca un elemento del plano para ponerle medidas y estado.</p><div class="btns"><button data-a="nextwall">Medir el siguiente muro</button></div>';
-    h+='<div class="lab" style="margin-top:14px">Altura de las paredes</div><label class="fld"><span>Altura general (cm)</span><input data-t="alt_g" inputmode="decimal" value="'+f2(wallH())+'" autocomplete="off"></label><p class="note">Se usa para los m² de muros y acabados, los alzados y el modelo 3D de SketchUp. Si un muro tiene otra altura, tócalo y cámbiasela.</p>';
+    h+='<div class="lab" style="margin-top:14px">Altura de las paredes</div><label class="fld"><span>Altura general (cm)</span><input data-t="alt_g" inputmode="decimal" value="'+f2(wallH())+'" autocomplete="off"></label><p class="note">Se usa para los m² de muros y acabados, los alzados y el modelo 3D de SketchUp. Si un muro tiene otra altura, tócalo y cámbiasela.</p>';}
   }else if(s.t==='wall'){
     var w=wl(s.id),g=wg(w);
     h+='<div class="rowh"><strong>Muro</strong><span class="muted">en el plano: '+fmt(g.l)+' cm</span></div>';
@@ -8311,7 +8341,7 @@ $('tools').addEventListener('click',function(e){
   if(t==='draw'){st.drK=st.drK||'line';st.drPoly=null}
   if(t==='equip'||t==='door'||t==='win'||t==='draw')flyOpen(t,b);else flyClose();
 });
-$('views').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;if(b.getAttribute('data-view')==='tutorial'){tutoAbrir();return}if(b.getAttribute('data-view')==='mediciones'){medAbrir();return}tutoCerrar();medCerrar();st.adjSel=null;st.view=b.getAttribute('data-view');st.led=null;st.ledPts=null;st.cnFrom=null;closeQE();st.tool='select';st.dg=null;if(st.sel&&st.sel.t==='eq'&&st.view!=='distrib'){st.sel=null;panelSel()}toolbar();save();render()});
+$('views').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;if(b.getAttribute('data-view')==='tutorial'){tutoAbrir();return}if(b.getAttribute('data-view')==='mediciones'){medAbrir();return}tutoCerrar();medCerrar();st.adjSel=null;st.view=b.getAttribute('data-view');st.led=null;st.ledPts=null;st.cnFrom=null;closeQE();st.tool='select';st.dg=null;if(st.sel&&st.sel.t==='eq'&&st.view!=='distrib')st.sel=null;toolbar();panelSel();save();render()});
 $('b-undo').addEventListener('click',undo);
 $('b-redo').addEventListener('click',redoit);
 $('z-fit').addEventListener('click',fit);
@@ -10030,6 +10060,7 @@ function sheetPage(doc,view,idx,total,o){
   var p=doc.page(PW,PH),cx=PW-mg-Wc,tags=opTags(),b=bbox();
   var soloPint=view==='acab'||view==='techos'||view==='suelos'; /* en acabados, techos y suelos las puertas y ventanas no llevan etiqueta ni leyenda, salvo las que hay que pintar (con color asignado) */
   if(soloPint){var tg2={};v.ops.forEach(function(q){if(q.col)tg2[q.id]=tags[q.id]});tags=tg2}
+  else if(!capaEn(view,'huecos'))tags={}; /* en distribución, iluminación y electricidad las puertas y ventanas se dibujan, pero sin etiqueta ni cuadro */
   var body=7.5*f+(A3?0:0.6),sm=5.6*f+(A3?0:0.4);
   /* marco fino; la columna de leyendas, sin fondo; el cajetín va en una banda inferior */
   var bandH=A3?42:31,cy0=PH-mg-bandH;
@@ -10383,7 +10414,7 @@ function sheetPage(doc,view,idx,total,o){
   }
 
   /* carpinterías */
-  if(visO.length&&infoOn('carp')&&sect('Carpinterías')){
+  if(visO.length&&(soloPint||capaEn(view,'huecos'))&&infoOn('carp')&&sect('Carpinterías')){
     var colorState=view==='demol'||view==='interv';
     visO.forEach(function(q){
       if(!room(rh))return;
