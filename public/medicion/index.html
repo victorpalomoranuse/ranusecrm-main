@@ -466,6 +466,7 @@ body.crm .top .brand{display:none}
       <div class="cvw" id="cvw">
         <svg id="cv" role="img" aria-label="Plano de la sala"></svg>
         <input id="qd" class="qe" inputmode="decimal" autocomplete="off" aria-label="Distancia en centímetros" hidden>
+        <button id="qdm" class="qdd" type="button" hidden title="Cambiar el texto de esta cota, moverla sola u ocultarla" style="border-color:var(--accent,#7d746b);color:var(--accent,#7d746b)">Editar…</button>
         <button id="qdd" class="qdd" type="button" hidden title="Quitar esta cota de la lámina (se puede volver a poner en «Ajustar cotas», o deshaciendo)">Quitar cota</button>
         <input id="qe" class="qe" inputmode="decimal" autocomplete="off" aria-label="Medida real del muro en centímetros" hidden>
         <input id="qa" class="qe qs" inputmode="decimal" autocomplete="off" aria-label="Medida del muro lateral al inicio" hidden>
@@ -5177,7 +5178,13 @@ function bibElegido(prod,c,BF){
   abrirModalDXF([{nombre:c.nombre,categoria:'',largo:BF.largo,fondo:BF.fondo,alto:BF.alto||100,vistas:vs,planta:sv.planta||'',alzado:sv.alzado||'',lateral:sv.lateral||''}],c.nombre,{id:prod.id,nombre:prod.nombre,deBiblioteca:true});
 }
 var qd=$('qd'),qdd=$('qdd'),dimEd=null;
-function closeDimEd(){dimEd=null;qd.hidden=true;qdd.hidden=true}
+function closeDimEd(){dimEd=null;qd.hidden=true;qdd.hidden=true;if($('qdm'))$('qdm').hidden=true}
+$('qdm').addEventListener('pointerdown',function(e){e.preventDefault()});
+$('qdm').addEventListener('click',function(e){ /* de la casilla de la cota al modo de editar cotas, con esta seleccionada */
+  e.preventDefault();var h=dimEd;closeDimEd();if(!h||!h.k)return;
+  st.cotasAdj=true;st.adjSel=h.k;st.sel=null;st.multi=[];closeQE();toolbar();panelSel();render();hint();
+  toast('Arrastra la cota para moverla; en el panel puedes cambiar su texto u ocultarla');
+});
 qdd.addEventListener('pointerdown',function(e){e.preventDefault()}); /* para que el campo no pierda el foco antes de pulsar */
 qdd.addEventListener('click',function(e){
   e.preventDefault();
@@ -5191,7 +5198,7 @@ function openDimEd(h){
   closeQE();dimEd=h;
   qd.value=toU(h.val);qd.hidden=false;
   qd.style.left=Math.max(40,Math.min(W-40,st.tx+h.x*st.k))+'px';qd.style.top=Math.max(20,Math.min(H-20,st.ty+h.y*st.k))+'px';
-  qdd.hidden=!h.k;
+  qdd.hidden=!h.k;$('qdm').hidden=!h.k;if(h.k){$('qdm').style.left=Math.max(60,Math.min(W-60,st.tx+h.x*st.k))+'px';$('qdm').style.top=Math.max(20,Math.min(H-30,st.ty+h.y*st.k))+'px';$('qdm').style.marginTop='52px'}
   if(h.k){qdd.style.left=Math.max(60,Math.min(W-60,st.tx+h.x*st.k))+'px';qdd.style.top=Math.max(20,Math.min(H-30,st.ty+h.y*st.k))+'px';qdd.style.marginTop='20px'}
   qd.focus();try{qd.select()}catch(_){}
 }
