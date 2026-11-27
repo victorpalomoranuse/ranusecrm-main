@@ -460,6 +460,7 @@ body.crm .top .brand{display:none}
         <button id="b-cesped" title="Césped / carril: se coloca en el plano y en el 3D aparece como césped (arrastres, trineo), con sus líneas y colores"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h18M3 13h18M3 8h18M7 6v14M13 6v14M19 6v14"/></svg><span class="lb">Césped</span></button>
         <button id="b-rack" title="Rack modular: jaula de 4 patas, media jaula a pared o estantería, con bahías de peso libre, dominadas, estantería, Smith y poleas. Sale en el 3D con su estructura"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v18M19 3v18M5 7h14M5 13h14M5 19h14M9 7v6M15 13v6"/></svg><span class="lb">Rack</span></button>
         <button data-tool="pt" id="t-pt" hidden title="Colocar punto"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg><span class="lb">Punto</span></button>
+        <button data-tool="acz" id="t-acz" hidden title="Acotar en el alzado: toca dos puntos (se pegan a los bordes de las piezas, puertas, suelo y techo)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18M3 8v8M21 8v8M7 12l-2-2M7 12l-2 2M17 12l2-2M17 12l2 2"/></svg><span class="lb">Acotar</span></button>
         <button data-tool="paint" id="t-paint" hidden title="Pintar con material"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l7-7 7 7-7 7z"/><path d="M19 16c1.2 1.6 1.2 3 0 3s-1.2-1.4 0-3z"/></svg><span class="lb">Pintar</span></button>
         <button id="b-finger" aria-pressed="true" title="Si está activo, el dedo dibuja; si no, mueve el plano (con lápiz siempre dibuja)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 12V6a1.5 1.5 0 013 0v5M12 11V4.5a1.5 1.5 0 013 0V11M15 11V7a1.5 1.5 0 013 0v7c0 4-2.2 6-5.500 6-2.500 0-4-1.500-5-3.500L5 13a1.500 1.500 0 012.300-1.800L9 13"/></svg><span class="lb">Dedo dibuja</span></button>
       </div>
@@ -3021,6 +3022,25 @@ function elevBBox(){
   l.forEach(function(e){x0=Math.min(x0,e.x+(e.c0||0));y0=Math.min(y0,e.y-90);x1=Math.max(x1,e.x+(e.c1!=null?e.c1:e.L));y1=Math.max(y1,e.y+e.H)});
   return {x0:x0,y0:y0,x1:x1,y1:y1};
 }
+function alzBordes(eh){
+  var xs=[eh.c0||0,eh.c1!=null?eh.c1:eh.L],ys=[0,eh.H],L=eh.L,H=eh.H,g=wg(eh.w);
+  function sA(s){return eh.rev?L-s:s}
+  st.v.ops.forEach(function(o){if(o.wall!==eh.w.id)return;var x0=eh.rev?L-(o.p+o.w):o.p,z0=o.t==='win'?(o.sill||0):0;xs.push(x0,x0+o.w);ys.push(H-z0,H-z0-o.h)});
+  (st.v.rc||[]).forEach(function(rc){if(rc.wall!==eh.w.id||(rc.sd||'p')!==eh.sd)return;xs.push(sA(rc.s0),sA(rc.s1));ys.push(H-Math.min(H,rcAlto(rc)))});
+  (st.v.mm||[]).forEach(function(m){if(m.wall!==eh.w.id||m.sd!==eh.sd)return;xs.push(sA(m.s0),sA(m.s1));ys.push(H-(m.y0||0),H-(m.y0||0)-m.h)});
+  (st.v.fz||[]).forEach(function(z){if(z.wall!==eh.w.id||z.sd!==eh.sd)return;xs.push(z.x0,z.x1);ys.push(H-z.y0,H-z.y1)});
+  (st.v.eqa||[]).forEach(function(it){if(it.wall!==eh.w.id||it.sd!==eh.sd)return;var z=+it.z||0;xs.push(it.x-it.w/2,it.x+it.w/2);ys.push(H-z,H-z-it.h)});
+  st.v.pts.forEach(function(q){if(q.s==='dem')return;var pd=ptDef(q.k);if(!pd)return;var vert=ledVert(q);if(q.v!=='elec'&&!vert)return;if(pd.lin&&!vert)return;
+    var c=ptPos(q),s=(c.x-g.a.x)*g.ux+(c.y-g.a.y)*g.uy,dn=(c.x-g.a.x)*(-g.uy)+(c.y-g.a.y)*g.ux;if(s<-5||s>g.l+5||Math.abs(dn)>eh.w.t/2+30)return;
+    xs.push(sA(s));if(!vert)ys.push(H-(q.h!=null?+q.h:(pd.h!=null?pd.h:30)))});
+  return {xs:xs,ys:ys};
+}
+function alzCerca(wp){var l=elevLayout(elevList('alz')),m=30/st.k;for(var i=0;i<l.length;i++){var e=l[i],c0=e.c0||0,c1=e.c1!=null?e.c1:e.L;if(wp.x>=e.x+c0-m&&wp.x<=e.x+c1+m&&wp.y>=e.y-m&&wp.y<=e.y+e.H+m)return e}return null}
+function alzImanPt(eh,lx,ly){
+  var b=alzBordes(eh),tol=10/st.k,x=rd5(lx),y=rd5(ly),bx=tol,by=tol;
+  b.xs.forEach(function(v){var d=Math.abs(v-lx);if(d<bx){bx=d;x=v}});b.ys.forEach(function(v){var d=Math.abs(v-ly);if(d<by){by=d;y=v}});
+  return {x:f2(x),y:f2(y)};
+}
 function alzPick(wp){
   var eh=elevHit(wp);if(!eh)return null;
   var lx=wp.x-eh.x,ly=eh.H-(wp.y-eh.y),L=eh.L,tol=Math.max(10/st.k,4),g=wg(eh.w),res=null;
@@ -3279,6 +3299,9 @@ function elevSvg(C,px,el,codes,flat){
   if(m){var pw=llPos('pared',c1+26*px,yLl,c1-Math.min(Lv*0.12,60),yLl);h+=acabLlamada(C,px,pw.ax,pw.ay,pw.bx,code,m,pw.by);yLl+=62*px}
   llamZ.forEach(function(q){var pq=llPos(q.k||'z',c1+26*px,yLl,q.ax,q.ay);h+=acabLlamada(C,px,pq.ax,pq.ay,pq.bx,q.code,q.m,pq.by);yLl+=62*px});
   Object.keys(ledLl).forEach(function(k){var pl=llPos('l:'+k,c1+26*px,yLl);h+=ledLlamada(C,px,ledLl[k],pl.bx,pl.by);yLl+=70*px});
+  var kEl=alzClave(el);
+  ((st&&st.v&&st.v.acz)||[]).forEach(function(z){if(z.k!==kEl)return;var Lz=Math.hypot(z.b.x-z.a.x,z.b.y-z.a.y);if(Lz<1)return;mecH+=dimLine(C,px,z.a.x,z.a.y,z.b.x,z.b.y,fmtU(Lz),'#5c544c','#3d3833','za:'+z.id)});
+  if(!flat&&st.aczFrom&&st.aczFrom.k===kEl)mecH+='<circle cx="'+f2(st.aczFrom.x)+'" cy="'+f2(st.aczFrom.y)+'" r="'+f2(4*px)+'" style="fill:'+C.accent+'"/>';
   return h+eqaSvg(C,px,el)+mecH;
 }
 /* nombre del acabado sin el código de color (el NCS o RAL va en la leyenda) */
@@ -3970,10 +3993,10 @@ function ln(x1,y1,x2,y2,stroke,sw,cap,extra){
 /* ── ajustar cotas y etiquetas por lámina: cada una se puede ocultar, mover y volver a poner (se guarda en el plano, por lámina) ── */
 var ADJ=null,adjHits=[];
 var CAT_COTA={w:'Cotas de los muros',p:'Distancias de los pilares',e:'Distancias de las máquinas',t:'Etiquetas de puertas y ventanas',s:'Zonas: nombres y medidas',l:'Cotas de las luces',m:'Cotas de los mecanismos',a:'Cotas puestas a mano',r:'Cotas de los recrecidos',y:'Cotas de los alzados',u:'Tipos de muro (etiquetas)',k:'Mecanismos del alzado (cotas y nombres)'};
-var CAT_VISTA={y:['alz'],u:['interv'],k:['alz'],l:['ilum'],m:['elec'],a:['ilum'],r:['interv'],t:['actual','demol','interv','acab','techos','suelos'],e:['actual','distrib','interv','demol'],w:['actual','demol','interv','cotas']};
+var CAT_VISTA={y:['alz'],u:['interv'],k:['alz'],l:['ilum'],m:['elec'],a:['ilum','alz'],r:['interv'],t:['actual','demol','interv','acab','techos','suelos'],e:['actual','distrib','interv','demol'],w:['actual','demol','interv','cotas']};
 function ocVista(view){return (st.v.oc&&st.v.oc[view])||{}}
 function mvVista(view){return (st.v.mv&&st.v.mv[view])||{}}
-function catCota(key){var c=key.charAt(0);return c==='q'?'e':c==='z'?'s':c}
+function catCota(key){if(key.indexOf('za:')===0)return 'a';var c=key.charAt(0);return c==='q'?'e':c==='z'?'s':c}
 function ocultoK(view,key){
   var o=ocVista(view);if(o['*'+catCota(key)])return true;
   var p=key.split(':'),i;for(i=1;i<=p.length;i++)if(o[p.slice(0,i).join(':')])return true;
@@ -4012,6 +4035,7 @@ function descCota(key){
   var DIRC={l:'a la izquierda',r:'a la derecha',u:'hacia arriba',d:'hacia abajo'};
   if(t==='l'||t==='m'){var pq=by(st.v.pts,p[1]);return (t==='l'?'Luz':'Mecanismo')+(pq&&pq.nm?' '+pq.nm:'')+' · distancia '+(DIRC[sub]||'')}
   if(t==='a')return 'Cota puesta a mano';
+  if(t==='za')return 'Cota puesta a mano en el alzado';
   if(t==='u')return 'Etiqueta del tipo de muro';
   if(t==='k'){var kq=by(st.v.pts,p[1]),kd=kq&&ptDef(kq.k);return (kd?kd.n:'Mecanismo')+' · '+({x:'distancia a la pared',z:'altura',t:'nombre'}[sub]||'cota')}
   if(t==='y')return 'Alzado · '+({sup:'cota de arriba',led:'distancias de las tiras',alt:'altura'}[p[3]]||'cota');
@@ -5256,7 +5280,7 @@ qdd.addEventListener('click',function(e){
   e.preventDefault();
   var h=dimEd;if(!h||!h.k){closeDimEd();return}
   closeDimEd();snap();
-  st.v.oc=st.v.oc||{};st.v.oc[st.view]=st.v.oc[st.view]||{};st.v.oc[st.view][h.k]=1;
+  st.v.oc=st.v.oc||{};st.v.oc[st.view]=st.v.oc[st.view]||{};if(h.k.indexOf('za:')===0)st.v.acz=(st.v.acz||[]).filter(function(z){return 'za:'+z.id!==h.k});else st.v.oc[st.view][h.k]=1;
   commit(false);toolbar();render();
   toast('Cota quitada de esta lámina. Para volver a ponerla: «Ajustar cotas» → Mostrar (o deshacer).');
 });
@@ -6449,6 +6473,17 @@ function tap(w){
     }
     return;
   }
+  if(st.tool==='acz'){
+    if(st.view!=='alz')return;
+    var ehz=alzCerca(w);if(!ehz){toast('Toca dentro de un alzado');return}
+    var pz=alzImanPt(ehz,w.x-ehz.x,w.y-ehz.y),kz=alzClave(ehz);
+    if(!st.aczFrom||st.aczFrom.k!==kz){st.aczFrom={k:kz,x:pz.x,y:pz.y};render();hint();return}
+    var az0=st.aczFrom;st.aczFrom=null;
+    var bz={x:pz.x,y:pz.y};if(Math.abs(bz.x-az0.x)>=Math.abs(bz.y-az0.y))bz.y=az0.y;else bz.x=az0.x;
+    if(Math.hypot(bz.x-az0.x,bz.y-az0.y)<1){render();hint();return}
+    snap();st.v.acz=st.v.acz||[];st.v.acz.push({id:uid('z'),k:kz,a:{x:az0.x,y:az0.y},b:bz});commit(false);hint();
+    toast('Cota puesta. Toca otro punto para seguir; para quitarla, tócala con «Seleccionar» → Quitar cota');return;
+  }
   if(st.tool==='acl'){
     if(st.view!=='ilum')return;
     var pa=aclIman(w,14/st.k);
@@ -7260,6 +7295,7 @@ var HINTS={
 };
 function hint(){
   var t=HINTS[st.tool];
+  if(st.tool==='acz')t=st.aczFrom?'Ahora toca el segundo punto. La cota sale recta (horizontal o vertical) y se pega a los bordes.':'Acotar: toca el primer punto en un alzado (se pega a bordes de la madera, puertas, enchufes, suelo y techo).';
   if(st.cotasAdj)t='Ajustar cotas: toca un número o una etiqueta para seleccionarlo; arrástralo para moverlo. En el panel lo ocultas o lo vuelves a poner. Lo oculto se ve apagado.';
   if(st.cotasT&&st.tool==='draw')t='Cotas: arrastra de un punto a otro (se pegan a esquinas, caras de muros y zonas) y te dice la distancia. Para cambiarla, tócala con «Seleccionar».';
   if(st.tool==='pen'&&!st.penSeen&&!st.fingerDraws)t='Con el lápiz se dibuja. Con el dedo se mueve el plano.';
@@ -7281,6 +7317,7 @@ $('alzsel').addEventListener('change',function(e){
 });
 function panelVista(){
   try{alzSelUi()}catch(e){}
+  if($('t-acz')){$('t-acz').hidden=st.view!=='alz';if(st.view!=='alz'&&st.tool==='acz'){st.tool='select';st.aczFrom=null}}
   var vw=st.view,obra=VISTAS_OBRA.indexOf(vw)>=0,cm=capaEn(vw,'cmuros');
   var bl=document.querySelectorAll('#side .blk[data-en]');for(var i=0;i<bl.length;i++){var en=bl[i].getAttribute('data-en').split(',');bl[i].hidden=en.indexOf(vw)<0}
   HERR_OBRA.forEach(function(k){var b=document.querySelector('#tools button[data-tool="'+k+'"]');if(b)b.hidden=!obra});
@@ -8300,7 +8337,7 @@ function doAction(a,el){
   if(a.indexOf('cota:')===0){
     var vw=st.view,ak=st.adjSel,pa2=a.split(':');
     snap();st.v.oc=st.v.oc||{};st.v.oc[vw]=st.v.oc[vw]||{};st.v.mv=st.v.mv||{};st.v.mv[vw]=st.v.mv[vw]||{};
-    if(pa2[1]==='ocultar'&&ak)st.v.oc[vw][ak]=1;
+    if(pa2[1]==='ocultar'&&ak){if(ak.indexOf('za:')===0){st.v.acz=(st.v.acz||[]).filter(function(z){return 'za:'+z.id!==ak});st.adjSel=null}else st.v.oc[vw][ak]=1}
     else if(pa2[1]==='mostrar'&&ak)delete st.v.oc[vw][ak];
     else if(pa2[1]==='reset'&&ak)delete st.v.mv[vw][ak];
     else if(pa2[1]==='txreset'&&ak){if(st.v.cotx&&st.v.cotx[vw])delete st.v.cotx[vw][ak]}
@@ -12315,7 +12352,7 @@ function escModal(editId){
 /* ══ Plantas dentro del mismo plano ══
    El plano que se está editando (st.v) siempre trae los datos de LA PLANTA ACTIVA, así todo el resto del código funciona igual.
    Las demás plantas esperan guardadas en st.v.pisos[i].b y se intercambian al cambiar de planta. */
-var PISO_KEYS=['nodes','walls','ops','pil','ctl','eq','eqa','pts','zn','rz','cn','fz','rc','dr','sp','mm','cal','oc','mv','co','cotx','acl','llam','alzOc','capas','capasOc','fondo','altura'];
+var PISO_KEYS=['nodes','walls','ops','pil','ctl','eq','eqa','pts','zn','rz','cn','fz','rc','dr','sp','mm','cal','oc','mv','co','cotx','acl','llam','alzOc','acz','capas','capasOc','fondo','altura'];
 function pisosOn(v){v=v||st.v;return !!(v&&v.pisos&&v.pisos.length>1)}
 function pisoIdx(v){v=v||st.v;if(!v.pisos)return -1;for(var i=0;i<v.pisos.length;i++)if(v.pisos[i].id===v.piso)return i;return -1}
 function pisosAsegura(v){
