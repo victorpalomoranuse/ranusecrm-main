@@ -3095,6 +3095,15 @@ function texLines(id,L,H,px,col){
 function elevSvg(C,px,el,codes,flat){
   var alzLeds=[];
   var L=el.L,H=el.H,h='',m=el.mat?matOf('acab',el.mat):null,col=C.ink,i,c0=el.c0||0,c1=el.c1!=null?el.c1:el.L,Lv=c1-c0;
+  /* guías azules de la pieza seleccionada (recrecido u obra a medida): se tocan y se escribe la medida; se mueve también en la planta */
+  function guiasPieza(pk,id,xa,wd,zb,hh){
+    if(flat)return;
+    var yT=H-zb-hh,yB=H-zb,gy=yT+hh/2,gx=xa+wd*0.3,gx2=xa+wd*0.7;
+    var G=function(x1,y1,x2,y2,val,lado,disc){if(val<0.5)return;if(disc)h+=ln(x1,y1,x2,y2,AZUL,0.6*px,'butt',';stroke-dasharray:'+f2(3*px)+' '+f2(2*px));h+=dimLine(C,px,x1,y1,x2,y2,fmtU(val),AZUL,AZUL);var vt=Math.abs(x2-x1)<Math.abs(y2-y1);if(colectaDim)dimHits.push({kind:'pzg',pk:pk,id:id,lado:lado,L:L,c0:c0,c1:c1,rev:!!el.rev,val:val,rot:false,x:(el.x||0)+(x1+x2)/2+(vt?14*px:0),y:(el.y||0)+(y1+y2)/2-(vt?0:6*px)})};
+    G(c0,gy,xa,gy,xa-c0,'l',true);G(xa+wd,gy,c1,gy,c1-xa-wd,'r',true);
+    G(xa,yT+14*px,xa+wd,yT+14*px,wd,'w');G(gx2,yT,gx2,yB,hh,'h');
+    if(zb>0.5)G(gx,yB,gx,H,zb,'b',true);
+  }
   h+='<rect x="'+f2(c0)+'" y="0" width="'+f2(Lv)+'" height="'+H+'" style="fill:'+(m?(flat?hexMix(m.c,'#ffffff',0.12):m.c):C.bg)+(m&&!flat&&!m.tx?';fill-opacity:.75':'')+';stroke:none"/>';
   if(m&&m.tx)h+='<g transform="translate('+f2(c0)+' 0)">'+txTiles(m.tx,Lv,H,flat,px)+'</g>';
   else if(m)h+='<g transform="translate('+f2(c0)+' 0)">'+texLines(m.id,Lv,H,px,hexMix(m.c,'#000000',0.38))+'</g>';
@@ -3108,12 +3117,14 @@ function elevSvg(C,px,el,codes,flat){
       h+='<rect x="'+f2(mx0+2.5)+'" y="'+f2(my+2.5)+'" width="'+f2(Math.max(0,mw-5))+'" height="'+f2(Math.max(0,m.h-5))+'" style="fill:#2a2c31;stroke:none"/>';
       h+='<polygon points="'+f2(mx0+mw*0.55)+','+f2(my+2.5)+' '+f2(mx0+mw-2.5)+','+f2(my+2.5)+' '+f2(mx0+mw-2.5)+','+f2(my+m.h*0.45)+'" style="fill:#ffffff;fill-opacity:.06"/>';
       h+=txt(C,px,mx0+mw/2,my+m.h+12*px,mmCod(m)+' '+mmNombre(m),C.label,9.5,600);
+      if(slx)guiasPieza('mm',m.id,mx0,mw,m.y0||0,m.h);
       return;
     }
     if(m.ac){h+=acVisSvg(m.ac,mx0,my,mw,m.h,flat,px);llamZ.push({k:'m:'+m.id,ax:mx0+mw*0.75,ay:my+Math.min(m.h*0.35,60),code:codes[m.ac]||'',m:matOf('acab',m.ac)})}
     h+='<rect x="'+f2(mx0)+'" y="'+f2(my)+'" width="'+f2(mw)+'" height="'+f2(m.h)+'" style="fill:'+(m.luz?C.warn:col)+';fill-opacity:'+(m.ac?0:m.luz?.22:m.k==='pan'?.18:.07)+';stroke:'+(slx?C.accent:col)+';stroke-width:'+f2((slx?2.6:1.2)*px)+(m.k==='hor'?';stroke-dasharray:'+f2(5*px)+' '+f2(3*px):'')+'"/>';
     if(m.k==='mue'||m.k==='baj')h+=ln(mx0+mw/2,my,mx0+mw/2,my+m.h,col,0.8*px)+ln(mx0,my+m.h*0.5,mx0+mw,my+m.h*0.5,col,0.6*px);
     h+=txt(C,px,mx0+mw/2,my+Math.min(m.h/2,18*px)+4*px,mmCod(m)+' '+mmNombre(m),col,10,600);
+    if(slx)guiasPieza('mm',m.id,mx0,mw,m.y0||0,m.h);
   });
   (st&&st.v&&st.v.fz||[]).forEach(function(z){
     if(z.wall!==el.w.id||z.sd!==el.sd)return;
@@ -3144,6 +3155,7 @@ function elevSvg(C,px,el,codes,flat){
         h+=ln(xa,y1-(xa-c),xb,y1-(xb-c),cr,0.5*px,'butt',';opacity:.55');
       }
     });
+    if(slr){var gs0=Math.max(0,Math.min(L,rc.s0)),gs1=Math.max(0,Math.min(L,rc.s1));guiasPieza('rc',rc.id,el.rev?L-gs1:gs0,gs1-gs0,0,Math.min(H,rcAlto(rc)))}
   });
   (el.pils||[]).filter(function(q){return q.att}).forEach(function(q){
     h+='<rect x="'+f2(q.x0)+'" y="0" width="'+f2(q.w)+'" height="'+H+'" style="fill:'+hexMix(C.bg,'#000000',0.09)+';stroke:'+col+';stroke-width:'+f2(1.5*px)+'"/>';
@@ -5243,6 +5255,15 @@ function openDimEd(h){
 function commitDimEd(){
   if(!dimEd)return;
   var h=dimEd,n=fromU(num(qd.value));closeDimEd();
+  if(h.kind==='pzg'){
+    var po=h.pk==='rc'?by(st.v.rc||[],h.id):by(st.v.mm||[],h.id);if(!po)return;
+    if(!(n>=0&&n<=5000)){toast('Escribe una medida válida');return}
+    var wdp=po.s1-po.s0,xap=h.rev?h.L-po.s1:po.s0;snap();
+    if(h.lado==='l')xap=h.c0+n;else if(h.lado==='r')xap=h.c1-n-wdp;else if(h.lado==='w')wdp=Math.max(1,n);
+    else if(h.lado==='h'){if(n<1){hist.pop();return}po.h=n}else if(h.lado==='b')po.y0=n;
+    if(h.lado==='l'||h.lado==='r'||h.lado==='w'){xap=Math.max(0,Math.min(h.L-wdp,xap));if(h.rev){po.s1=f2(h.L-xap);po.s0=f2(po.s1-wdp)}else{po.s0=f2(xap);po.s1=f2(xap+wdp)}}
+    commit(false);panelSel();return;
+  }
   if(h.kind==='mecalz'){ /* mecanismo en el alzado: la altura o la distancia a la pared; se mueve también en la planta */
     var mq=by(st.v.pts,h.q);if(!mq)return;
     if(!(n>=0&&n<=5000)){toast('Escribe una medida válida');return}
