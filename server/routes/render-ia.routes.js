@@ -218,9 +218,27 @@ async function fueraDeMascaraOriginal(baseBuf, iaBuf, mascaraB64) {
   return sharp(out, { raw: { width: W, height: H, channels: 3 } }).png().toBuffer();
 }
 const DATA_IMG = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/;
+// Modelo de Gemini para EDITAR: el más nuevo de la familia «pro … image» que vea la cuenta («Nano Banana Pro»); si no hay, el de imagen normal
+let edicionGemini = null;
+async function modeloEdicionGemini(clave) {
+  if (process.env.GEMINI_EDIT_MODEL) return process.env.GEMINI_EDIT_MODEL;
+  if (edicionGemini) return edicionGemini;
+  try {
+    const r = await fetch(`${API}/models?pageSize=200`, { headers: { 'x-goog-api-key': clave } });
+    const j = await r.json().catch(() => ({}));
+    const ids = (j.models || []).filter(m => (m.supportedGenerationMethods || ['generateContent']).includes('generateContent')).map(m => String(m.name || '').replace(/^models\//, '')).filter(n => /image/i.test(n) && !/imagen|embed|tts|veo/i.test(n));
+    const orden = (a, b) => { const va = versionDe(a), vb = versionDe(b); for (let i = 0; i < Math.max(va.length, vb.length); i++) { const d = (vb[i] || 0) - (va[i] || 0); if (d) return d; } return b.localeCompare(a); };
+    const pro = ids.filter(n => /pro/i.test(n)).sort(orden), resto = ids.filter(n => !/pro/i.test(n)).sort(orden);
+    edicionGemini = pro[0] || resto[0] || null;
+  } catch { /* se usa el de siempre */ }
+  return edicionGemini || modelo();
+}
+const PROPORCIONES = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
+const proporcionGemini = r => PROPORCIONES.map(p => { const [a, b] = p.split(':').map(Number); return { p, d: Math.abs(Math.log(a / b / r)) }; }).sort((x, y) => x.d - y.d)[0].p;
 router.post('/editar', async (req, res) => {
-  const clave = process.env.OPENAI_API_KEY;
-  if (!clave) return res.status(503).json({ error: 'Falta la clave de OpenAI en el servidor (variable OPENAI_API_KEY en Railway).' });
+  const motor = req.body?.motor === 'gemini' ? 'gemini' : 'openai';
+  const clave = motor === 'gemini' ? process.env.GEMINI_API_KEY : process.env.OPENAI_API_KEY;
+  if (!clave) return res.status(503).json({ error: motor === 'gemini' ? 'Falta la clave de Google en el servidor (variable GEMINI_API_KEY en Railway).' : 'Falta la clave de OpenAI en el servidor (variable OPENAI_API_KEY en Railway).' });
   try {
     const { imagen, mascara, instruccion, referencias, calidad: soloCalidad, altaResolucion, coherencia } = req.body || {};
     const m = DATA_IMG.exec(String(imagen || ''));
@@ -253,6 +271,29 @@ router.post('/editar', async (req, res) => {
       tamSalida = ratio >= 1 ? lado + 'x' + corto : corto + 'x' + lado;
     }
     let modeloO = alta ? 'gpt-image-2' : process.env.OPENAI_IMAGE_MODEL || imagenOpenAI || 'gpt-image-1';
+    let b64g = null;
+    if (motor === 'gemini') {
+      modeloO = await modeloEdicionGemini(clave);
+      const meta0 = await sharp(Buffer.from(m[2], 'base64')).metadata();
+      const prop = proporcionGemini(meta0.width / meta0.height);
+      // la zona marcada se le enseña como una imagen en blanco y negro (blanco = lo que se cambia); después, fuera de ella se vuelve a poner el original
+      let mascaraBN = null;
+      if (mk) { try { mascaraBN = (await sharp(Buffer.from(mk[1], 'base64')).ensureAlpha().extractChannel(3).negate().png().toBuffer()).toString('base64'); } catch { /* sin guía de zona */ } }
+      const partes = [{ text: prompt + (mascaraBN ? ' La imagen en blanco y negro que va después del render indica la zona a cambiar (blanco = zona que cambia, negro = no se toca); no la dibujes en el resultado.' : '') + ' Devuelve la imagen editada completa, con el mismo encuadre y proporción.' }, { inlineData: { mimeType: m[1], data: m[2] } }];
+      if (mascaraBN) partes.push({ inlineData: { mimeType: 'image/png', data: mascaraBN } });
+      refs.concat(coh).forEach(x => partes.push({ inlineData: { mimeType: x[1], data: x[2] } }));
+      const llamarG = async (cfg) => {
+        const rg = await fetch(`${API}/models/${modeloO}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': clave }, body: JSON.stringify({ contents: [{ parts: partes }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'], ...(cfg ? { imageConfig: cfg } : {}) } }) });
+        return { rg, jg: await rg.json().catch(() => ({})) };
+      };
+      let { rg, jg } = await llamarG({ aspectRatio: prop, imageSize: alta ? '4K' : '2K' });
+      if (!rg.ok && /imageConfig|imageSize|aspect|unknown name|invalid/i.test(JSON.stringify(jg?.error || {}))) ({ rg, jg } = await llamarG({ aspectRatio: prop }));
+      if (!rg.ok && /imageConfig|aspect|unknown name|invalid/i.test(JSON.stringify(jg?.error || {}))) ({ rg, jg } = await llamarG(null));
+      if (!rg.ok) { console.error('render-ia editar Gemini', rg.status, jg?.error?.message); edicionGemini = null; return res.status(502).json({ error: 'Gemini no ha podido editar la imagen' + (jg?.error?.message ? ': ' + String(jg.error.message).slice(0, 220) : '') }); }
+      const ps = jg?.candidates?.[0]?.content?.parts || [], im = ps.find(p => p.inlineData?.data || p.inline_data?.data);
+      if (!im) return res.status(502).json({ error: 'Gemini no ha devuelto ninguna imagen' + (ps.find(p => p.text)?.text ? ': ' + ps.find(p => p.text).text.slice(0, 200) : '') });
+      b64g = (im.inlineData || im.inline_data).data;
+    }
     const llamar = async ({ fidelidad = true, conRefs = true } = {}) => {
       const fd = new FormData();
       fd.append('model', modeloO); fd.append('prompt', prompt); fd.append('size', tamSalida); fd.append('quality', alta ? 'high' : process.env.OPENAI_IMAGE_QUALITY || 'high'); fd.append('n', '1');
@@ -264,7 +305,7 @@ router.post('/editar', async (req, res) => {
       const rr = await fetch('https://api.openai.com/v1/images/edits', { method: 'POST', headers: { Authorization: 'Bearer ' + clave }, body: fd });
       return { rr, jj: await rr.json().catch(() => ({})) };
     };
-    let { rr, jj } = await llamar();
+    let { rr, jj } = b64g ? { rr: { ok: true }, jj: { data: [{ b64_json: b64g }] } } : await llamar();
     if (!rr.ok && !alta && !process.env.OPENAI_IMAGE_MODEL && /does not exist|model_not_found|do not have access|not found/i.test(JSON.stringify(jj?.error || {}))) {
       const lista = await modelosImagenOpenAI(clave).catch(() => []);
       if (lista.length && lista[0] !== modeloO) { modeloO = lista[0]; imagenOpenAI = modeloO; ({ rr, jj } = await llamar()); }

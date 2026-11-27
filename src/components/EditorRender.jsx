@@ -48,6 +48,10 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
   const [trabajando, setTrabajando] = useState(false);
   const [error, setError] = useState('');
   const [comparar, setComparar] = useState(false);
+  // motor de IA: ChatGPT, Gemini (el Pro) o los dos a la vez para comparar (cada uno sale como una versión)
+  const [motor, setMotor] = useState(() => { try { return localStorage.getItem('editorRenderMotor') || 'openai'; } catch { return 'openai'; } });
+  const ponMotor = v => { setMotor(v); try { localStorage.setItem('editorRenderMotor', v); } catch { /* sin memoria */ } };
+  const NOMBRE_MOTOR = { openai: 'ChatGPT', gemini: 'Gemini' };
   const [pintado, setPintado] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [autoGuardar, setAutoGuardar] = useState(() => { try { return localStorage.getItem('editorRenderAuto') !== '0'; } catch { return true; } });
@@ -159,12 +163,28 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
       if (coh.length) {
         for (const gid of coh) { const g = galeria.find(x => x.id === gid); if (!g) continue; try { const u = g.url || g.thumb, im = await carga(u + (String(u).includes('?') ? '&' : '?') + 'cors=1'), k = Math.min(1, 1024 / Math.max(im.naturalWidth, im.naturalHeight)); coherencia.push(aDataUrl(im, Math.round(im.naturalWidth * k), Math.round(im.naturalHeight * k), 'image/jpeg', 0.9)); } catch { /* esa vista no se pudo leer: se sigue sin ella */ } }
       }
-      const r = await api.post('/render-ia/editar', { imagen, mascara, instruccion: instr, referencias: calidadSola ? [] : refs, calidad: calidadSola, altaResolucion, coherencia }, { timeout: 280000 });
-      const sal = await carga(r.data.imagen);
-      const url = altaResolucion ? r.data.imagen : aDataUrl(sal, W0, H0, 'image/jpeg', 0.93);
-      setHistoria(h => [...h.slice(0, idx + 1), { src: url, guardada: false, texto: calidadSola ? 'Mejora de calidad' : instr }]); setIdx(idx + 1);
-      if (!calidadSola) { setTexto(''); setRefs([]); }
-      if (autoGuardar) { try { const rr = await onGuardar?.(url, (nombre || 'Render') + ' · v' + (idx + 2)); if (rr) setHistoria(h => h.map((v, i) => (i === idx + 1 ? { ...v, guardada: true, render: rr } : v))); } catch { /* se puede guardar a mano */ } }
+      const motores = motor === 'ambos' ? ['openai', 'gemini'] : [motor];
+      const resultados = await Promise.all(motores.map(async mo => {
+        try {
+          const r = await api.post('/render-ia/editar', { imagen, mascara, instruccion: instr, referencias: calidadSola ? [] : refs, calidad: calidadSola, altaResolucion, coherencia, motor: mo }, { timeout: 280000 });
+          const sal = await carga(r.data.imagen);
+          // Gemini puede devolver otra proporción o tamaño: siempre se vuelve al tamaño del original
+          const url = altaResolucion && mo === 'openai' ? r.data.imagen : aDataUrl(sal, W0, H0, 'image/jpeg', 0.93);
+          return { url, mo };
+        } catch (e) { return { error: NOMBRE_MOTOR[mo] + ': ' + (e.response?.data?.error || e.message || 'no se pudo editar') }; }
+      }));
+      const bien = resultados.filter(x => x.url), fallos = resultados.filter(x => x.error).map(x => x.error);
+      if (fallos.length) setError(fallos.join(' · '));
+      if (bien.length) {
+        const nuevas = bien.map(x => ({ src: x.url, guardada: false, texto: (calidadSola ? 'Mejora de calidad' : instr) + ' · ' + NOMBRE_MOTOR[x.mo] }));
+        setHistoria(h => [...h.slice(0, idx + 1), ...nuevas]); setIdx(idx + nuevas.length);
+        if (!calidadSola) { setTexto(''); setRefs([]); }
+        if (autoGuardar) {
+          for (let k = 0; k < nuevas.length; k++) {
+            try { const rr = await onGuardar?.(nuevas[k].src, (nombre || 'Render') + ' · v' + (idx + 2 + k) + ' · ' + NOMBRE_MOTOR[bien[k].mo]); if (rr) setHistoria(h => h.map((v, i) => (i === idx + 1 + k ? { ...v, guardada: true, render: rr } : v))); } catch { /* se puede guardar a mano */ }
+          }
+        }
+      }
     } catch (e) { setError(e.response?.data?.error || e.message || 'No se pudo editar la imagen'); }
     setTrabajando(false);
   };
@@ -205,7 +225,7 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
             <canvas ref={prev} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', display: ajActivo && !comparar ? 'block' : 'none', borderRadius: 4 }} />
             <canvas ref={lienzo} onPointerDown={abajo} onPointerMove={mueve} onPointerUp={arriba} onPointerCancel={arriba}
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: comparar || (!verMarca && ajActivo) ? 0 : 0.5, cursor: trabajando ? 'wait' : gotero ? 'cell' : 'crosshair', touchAction: 'none' }} />
-            {trabajando && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', lineHeight: 1.4, fontSize: 15 }}>ChatGPT está editando… (puede tardar un minuto)</div>}
+            {trabajando && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', lineHeight: 1.4, fontSize: 15 }}>{motor === 'ambos' ? 'ChatGPT y Gemini están editando' : NOMBRE_MOTOR[motor] + ' está editando'}… (puede tardar un minuto)</div>}
           </div>
         </div>
         {galeria.length > 0 && (
@@ -252,6 +272,13 @@ export default function EditorRender({ src, nombre, onCerrar, onGuardar, galeria
             </div>
             <div style={{ opacity: 0.5, fontSize: 11, marginTop: 5 }}>Se ve en directo. Al aplicar se crea una versión nueva, como con la IA, sin gastar nada. Doble clic en un deslizador lo pone a 0.</div>
           </details>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>🤖 Motor de IA</div>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+            {[['openai', 'ChatGPT'], ['gemini', 'Gemini Pro'], ['ambos', 'Los dos']].map(([v, t]) => (
+              <button key={v} style={{ ...boton, flex: 1, padding: '6px 4px', ...(motor === v ? { background: ORO, color: '#000', fontWeight: 700 } : {}) }} disabled={trabajando} onClick={() => ponMotor(v)}>{t}</button>
+            ))}
+          </div>
+          <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 10 }}>{motor === 'ambos' ? 'Se hace con los dos a la vez: salen 2 versiones (mira el nombre en ↶ ↷) y te quedas con la mejor. Gasta el doble.' : motor === 'gemini' ? 'Gemini Pro («Nano Banana Pro») de Google: suele respetar mejor la imagen y mancha menos.' : 'ChatGPT (OpenAI), el de siempre.'}</div>
           <button style={{ ...boton, width: '100%', marginBottom: 12, background: '#2f5f8a', fontWeight: 700, padding: '9px 12px', opacity: trabajando ? 0.6 : 1 }} disabled={trabajando} onClick={() => aplicar(coh.length ? TEXTO_COHERENTE : TEXTO_CALIDAD)} title="Regenera la imagen idéntica pero más nítida y limpia, sin cambiar nada">{coh.length ? '✨ Mejorar calidad y hacerla coherente (' + coh.length + ' vista' + (coh.length > 1 ? 's' : '') + ')' : '✨ Mejorar calidad (sin cambiar nada)'}</button>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>1 · Marca la zona (opcional)</div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
