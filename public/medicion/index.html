@@ -511,12 +511,19 @@ body.crm .top .brand{display:none}
       </section>
       <section class="blk" id="palblk" hidden><h2 id="pal-h"></h2><p class="note" id="pal-n"></p><div class="seg3" id="alz-modo" hidden style="margin-bottom:8px"></div><div class="row" id="alz-h-w" hidden><label>Altura de la franja (cm)</label><input id="alz-h" value="100" inputmode="decimal"></div><div class="catgrid" id="pal"></div><div class="btns" id="pal-all-w" hidden><button id="pal-all">Aplicar a todas las salas</button></div>
         <details class="addcat" id="txup" hidden>
-          <summary>Subir textura propia</summary>
+          <summary>Subir o editar textura propia</summary>
           <p class="note">Sube una foto o PNG de un material (madera, piedra, tela…). Se repite en los alzados con el tamaño real que indiques.</p>
           <label class="fld"><span>Nombre</span><input id="tx-n" placeholder="Roble ahumado"></label>
           <label class="fld"><span>Ancho real de la imagen (cm)</span><input id="tx-w" inputmode="decimal" value="60"></label>
           <input id="tx-f" type="file" accept="image/png,image/jpeg,image/webp">
-          <div class="btns"><select id="tx-del-s" aria-label="Textura a quitar"></select><button id="tx-del">Quitar</button></div>
+          <div id="tx-ed" style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+            <div class="lab">Editar una textura</div>
+            <label class="fld"><span>Textura</span><select id="tx-del-s" aria-label="Textura a editar"></select></label>
+            <div id="tx-prev" style="height:70px;border-radius:8px;border:1px solid var(--line);background:#eee center/cover;margin-bottom:8px"></div>
+            <label class="fld"><span>Nombre</span><input id="tx-e-n" autocomplete="off"></label>
+            <label class="fld"><span>Ancho real de la imagen (cm)</span><input id="tx-e-w" inputmode="decimal"></label>
+            <div class="btns"><button id="tx-rot" title="Gira la imagen un cuarto de vuelta (las vetas pasan de verticales a horizontales)">↻ Girar 90°</button><button class="pri" id="tx-ok">Guardar</button><button class="danger" id="tx-del">Quitar</button></div>
+          </div>
         </details></section>
       <section class="blk" id="lumblk" hidden>
         <h2>Luminarias del catálogo</h2>
@@ -7237,8 +7244,9 @@ function drawPal(){
     var hPal=function(t,n){return '<div style="grid-column:1/-1;font:600 11px Montserrat,system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#8a8077;margin:8px 0 2px">'+t+'</div><div class="note" style="grid-column:1/-1;margin:0 0 4px">'+n+'</div>'};
     $('pal').innerHTML=hPal('Acabado','Lo que se ve. Si solo tocas acabados, no se añade obra: se respeta lo que hay.')+matsAc(mv).map(chipPal).join('')+(mv==='suelos'||mv==='techos'||mv==='acab'||mv==='alz'?'<button data-combo-abrir="1" title="Los colores NCS y los suelos del Combinador de colores de Ranuse"><span class="sw" style="background:linear-gradient(135deg,#2d2c2c 0 33%,#cecec8 33% 66%,#b9a58a 66%)"></span>Colores y suelos Ranuse…</button><button data-newcol="'+(mv==='alz'?'acab':mv)+'" title="Añade otro color o variante de material solo para este plano"><span class="sw" style="background:conic-gradient(#e8d9c4,#cfd8dc,#d9c4cf,#e8d9c4)"></span>+ Otro color…</button>':'')+(matsSis(mv).length?hPal('Sistema / obra','Lo que hay debajo (opcional). Se pinta aparte y no cambia el acabado.')+matsSis(mv).map(chipPal).join(''):'');
     var up=$('txup');up.hidden=false;
-    $('tx-del-s').innerHTML=TXLIB.map(function(t){return '<option value="'+esc(t.id)+'">'+esc(t.n)+'</option>'}).join('');
-    $('tx-del').hidden=$('tx-del-s').hidden=!TXLIB.length;
+    var txSel=$('tx-del-s').value,txPal=st.pal[mv];if(TXLIB.some(function(q){return q.id===txPal}))txSel=txPal;
+    $('tx-del-s').innerHTML=TXLIB.map(function(t){return '<option value="'+esc(t.id)+'"'+(t.id===txSel?' selected':'')+'>'+esc(t.n)+'</option>'}).join('');
+    $('tx-ed').hidden=!TXLIB.length;txEdLlenar();
     return;
   }
   $('txup').hidden=true;
@@ -11171,13 +11179,38 @@ $('tx-f').addEventListener('change',function(e){
       var d=x.getImageData(0,0,w,h).data,R=0,G=0,B=0,n=w*h;for(var i=0;i<d.length;i+=4){R+=d[i];G+=d[i+1];B+=d[i+2]}
       function hx(v){return ('0'+Math.round(v/n).toString(16)).slice(-2)}
       var tw=num($('tx-w').value);if(!(tw>=5&&tw<=500))tw=60;
-      var t={id:'u'+Date.now().toString(36),n:($('tx-n').value.trim()||('Textura '+(TXLIB.length+1))),c:'#'+hx(R)+hx(G)+hx(B),uri:c.toDataURL('image/jpeg',0.85),tw:tw,w:w,h:h};
+      var t={id:'u'+Date.now().toString(36),n:($('tx-n').value.trim()||String(file.name||'').replace(/\.[a-z0-9]+$/i,'').replace(/[_-]+/g,' ').trim().slice(0,60)||('Textura '+(TXLIB.length+1))),c:'#'+hx(R)+hx(G)+hx(B),uri:c.toDataURL('image/jpeg',0.85),tw:tw,w:w,h:h};
       TXLIB.push(t);prepTxRgb(t,c);refreshAcab();
       try{localStorage.setItem(LSX,JSON.stringify(TXLIB.filter(function(t){return !t.cat})))}catch(e2){toast('Textura cargada, pero no cabe en el almacenamiento del dispositivo')}
       $('tx-n').value='';st.pal.acab=t.id;st.tool='paint';drawPal();toolbar();hint();render();toast('Textura añadida')
     }catch(er){toast('No se pudo leer esa imagen')}};
     im.onerror=function(){toast('No se pudo leer esa imagen')};im.src=r.result};
   r.readAsDataURL(file);
+});
+/* editar una textura subida: nombre, tamaño real y girarla */
+function txEdActual(){var id=$('tx-del-s').value;return TXLIB.filter(function(q){return q.id===id})[0]||null}
+function txEdLlenar(){var tq=txEdActual();if(!tq)return;$('tx-e-n').value=tq.n||'';$('tx-e-w').value=tq.tw||60;$('tx-prev').style.backgroundImage='url('+tq.uri+')'}
+function txGuardarCambios(tq){
+  refreshAcab();try{localStorage.setItem(LSX,JSON.stringify(TXLIB.filter(function(q){return !q.cat})))}catch(e){}
+  if(st.v.tx)st.v.tx.forEach(function(q){if(q.id===tq.id){q.n=tq.n;q.tw=tq.tw;q.uri=tq.uri;q.w=tq.w;q.h=tq.h}});
+  save();drawPal();render();try{panelSel()}catch(e){}
+}
+$('tx-del-s').addEventListener('change',txEdLlenar);
+$('tx-ok').addEventListener('click',function(){
+  var tq=txEdActual();if(!tq)return;
+  var nn=$('tx-e-n').value.trim(),ww=num($('tx-e-w').value);
+  if(nn)tq.n=nn.slice(0,60);if(ww>=5&&ww<=500)tq.tw=ww;else{toast('El ancho real va de 5 a 500 cm');return}
+  txGuardarCambios(tq);toast('Textura guardada: «'+tq.n+'»');
+});
+$('tx-rot').addEventListener('click',function(){
+  var tq=txEdActual();if(!tq)return;
+  var im=new Image();im.onload=function(){try{
+    var c=document.createElement('canvas');c.width=im.height;c.height=im.width;var x=c.getContext('2d');
+    x.translate(c.width/2,c.height/2);x.rotate(Math.PI/2);x.drawImage(im,-im.width/2,-im.height/2);
+    tq.uri=c.toDataURL('image/jpeg',0.88);var ow=tq.w;tq.w=tq.h;tq.h=ow;try{prepTxRgb(tq,c)}catch(e){}
+    $('tx-prev').style.backgroundImage='url('+tq.uri+')';txGuardarCambios(tq);toast('Textura girada 90°');
+  }catch(e){toast('No se ha podido girar esta imagen')}};
+  im.onerror=function(){toast('No se ha podido girar esta imagen')};im.src=tq.uri;
 });
 $('tx-del').addEventListener('click',function(){
   var id=$('tx-del-s').value;if(!id)return;
