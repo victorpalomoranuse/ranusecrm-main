@@ -9804,7 +9804,7 @@ var DLIB=(function(){
    ['TAB-hum','Paredes','Tabique de pladur para zona húmeda',[['Placa hidrófuga H1',15,'board'],['Montante con lana mineral',48,'ins'],['Placa hidrófuga H1',15,'board']],'Placa hidrófuga en baños y vestuarios. Impermeabilizar la zona de ducha y subir la banda por las paredes antes de alicatar.',W],
    ['TAB-fuego','Paredes','Tabique cortafuegos (EI-60)',[['Placa de yeso laminado RF',15,'board'],['Placa de yeso laminado RF',15,'board'],['Montante con lana de roca',48,'ins'],['Placa de yeso laminado RF',15,'board'],['Placa de yeso laminado RF',15,'board']],'Placas resistentes al fuego y lana de roca. Sellar los pasos de instalaciones con material intumescente.',W],
    ['TAB-ac','Paredes','Tabique acústico de doble estructura',[['Placa de yeso laminado',15,'board'],['Placa de yeso laminado',15,'board'],['Montante con lana mineral',48,'ins'],['Cámara de aire',10,'air'],['Montante con lana mineral',48,'ins'],['Placa de yeso laminado',15,'board'],['Placa de yeso laminado',15,'board']],'Dos estructuras independientes: sala de música, despachos y separaciones entre locales. Sellar los perímetros con banda acústica.',W],
-   ['TRD-dir','Paredes','Trasdosado directo (placa pegada al muro)',[['Muro existente',150,'conc'],['Pelladas de adhesivo de yeso',15,'mort'],['Placa de yeso laminado',15,'board']],'La placa se pega directamente al muro con pelladas. El soporte debe estar plano, seco y limpio. No admite instalaciones empotradas ni cargas pesadas, y aísla poco.',W],
+   ['TRD-dir','Paredes','Trasdosado directo · placa sin cámara',[['Muro existente',150,'conc'],['Adhesivo de yeso (sin cámara)',15,'mort'],['Placa de yeso laminado',15,'board']],'La placa se pega directamente al muro con pelladas. El soporte debe estar plano, seco y limpio. No admite instalaciones empotradas ni cargas pesadas, y aísla poco.',W],
    ['TRD-sem','Paredes','Trasdosado semidirecto (maestra)',[['Muro existente',150,'conc'],['Maestra con lana mineral',30,'ins'],['Placa de yeso laminado',15,'board']],'Maestras fijadas al muro con piezas de unión: corrige desplomes pequeños y deja una cámara para el aislante.',W],
    ['TRD-aut','Paredes','Trasdosado autoportante con lana',[['Muro existente',150,'conc'],['Cámara de aire',10,'air'],['Montante con lana mineral',48,'ins'],['Placa de yeso laminado',15,'board']],'Perfilería propia, separada del muro. Admite instalaciones y mejora el aislamiento térmico y acústico.',W],
    ['LAD-hs','Paredes','Tabique de ladrillo hueco sencillo (4 cm)',[['Enlucido de yeso',15,'plast'],['Ladrillo hueco sencillo',40,'brick'],['Enlucido de yeso',15,'plast']],'Tabiquería interior ligera, no portante. Atar al forjado con junta flexible.',W],
@@ -9821,7 +9821,7 @@ var DLIB=(function(){
    ['T-yes','Techos','Techo · Yeso (guarnecido y enlucido)',[['Forjado',250,'conc'],['Guarnecido de yeso',12,'plast'],['Enlucido de yeso',3,'plast'],['Pintura plástica',1,'fin']],'Aplicar sobre soporte limpio y con malla en los encuentros. Dejar secar antes de pintar.',false],
    ['T-esc','Techos','Techo · Escayola (placas lisas)',[['Forjado',250,'conc'],['Cámara de aire con instalaciones',150,'air'],['Placa de escayola lisa',10,'plast'],['Pintura plástica',1,'fin']],'Placas sujetas con varillas o cañas; las juntas se rellenan con escayola y fibra.',false],
    ['T-pyd','Techos','Techo · Falso techo de pladur de doble placa',[['Forjado',250,'conc'],['Cámara de aire con instalaciones',200,'air'],['Lana mineral',60,'ins'],['Perfil F530 con varilla y horquilla',27,'metal'],['Placa de yeso laminado',15,'board'],['Placa de yeso laminado',15,'board'],['Masilla y pintura',2,'fin']],'Doble placa cuando se pide mayor resistencia al fuego o mejor aislamiento acústico.',false],
-   ['T-pyp','Techos','Techo · Pladur pegado al forjado (directo)',[['Forjado',250,'conc'],['Pelladas de adhesivo de yeso',15,'mort'],['Placa de yeso laminado',15,'board'],['Masilla y pintura',2,'fin']],'Solo si el forjado está plano y no hay instalaciones por debajo. No deja cámara.',false],
+   ['T-pyp','Techos','Techo · Pladur pegado al forjado (directo)',[['Forjado',250,'conc'],['Adhesivo de yeso (sin cámara)',15,'mort'],['Placa de yeso laminado',15,'board'],['Masilla y pintura',2,'fin']],'Solo si el forjado está plano y no hay instalaciones por debajo. No deja cámara.',false],
    ['T-pyh','Techos','Techo · Pladur hidrófugo (zonas húmedas)',[['Forjado',250,'conc'],['Cámara de aire con instalaciones',200,'air'],['Perfil F530 con varilla y horquilla',27,'metal'],['Placa hidrófuga H1',15,'board'],['Masilla y pintura',2,'fin']],'Para baños, vestuarios y zonas con vapor. Prever ventilación.',false]
   ].forEach(function(d){DLIB[d[0]]={id:d[0],grp:d[1],n:d[2],layers:d[3].map(function(l){return {n:l[0],e:l[1],k:l[2]}}),note:d[4],wall:d[5]}});
   DLIB['TAB-new'].wall=true;
@@ -9830,7 +9830,7 @@ var DLIB=(function(){
 
 /* cuándo se elige cada solución: criterio orientativo de proyecto, no sustituye al cálculo ni a la ficha del fabricante */
 var TRDS=['TRD-dir','TRD-sem','TRD-aut','A-tras'];
-function capasTrasdosado(id){var d=DLIB[id];if(!d)return null;var l=d.layers.filter(function(x){return x.k!=='conc'||x.n.indexOf('Muro')<0});return {t:l.reduce(function(a,x){return a+x.e},0)/10,mat:l.map(function(x){return x.n}).join(' + ')}}
+function capasTrasdosado(id){var d=DLIB[id];if(!d)return null;var l=d.layers.filter(function(x){return x.k!=='conc'||x.n.indexOf('Muro')<0});return {t:l.reduce(function(a,x){return a+x.e},0)/10,mat:d.n}} /* en la leyenda, el nombre de la solución (no la lista de capas) */
 var CUANDO={
  'TAB-11-48':{c:'Divisiones interiores sin exigencias de ruido, fuego ni golpes: despachos, vestuarios sin uso intensivo, trasteros.',n:'Es la solución más económica. En un gimnasio con impactos de balón o de peso suele quedarse corta.'},
  'TAB-11-70':{c:'Cuando la altura pasa de unos 3 m o quieres algo más de aislamiento sin subir a doble placa.',n:'Mismo número de placas, solo más profundo el montante.'},
@@ -10651,7 +10651,7 @@ function sheetPage(doc,view,idx,total,o){
 
   /* recrecidos en pared: su trama y su material, en la leyenda (en el plano no se escribe nada) */
   if(rcVis(view)&&(v.rc||[]).length){
-    var rcG={};(v.rc||[]).forEach(function(rc){var q=rcPoly(rc);if(!q)return;var k=String(rc.mat||'Recrecido').trim()||'Recrecido';var g=rcG[k]||(rcG[k]={ml:0,m2:0,t:rc.t||10});g.ml+=q.len;g.m2+=rcArea(rc)});
+    var rcG={};(v.rc||[]).forEach(function(rc){var q=rcPoly(rc);if(!q)return;var k=String(rc.mat||'Recrecido').trim()||'Recrecido';if(rc.sol&&DLIB[rc.sol]&&k.indexOf(' + ')>=0)k=DLIB[rc.sol].n; /* planos antiguos: la lista de capas pasa a ser el nombre de la solución */var g=rcG[k]||(rcG[k]={ml:0,m2:0,t:rc.t||10});g.ml+=q.len;g.m2+=rcArea(rc)});
     if(Object.keys(rcG).length&&sect('Recrecidos')){
       Object.keys(rcG).forEach(function(k){
         if(!room(rh*1.2))return;var g=rcG[k];
