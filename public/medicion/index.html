@@ -3105,6 +3105,10 @@ function elevSvg(C,px,el,codes,flat){
     h+=zm.tx?txTiles(zm.tx,zw,zh,flat,px):texLines(zm.id,zw,zh,px,hexMix(zm.c,'#000000',0.38));
     h+='</g>';
     var slz=st.sel&&st.sel.t==='fz'&&st.sel.id===z.id;
+    if(slz&&!flat){
+      var gy=zy+zh/2,gx=zx+zw*0.3,G=function(x1,y1,x2,y2,val,lado){if(val<0.5)return;h+=ln(x1,y1,x2,y2,AZUL,0.6*px,'butt',';stroke-dasharray:'+f2(3*px)+' '+f2(2*px))+dimLine(C,px,x1,y1,x2,y2,fmtU(val),AZUL,AZUL);var vt=Math.abs(x2-x1)<Math.abs(y2-y1);if(colectaDim)dimHits.push({kind:'fzg',fz:z.id,lado:lado,L:L,H:H,val:val,rot:false,x:(el.x||0)+(x1+x2)/2+(vt?14*px:0),y:(el.y||0)+(y1+y2)/2-(vt?0:6*px)})};
+      G(0,gy,zx,gy,zx,'l');G(zx+zw,gy,L,gy,L-zx-zw,'r');G(gx,zy+zh,gx,H,z.y0,'b');G(gx,0,gx,zy,H-z.y1,'t');
+    }
     h+='<rect x="'+f2(zx)+'" y="'+f2(zy)+'" width="'+f2(zw)+'" height="'+f2(zh)+'" style="fill:none;stroke:'+(slz?C.accent:col)+';stroke-width:'+f2((slz?2.6:0.9)*px)+(slz?'':';stroke-dasharray:'+f2(5*px)+' '+f2(3*px))+'"/>';
     if(zw/px>26&&zh/px>14)h+=txt(C,px,zx+zw/2,zy+zh/2+4*px,(codes[z.mat]||''),C.label,10,700);
   });
@@ -3229,6 +3233,7 @@ function acabLlamada(C,px,ax,ay,bx,code,m){
   var y=ay+r+13*px,x=bx-r;
   if(code){h+=st0(txt(C,px,x,y,code,C.label,10.5,700));y+=12*px}
   partes.forEach(function(p,i){h+=st0(txt(C,px,x,y,p,i?C.dim:C.label,9.5,i?400:500));y+=11*px});
+  if(m.cod)h+=st0(txt(C,px,x,y,String(m.cod),C.dim,8.5,500));
   return h;
 }
 function eqaSvg(C,px,el){
@@ -5166,6 +5171,14 @@ function openDimEd(h){
 function commitDimEd(){
   if(!dimEd)return;
   var h=dimEd,n=fromU(num(qd.value));closeDimEd();
+  if(h.kind==='fzg'){ /* guía de un trozo de acabado: se escribe la distancia y el trozo se mueve sin cambiar de tamaño */
+    var zg=by(st.v.fz||[],h.fz);if(!zg)return;
+    if(!(n>=0&&n<=5000)){toast('Escribe una medida válida');return}
+    var wz=zg.x1-zg.x0,hz=zg.y1-zg.y0;snap();
+    if(h.lado==='l')zg.x0=n;else if(h.lado==='r')zg.x0=h.L-n-wz;else if(h.lado==='b')zg.y0=n;else zg.y0=h.H-n-hz;
+    zg.x0=f2(Math.max(0,Math.min(h.L-wz,zg.x0)));zg.x1=f2(zg.x0+wz);zg.y0=f2(Math.max(0,Math.min(h.H-hz,zg.y0)));zg.y1=f2(zg.y0+hz);
+    commit(false);panelSel();return;
+  }
   if(h.kind==='ledalz'){ /* distancia de una tira LED vertical en el alzado: la tira se mueve a lo largo de su muro */
     var lq=by(st.v.pts,h.q),lw=wl(h.wall);if(!lq||!lw)return;
     if(!(n>=0&&n<=5000)){toast('Escribe una medida válida');return}
@@ -7416,7 +7429,8 @@ function panelSel(focus){
     h+='<div class="rowh"><strong>Acabado por zonas</strong><span class="muted">alzado '+(fal?fal.id:'')+'</span></div>';
     h+='<p class="note">Un trozo de pared con un material distinto. En la planta de Acabados se marca con una trama que remite a este alzado.</p>';
     h+='<label class="fld"><span>Material</span><select data-t="fz_mat">'+matsDe('acab').map(function(m){return '<option value="'+m.id+'"'+(m.id===fz.mat?' selected':'')+'>'+esc(m.n)+'</option>'}).join('')+'</select></label>';
-    h+=fld('fz_x0','Desde (cm, a lo largo de la pared)',fz.x0)+fld('fz_x1','Hasta (cm)',fz.x1)+fld('fz_y0','Desde el suelo (cm)',fz.y0)+fld('fz_y1','Hasta (cm)',fz.y1);
+    h+=fld('fz_w','Ancho (cm)',f2(fz.x1-fz.x0))+fld('fz_h','Alto (cm)',f2(fz.y1-fz.y0));
+    h+='<p class="note">La posición se ajusta en el alzado: arrástralo, o toca una de las cotas azules (a las paredes, al suelo o al techo) y escribe la distancia.</p>';
     h+='<p class="note">Superficie: '+m2(areaZona(fz)/10000)+' m²</p>';
     h+='<div class="btns"><button class="danger" data-a="del">Borrar esta zona</button></div>';
   }else if(s&&s.t==='eqa'){
@@ -7943,7 +7957,7 @@ function applyField(key,val,adv,raw){
   }else if(s.t==='fz'){
     var qz=by(st.v.fz||[],s.id);if(!qz)return;
     if(!(n>=0&&n<=3000)){toast('Escribe una medida válida');return}
-    snap();qz[key.slice(3)]=n;
+    snap();if(key==='fz_w')qz.x1=f2(qz.x0+Math.max(1,n));else if(key==='fz_h')qz.y1=f2(qz.y0+Math.max(1,n));else qz[key.slice(3)]=n;
     if(qz.x1<qz.x0){var tx0=qz.x0;qz.x0=qz.x1;qz.x1=tx0}
     if(qz.y1<qz.y0){var ty0=qz.y0;qz.y0=qz.y1;qz.y1=ty0}
     commit(false);
