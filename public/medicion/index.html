@@ -5521,6 +5521,13 @@ function doPinch(){
 svg.addEventListener('pointerdown',function(e){
   e.preventDefault();
   var p=loc(e);
+  if(st.tool==='select'&&!st.cotasAdj&&!(e.pointerType==='mouse'&&e.button!==0)){ /* doble toque sobre una cota: se edita (el dblclick del navegador no siempre llega porque el primer toque vuelve a dibujar el plano) */
+    var tAhora=Date.now(),tPrev=svg._ultTap;svg._ultTap={t:tAhora,x:p.x,y:p.y};
+    if(tPrev&&tAhora-tPrev.t<450&&Math.hypot(p.x-tPrev.x,p.y-tPrev.y)<10){
+      var hcT=nearAdj(toW(p));
+      if(hcT){svg._ultTap=null;gesture=null;try{closeDimEd()}catch(er){}st.cotasAdj=true;st.adjSel=hcT.k;st.sel=null;st.multi=[];closeQE();toolbar();panelSel();render();hint();toast('Cota seleccionada: Supr para quitarla, arrástrala para moverla o escribe su texto en el panel');return}
+    }
+  }
   if(e.pointerType==='pen'&&!st.penSeen){st.penSeen=true;st.fingerDraws=false;fingerBtn()}
   if(gesture&&gesture.type==='draw'&&gesture.pen&&e.pointerType!=='pen')return;
   try{svg.setPointerCapture(e.pointerId)}catch(_){}
