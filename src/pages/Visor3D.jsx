@@ -1460,7 +1460,7 @@ export function unirCaras(renderer, imgs, yaw, ancho, signoX = -1, calidadJpeg =
   let suma = '';
   bs.forEach((b, i) => {
     uniforms['t' + i] = { value: texs[i] }; uniforms['r' + i] = { value: new THREE.Vector3(...b.r) }; uniforms['u' + i] = { value: new THREE.Vector3(...b.u) }; uniforms['f' + i] = { value: new THREE.Vector3(...b.f) };
-    suma += `{ float z = dot(w, f${i}); if (z > 0.0) { vec2 p = vec2(dot(w, r${i}), dot(w, u${i})) / (z * th); float m = max(abs(p.x), abs(p.y)); if (m < 1.0) { float k = 1.0 - smoothstep(0.66, 0.99, m) + 1e-4; c += texture2D(t${i}, p * 0.5 + 0.5).rgb * k; s += k; } } }\n`;
+    suma += `{ float z = dot(w, f${i}); if (z > 0.0) { vec2 p = vec2(dot(w, r${i}), dot(w, u${i})) / (z * th); float m = max(abs(p.x), abs(p.y)); if (m < 1.0) { float k = 1.0 - smoothstep(0.64, 0.78, m) + 1e-4; c += texture2D(t${i}, p * 0.5 + 0.5).rgb * k; s += k; } } }\n`;
   });
   const decl = bs.map((_, i) => `uniform sampler2D t${i}; uniform vec3 r${i}; uniform vec3 u${i}; uniform vec3 f${i};`).join('\n');
   const mat = new THREE.ShaderMaterial({
@@ -6158,7 +6158,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
   };
   // Panorama con IA por caras (Nano Banana Pro): 6 fotos de 110° → la IA mejora cada una a 2K (la de delante primero; las demás la usan
   // de referencia para que todas tengan el mismo acabado) → se unen en un 360° de 6K. Unas 4 veces más detalle que mandar el 360° entero.
-  const TEXTO_CARA = 'Convierte este render 3D en una fotografía real de interiorismo de alta gama: materiales realistas, texturas finas y nítidas, reflejos naturales y acabados limpios. Es una vista gran angular de 110 grados (una cara de un panorama 360): conserva EXACTAMENTE la geometría, la perspectiva, el encuadre y la posición de cada elemento hasta los mismos bordes de la imagen; no corrijas la distorsión del gran angular, no recortes ni amplíes. No añadas ni quites objetos y no cambies máquinas, muebles ni rótulos.';
+  const TEXTO_CARA = 'Convierte este render 3D en una fotografía real de interiorismo de alta gama: materiales realistas, texturas finas y nítidas, reflejos naturales y acabados limpios. Es una vista gran angular de 110 grados (una cara de un panorama 360): conserva EXACTAMENTE la geometría, la perspectiva, el encuadre y la posición de cada elemento hasta los mismos bordes de la imagen; no corrijas la distorsión del gran angular, no recortes ni amplíes. No añadas ni quites objetos y no cambies máquinas, muebles ni rótulos. Respeta EXACTAMENTE el color y el material de cada cosa: marcos y carpinterías (si son negros u oscuros, siguen negros; no los hagas plateados), puertas, paredes, suelo y techo. Los cristales siguen siendo cristales transparentes con lo que hay detrás; no los conviertas en espejos ni en paredes. No muevas ni dupliques nada.';
   const panoPorCaras = async (pos, yaw, vistas = [], avisa = () => {}, opc = {}) => {
     const motorC = opc.motor === 'openai' ? 'openai' : 'gemini', textoC = TEXTO_CARA + (opc.extra ? ' Además, en toda la sala: ' + opc.extra + '. Aplícalo de forma coherente en todas las vistas.' : '');
     const a = api3d.current, ocultar = [a.gizmoG, a.cotasG, a.nodoG, a.guiaG];
