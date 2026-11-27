@@ -2769,7 +2769,16 @@ function cnPts(c){
   for(var i=0;i<=12;i++){var t=i/12;p.push({x:(1-t)*(1-t)*a.x+2*t*(1-t)*mx+t*t*b.x,y:(1-t)*(1-t)*a.y+2*t*(1-t)*my+t*t*b.y})}
   return p;
 }
-function cnCol(c){var m=swTagMap()[c.a];return CNC[((m?m.i:1)-1)%CNC.length]}
+function cnGrupos(){ /* interruptores que encienden alguna luz en común = un circuito conmutado */
+  var lista=cnList(),pa={};function raiz(x){while(pa[x]&&pa[x]!==x)x=pa[x];return x}
+  lista.forEach(function(c){if(!pa[c.a])pa[c.a]=c.a});
+  var porLuz={};lista.forEach(function(c){(porLuz[c.b]=porLuz[c.b]||[]).push(c.a)});
+  Object.keys(porLuz).forEach(function(b){var s=porLuz[b];for(var i=1;i<s.length;i++){var x=raiz(s[0]),y=raiz(s[i]);if(x!==y)pa[y]=x}});
+  var g={};Object.keys(pa).forEach(function(a){var k=raiz(a);(g[k]=g[k]||[]).push(a)});
+  var de={};Object.keys(g).forEach(function(k){var tm=swTagMap();g[k].sort(function(x,y){return ((tm[x]||{}).i||0)-((tm[y]||{}).i||0)});g[k].forEach(function(a){de[a]=g[k]})});
+  return de;
+}
+function cnCol(c){var gr=cnGrupos()[c.a],m=swTagMap()[gr&&gr.length?gr[0]:c.a];return CNC[((m?m.i:1)-1)%CNC.length]}
 function cnCurva(a,b,kmax,fk){
   var dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy)||1,nx=-dy/l,ny=dx/l,k=Math.min((fk||0.2)*l,kmax||80),mx=(a.x+b.x)/2+nx*k,my=(a.y+b.y)/2+ny*k,p=[];
   for(var i=0;i<=12;i++){var t=i/12;p.push({x:(1-t)*(1-t)*a.x+2*t*(1-t)*mx+t*t*b.x,y:(1-t)*(1-t)*a.y+2*t*(1-t)*my+t*t*b.y})}
@@ -2807,10 +2816,18 @@ function lumExtras(C,px,view,o){
     if(st.v.cnVer!==false||(sel&&sel.t==='cn'))cnEdges().forEach(function(ed){ var c=ed.c; /* encendidos: líneas muy finas y claras (la seleccionada sí destaca); se pueden ocultar en la paleta */
       var pp=ed.pp,col=cnCol(c),sl=sel&&sel.t==='cn'&&sel.id===c.id,i;
       if(st.v.cnVer===false&&!sl)return;
-      var suave=!sl;if(suave&&o.flat&&/^#[0-9a-f]{6}$/i.test(col))col=hexMix(col,'#ffffff',0.62);
-      for(i=0;i<pp.length-1;i++)h+=ln(pp[i].x,pp[i].y,pp[i+1].x,pp[i+1].y,col,(sl?3.2:o.flat?0.8:0.9)*px,'round',suave?(o.flat?'':';stroke-opacity:.4'):'');
-      var e=pp[pp.length-1];h+='<circle cx="'+f2(e.x)+'" cy="'+f2(e.y)+'" r="'+f2((suave?1.6:2.6)*px)+'" style="fill:'+col+(suave&&!o.flat?';fill-opacity:.45':'')+'"/>';
+      var suave=!sl;if(suave&&o.flat&&/^#[0-9a-f]{6}$/i.test(col))col=hexMix(col,'#ffffff',0.3);
+      for(i=0;i<pp.length-1;i++)h+=ln(pp[i].x,pp[i].y,pp[i+1].x,pp[i+1].y,col,(sl?3.2:o.flat?1:1.3)*px,'round',suave?(o.flat?'':';stroke-opacity:.85'):'');
+      var e=pp[pp.length-1];h+='<circle cx="'+f2(e.x)+'" cy="'+f2(e.y)+'" r="'+f2((suave?2.2:2.8)*px)+'" style="fill:'+col+'"/>';
     });
+    /* conmutados: los interruptores de un mismo circuito se unen entre sí con una línea doble (los dos hilos que van de un conmutador a otro) */
+    if(st.v.cnVer!==false){var gv=cnGrupos(),hechos={};Object.keys(gv).forEach(function(a){var g=gv[a];if(g.length<2||hechos[g[0]])return;hechos[g[0]]=1;
+      var colG=CNC[(((swTagMap()[g[0]]||{}).i||1)-1)%CNC.length];if(o.flat)colG=hexMix(colG,'#ffffff',0.3);
+      for(var j=1;j<g.length;j++){var s0=by(st.v.pts,g[j-1]),s1=by(st.v.pts,g[j]);if(!s0||!s1)continue;var p0=ptMid(s0),p1=ptMid(s1),cv=cnCurva(p0,p1,60,0.12);
+        [-1,1].forEach(function(sg){for(var k=0;k<cv.length-1;k++){var dx=cv[k+1].x-cv[k].x,dy=cv[k+1].y-cv[k].y,l=Math.hypot(dx,dy)||1,ox=-dy/l*2*px*sg,oy=dx/l*2*px*sg;h+=ln(cv[k].x+ox,cv[k].y+oy,cv[k+1].x+ox,cv[k+1].y+oy,colG,1*px,'round',';stroke-dasharray:'+f2(6*px)+' '+f2(3*px))}});
+        var mm=cv[6];h+=txt(C,px,mm.x,mm.y-6*px,'conmutado',colG,9,600);
+      }
+    })}
     /* cotas de las luces (a los muros y entre sí): en un azul grisáceo suave para que no recarguen el plano. Entre dos luces en fila se pone la cota entre ellas en vez de seguir hasta el muro */
     var CL='#6f9db0',CLT='#4f8196',pl=[],nb={};
     st.v.pts.forEach(function(q){if(q.v!=='ilum'||q.s==='dem'||q.nd||q.k==='spot'||q.k==='spotl')return;var d0=ptDef(q.k);if(!d0||d0.lin)return; /* los spots de carril no llevan cotas */pl.push({q:q,c:ptPos(q),r:5.5*px*1.9*ptSz(q)*1.25})});
