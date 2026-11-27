@@ -227,8 +227,8 @@ async function modeloEdicionGemini(clave) {
     const r = await fetch(`${API}/models?pageSize=200`, { headers: { 'x-goog-api-key': clave } });
     const j = await r.json().catch(() => ({}));
     const ids = (j.models || []).filter(m => (m.supportedGenerationMethods || ['generateContent']).includes('generateContent')).map(m => String(m.name || '').replace(/^models\//, '')).filter(n => /image/i.test(n) && !/imagen|embed|tts|veo/i.test(n));
-    const orden = (a, b) => { const va = versionDe(a), vb = versionDe(b); for (let i = 0; i < Math.max(va.length, vb.length); i++) { const d = (vb[i] || 0) - (va[i] || 0); if (d) return d; } return b.localeCompare(a); };
-    const pro = ids.filter(n => /pro/i.test(n)).sort(orden), resto = ids.filter(n => !/pro/i.test(n)).sort(orden);
+    const orden = (a, b) => { const pv = (/preview|exp/i.test(a) ? 1 : 0) - (/preview|exp/i.test(b) ? 1 : 0); if (pv) return pv; const va = versionDe(a), vb = versionDe(b); for (let i = 0; i < Math.max(va.length, vb.length); i++) { const d = (vb[i] || 0) - (va[i] || 0); if (d) return d; } return b.localeCompare(a); };
+    const pro = ids.filter(n => /pro/i.test(n) && !/lite/i.test(n)).sort(orden), resto = ids.filter(n => !/pro/i.test(n)).sort(orden);
     edicionGemini = pro[0] || resto[0] || null;
   } catch { /* se usa el de siempre */ }
   return edicionGemini || modelo();
