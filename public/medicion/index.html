@@ -3184,13 +3184,20 @@ function elevSvg(C,px,el,codes,flat){
       ledV({x:+o.cx||0,y:+o.cy||0},null,o.z0||0,o.alto,cl,'LED');
     });
   }
+  var swT=(st&&st.v)?swTagMap():{};
   if(st&&st.v)st.v.pts.forEach(function(q){ /* enchufes, interruptores y tomas de este muro y este lado, a su altura */
     if(q.v!=='elec'||q.s==='dem')return;var pd=ptDef(q.k);if(!pd||pd.lin)return;
     var c=ptPos(q),g=wg(el.w),s=(c.x-g.a.x)*g.ux+(c.y-g.a.y)*g.uy,dn=(c.x-g.a.x)*(-g.uy)+(c.y-g.a.y)*g.ux;
     if(s<-5||s>g.l+5||Math.abs(dn)>el.w.t/2+30||(dn>=0?'p':'m')!==el.sd)return;
     var x=el.rev?L-s:s,zz=q.h!=null?+q.h:(pd.h!=null?pd.h:30),y=H-zz,a=4.5,sl=st.sel&&st.sel.t==='pt'&&st.sel.id===q.id,ce=sl?C.accent:C.ink;
+    /* cotas: al eje del mecanismo desde la pared más cercana y desde el suelo; se tocan para escribirlas (y el mecanismo se mueve) */
+    var dI=x-c0,dD=c1-x,izq=dI<=dD,dh=izq?dI:dD,ex=izq?c0:c1,CM='#4f8196';
+    if(dh>1){h+=dimLine(C,px,ex,y,x,y,fmtU(dh),CM,CM,'k:'+q.id+':x');if(colectaDim&&!flat)dimHits.push({kind:'mecalz',eje:'x',q:q.id,lado:izq?1:-1,rev:!!el.rev,wall:el.w.id,val:dh,x:(el.x||0)+(ex+x)/2,y:(el.y||0)+y-6*px})}
+    if(zz>1){h+=dimLine(C,px,x,H,x,y,fmtU(zz),CM,CM,'k:'+q.id+':z');if(colectaDim&&!flat)dimHits.push({kind:'mecalz',eje:'z',q:q.id,val:zz,rot:true,x:(el.x||0)+x+14*px,y:(el.y||0)+(H+y)/2})}
+    var etq=(swT[q.id]?swT[q.id].tag+' · ':'')+(pd.n||'');
     h+='<rect x="'+f2(x-a)+'" y="'+f2(y-a)+'" width="'+f2(2*a)+'" height="'+f2(2*a)+'" rx="1" style="fill:#ffffff;stroke:'+ce+';stroke-width:'+f2((sl?2:1)*px)+'"/>';
     h+='<g transform="translate('+f2(x)+' '+f2(y)+')">'+ptSym(q.k,ce,Math.min(0.55,a/6))+'</g>';
+    if(etq)h+=adjK('k:'+q.id+':t',txt(C,px,x,y-a-5*px,etq,ce,8.5,600),x,y-a-5*px);
   });
   (el.pils||[]).filter(function(q){return !q.att}).forEach(function(q){ /* pilar suelto, delante del muro: a trazos */
     h+='<rect x="'+f2(q.x0)+'" y="0" width="'+f2(q.w)+'" height="'+H+'" style="fill:none;stroke:'+C.dim+';stroke-width:'+f2(1.1*px)+';stroke-dasharray:'+f2(6*px)+' '+f2(4*px)+'"/>';
@@ -3291,6 +3298,9 @@ function eqaSvg(C,px,el){
   ((st&&st.v&&st.v.eqa)||[]).forEach(function(it){
     if(it.wall!==el.w.id||it.sd!==el.sd)return;
     var B=bloquesFull[it.cid],frag=B&&B.svg&&B.svg[it.vista],x0=it.x-it.w/2,y0=el.H-it.h-(+it.z||0);
+    if(!B&&it.cid){try{pedirBloque(it.cid)}catch(e){}}
+    /* fondo claro: el bloque se lee por delante de la madera, el espejo o cualquier acabado */
+    out+='<rect x="'+f2(x0)+'" y="'+f2(y0)+'" width="'+f2(it.w)+'" height="'+f2(it.h)+'" style="fill:'+C.bg+';fill-opacity:.92;stroke:none"/>';
     if(!frag){out+='<rect x="'+f2(x0)+'" y="'+f2(y0)+'" width="'+f2(it.w)+'" height="'+f2(it.h)+'" style="fill:none;stroke:'+C.dim+';stroke-width:'+f2(px)+';stroke-dasharray:'+f2(4*px)+' '+f2(3*px)+'"/>'+txt(C,px,it.x,y0+it.h/2,it.nm,C.dim,10,500);return}
     var bw=it.vista==='alzado'?B.largo:B.fondo,sx=bw>0?it.w/bw:1,sy=B.alto>0?it.h/B.alto:1,k=Math.max(sx,sy)||1;
     var inner=frag.replace(/#000000/g,C.blk||C.ink).replace(/stroke-width="([\d.]+)"/g,function(m,v){return 'stroke-width="'+f2(BLW*px/k)+'"'});
@@ -3938,8 +3948,8 @@ function ln(x1,y1,x2,y2,stroke,sw,cap,extra){
 }
 /* ── ajustar cotas y etiquetas por lámina: cada una se puede ocultar, mover y volver a poner (se guarda en el plano, por lámina) ── */
 var ADJ=null,adjHits=[];
-var CAT_COTA={w:'Cotas de los muros',p:'Distancias de los pilares',e:'Distancias de las máquinas',t:'Etiquetas de puertas y ventanas',s:'Zonas: nombres y medidas',l:'Cotas de las luces',m:'Cotas de los mecanismos',a:'Cotas puestas a mano',r:'Cotas de los recrecidos',y:'Cotas de los alzados'};
-var CAT_VISTA={y:['alz'],l:['ilum'],m:['elec'],a:['ilum'],r:['interv'],t:['actual','demol','interv','acab','techos','suelos'],e:['actual','distrib','interv','demol'],w:['actual','demol','interv','cotas']};
+var CAT_COTA={w:'Cotas de los muros',p:'Distancias de los pilares',e:'Distancias de las máquinas',t:'Etiquetas de puertas y ventanas',s:'Zonas: nombres y medidas',l:'Cotas de las luces',m:'Cotas de los mecanismos',a:'Cotas puestas a mano',r:'Cotas de los recrecidos',y:'Cotas de los alzados',k:'Mecanismos del alzado (cotas y nombres)'};
+var CAT_VISTA={y:['alz'],k:['alz'],l:['ilum'],m:['elec'],a:['ilum'],r:['interv'],t:['actual','demol','interv','acab','techos','suelos'],e:['actual','distrib','interv','demol'],w:['actual','demol','interv','cotas']};
 function ocVista(view){return (st.v.oc&&st.v.oc[view])||{}}
 function mvVista(view){return (st.v.mv&&st.v.mv[view])||{}}
 function catCota(key){var c=key.charAt(0);return c==='q'?'e':c==='z'?'s':c}
@@ -3981,6 +3991,7 @@ function descCota(key){
   var DIRC={l:'a la izquierda',r:'a la derecha',u:'hacia arriba',d:'hacia abajo'};
   if(t==='l'||t==='m'){var pq=by(st.v.pts,p[1]);return (t==='l'?'Luz':'Mecanismo')+(pq&&pq.nm?' '+pq.nm:'')+' · distancia '+(DIRC[sub]||'')}
   if(t==='a')return 'Cota puesta a mano';
+  if(t==='k'){var kq=by(st.v.pts,p[1]),kd=kq&&ptDef(kq.k);return (kd?kd.n:'Mecanismo')+' · '+({x:'distancia a la pared',z:'altura',t:'nombre'}[sub]||'cota')}
   if(t==='y')return 'Alzado · '+({sup:'cota de arriba',led:'distancias de las tiras',alt:'altura'}[p[3]]||'cota');
   if(t==='r')return 'Recrecido · '+({l:'largo',e:'espesor',a:'hueco antes',b:'hueco hasta el final'}[sub]||'cota');
   if(t==='s')return 'Nombre o referencia de la zona '+(+p[1]+1);
@@ -5232,6 +5243,15 @@ function openDimEd(h){
 function commitDimEd(){
   if(!dimEd)return;
   var h=dimEd,n=fromU(num(qd.value));closeDimEd();
+  if(h.kind==='mecalz'){ /* mecanismo en el alzado: la altura o la distancia a la pared; se mueve también en la planta */
+    var mq=by(st.v.pts,h.q);if(!mq)return;
+    if(!(n>=0&&n<=5000)){toast('Escribe una medida válida');return}
+    if(Math.abs(n-h.val)<0.05)return;
+    snap();
+    if(h.eje==='z')mq.h=Math.round(n*10)/10;
+    else{var mw=wl(h.wall);if(!mw)return;var dA=(n-h.val)*h.lado,dsM=h.rev?-dA:dA,gM=wg(mw);mq.dx=f2(mq.dx+gM.ux*dsM);mq.dy=f2(mq.dy+gM.uy*dsM)}
+    commit(false);panelSel();return;
+  }
   if(h.kind==='fzg'){ /* guía de un trozo de acabado: se escribe la distancia y el trozo se mueve sin cambiar de tamaño */
     var zg=by(st.v.fz||[],h.fz);if(!zg)return;
     if(!(n>=0&&n<=5000)){toast('Escribe una medida válida');return}
@@ -5584,7 +5604,7 @@ svg.addEventListener('pointerdown',function(e){
     if(lh){var lo0=(st.v.llam||{})[lh.k]||{};snap();gesture={type:'dragLlam',id:e.pointerId,h:lh,w0:wl0,o0:{dx:lo0.dx||0,dy:lo0.dy||0,px:lo0.px||0,py:lo0.py||0},moved:false,sx:p.x,sy:p.y};return}
   }
   if(st.view==='alz'&&st.tool==='select'&&!pan&&!st.cotasAdj){
-    var wz0=toW(p),az=alzPick(wz0);
+    var wz0=toW(p),enNum=dimHits.some(function(hh){var dx=(wz0.x-hh.x)*st.k,dy=(wz0.y-hh.y)*st.k;return (hh.rot||hh.ux===0)?(Math.abs(dx)<14&&Math.abs(dy)<26):(Math.abs(dx)<24&&Math.abs(dy)<11)}),az=enNum?null:alzPick(wz0); /* tocar un número de cota: se escribe, no se arrastra lo de debajo */
     if(az){snap();st.sel=az.sel;st.multi=[];gesture={type:'alzDrag',id:e.pointerId,h:az,w0:wz0,moved:false,sx:p.x,sy:p.y};panelSel();render();return}
   }
   if(st.cotasAdj&&st.tool==='select'&&!pan){
@@ -7225,7 +7245,7 @@ function panelVista(){
   if(eqb&&eqb.hidden&&st.tool==='equip')st.tool='select';
   /* barra de abajo: «Muros nuevos como» solo donde se dibujan muros; los ajustes de cotas, solo donde hay cotas de muros */
   function verPar(id,on){var e=$(id);if(!e)return;e.hidden=!on;var p=e.previousElementSibling;if(p&&p.tagName==='SPAN'&&!p.id)p.hidden=!on}
-  verPar('defstate',obra);verPar('dimsel',vw!=='alz');verPar('dimbase',cm);if($('dimnote'))$('dimnote').hidden=!cm;
+  verPar('defstate',obra);verPar('dimsel',true);verPar('dimbase',cm);if($('dimnote'))$('dimnote').hidden=!cm;
 }
 function toolbar(){
   if(st.tool!=='brush')st.pincel=null;
