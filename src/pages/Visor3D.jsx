@@ -6179,6 +6179,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
     avisa('techo y suelo');
     await Promise.all([4, 5].map(async i => { sal[i] = await ia(i, [delante, lado, ...vistas].slice(0, 3)); }));
     avisa('uniendo las 6 caras');
+    opc.alCaras?.(sal.slice());
     const imgs = await Promise.all(sal.map(carga));
     for (const ancho of opc.eco ? [4096] : [6144, 4096]) { try { return unirCaras(a.renderer, imgs, yaw, ancho); } catch (e) { if (ancho === 4096) throw e; } }
   };
@@ -6409,14 +6410,32 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
         } finally { URL.revokeObjectURL(obj); }
       }));
       const motores = (mejoraPano?.motor || 'gemini') === 'ambos' ? ['gemini', 'openai'] : [mejoraPano?.motor || 'gemini'], NOMBRE = { gemini: 'Gemini', openai: 'ChatGPT' };
-      const res = await Promise.allSettled(motores.map(mo => panoPorCaras(new THREE.Vector3(...P.origen.pos), 0, vistas, t => setMejoraPano(m => ({ ...(m || {}), texto: (motores.length > 1 ? NOMBRE[mo] + ': ' : '') + t })), { motor: mo, extra: (mejoraPano?.extra || '').trim(), eco: !!mejoraPano?.eco })));
-      const nuevas = res.map((r, i) => (r.status === 'fulfilled' ? { url: r.value, nombre: NOMBRE[motores[i]] + (mejoraPano?.eco ? ' (prueba)' : '') + ((mejoraPano?.extra || '').trim() ? ' · ' + mejoraPano.extra.trim().slice(0, 40) : '') } : null)).filter(Boolean);
+      const carasDe = {};
+      const res = await Promise.allSettled(motores.map(mo => panoPorCaras(new THREE.Vector3(...P.origen.pos), 0, vistas, t => setMejoraPano(m => ({ ...(m || {}), texto: (motores.length > 1 ? NOMBRE[mo] + ': ' : '') + t })), { motor: mo, extra: (mejoraPano?.extra || '').trim(), eco: !!mejoraPano?.eco, alCaras: c => { carasDe[mo] = c; } })));
+      const nuevas = res.map((r, i) => (r.status === 'fulfilled' ? { url: r.value, caras: carasDe[motores[i]], motor: motores[i], eco: !!mejoraPano?.eco, nombre: NOMBRE[motores[i]] + (mejoraPano?.eco ? ' (prueba)' : '') + ((mejoraPano?.extra || '').trim() ? ' · ' + mejoraPano.extra.trim().slice(0, 40) : '') } : null)).filter(Boolean);
       if (!nuevas.length) throw new Error(res.find(r => r.status === 'rejected')?.reason?.message || 'sin resultado');
       const vista = panoFin.current?.vista?.();
       const versiones = [...(P.versiones || [{ url: P.sinIA || P.url, nombre: 'Sin IA' }]), ...nuevas];
       setPano({ ...P, url: nuevas[0].url, guardado: false, id: undefined, sinIA: P.sinIA || P.url, versiones, vista: vista ? { lon: vista.lon, lat: vista.lat, fov: vista.fov } : P.vista });
       setMejoraPano(m => ({ refs: m?.refs || [], motor: m?.motor, eco: m?.eco, extra: '' })); setAviso('360° mejorado con IA' + (res.some(r => r.status === 'rejected') ? ' (uno de los motores ha fallado: ' + (res.find(r => r.status === 'rejected').reason?.message || '') + ')' : '') + '. Revísalo, compara versiones y pulsa ⭐ Guardar en la galería.');
     } catch (e) { setMejoraPano(m => ({ ...(m || {}), trabajando: false, texto: '' })); setAviso('No se ha podido mejorar el 360°: ' + (e.message || 'error')); }
+  };
+  const subirCalidadPano = async () => {
+    const P = pano, v = (P?.versiones || []).find(x => x.url === P.url); if (!v?.caras || mejoraPano?.trabajando) return;
+    if (!window.confirm('Se sube la calidad de ESTA versión (' + v.nombre + ') sin cambiarla: cada una de las 6 fotos pasa por ' + (v.motor === 'openai' ? 'ChatGPT' : 'Gemini Pro') + ' en modo «solo calidad» y el 360° sale a 6K. Unos 0,70–1,50 €. ¿Seguir?')) return;
+    setMejoraPano(m => ({ ...(m || { refs: [] }), trabajando: true, texto: 'subiendo calidad' }));
+    try {
+      const TXT = 'Mejora SOLO la calidad de esta imagen: más resolución, nitidez y detalle fino de las texturas, como una fotografía profesional. No cambies NADA más: la misma composición, los mismos objetos en el mismo sitio, los mismos colores, materiales y la misma luz. Es una vista gran angular de 110 grados: conserva la geometría hasta los bordes.';
+      const sal = new Array(6); let hechas = 0;
+      const una = async i => { const r = await api.post('/render-ia/editar', { imagen: v.caras[i], instruccion: TXT, referencias: [], calidad: true, motor: v.motor || 'gemini' }, { timeout: 300000 }); sal[i] = r.data.imagen; hechas++; setMejoraPano(m => ({ ...m, texto: 'subiendo calidad ' + hechas + '/6' })); };
+      await Promise.all([0, 1, 2].map(una)); await Promise.all([3, 4, 5].map(una));
+      const carga = u => new Promise((ok, ko) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = u; });
+      const imgs = await Promise.all(sal.map(carga)), a = api3d.current; let url = null;
+      for (const ancho of [6144, 4096]) { try { url = unirCaras(a.renderer, imgs, 0, ancho); break; } catch (e) { if (ancho === 4096) throw e; } }
+      const nueva = { url, caras: sal, motor: v.motor, eco: false, nombre: v.nombre.replace(' (prueba)', '') + ' · alta calidad' }, vista = panoFin.current?.vista?.();
+      setPano(p => ({ ...p, url, guardado: false, id: undefined, versiones: [...(p.versiones || []), nueva], vista: vista ? { lon: vista.lon, lat: vista.lat, fov: vista.fov } : p.vista }));
+      setMejoraPano(m => ({ ...m, trabajando: false, texto: '' })); setAviso('Calidad subida. Compárala con la de prueba en el desplegable de versiones y guárdala.');
+    } catch (e) { setMejoraPano(m => ({ ...m, trabajando: false, texto: '' })); setAviso('No se ha podido subir la calidad: ' + (e.response?.data?.error || e.message || 'error')); }
   };
   const hacer360 = () => {
     const a = api3d.current; setGenerando360(true);
@@ -8257,6 +8276,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
             {pano.guardado && <span style={{ color: '#7bd88f' }}>Guardado ✓</span>}
             {pano.origen && <button style={{ ...btn, background: '#6b4fa0' }} disabled={!!mejoraPano?.trabajando} onClick={() => setMejoraPano(m => (m ? (m.trabajando ? m : null) : { refs: [] }))} title="Pasa el 360° entero por la IA (Nano Banana Pro, 6 caras) desde el mismo punto">{mejoraPano?.trabajando ? '✨ ' + (mejoraPano.texto || 'trabajando') + '…' : '✨ Mejorar todo con IA'}</button>}
             {pano.versiones?.length > 1 && <select value={pano.url} onChange={e => { const u = e.target.value; setPano(p => ({ ...p, url: u, guardado: false, id: undefined, vista: panoFin.current?.vista?.() || p.vista })); }} style={{ ...btn, maxWidth: 260 }} title="Cambia de versión para comparar">{pano.versiones.map((v, i) => <option key={i} value={v.url}>{'v' + (i + 1) + ' · ' + v.nombre}</option>)}</select>}
+            {pano.versiones?.find(v => v.url === pano.url)?.eco && <button style={{ ...btn, background: '#2f6b3a', fontWeight: 700 }} disabled={!!mejoraPano?.trabajando} onClick={subirCalidadPano} title="Sube a alta calidad (6K) ESTA versión de prueba sin rehacerla: mismo resultado, más detalle">⬆️ Subir calidad de esta</button>}
             <button style={{ ...btn, background: '#8c8076' }} disabled={preparandoVista} onClick={editarVistaPano} title="Saca como foto lo que estás mirando, la editas con IA como cualquier render y el cambio vuelve a meterse en el panorama. Se guarda como panorama nuevo: el original no se toca">{preparandoVista ? 'Preparando…' : '✏️ Editar esta vista con IA'}</button>
             <a style={{ ...btn, textDecoration: 'none' }} href={pano.url} download={(titulo || 'plano') + '-panorama-360.jpg'}>Descargar</a>
             <button style={btn} disabled={!!mejoraPano?.trabajando} onClick={() => { setPano(null); setMejoraPano(null); }}>Cerrar</button>
@@ -8271,7 +8291,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
                 <span style={{ opacity: 0.75 }}>🤖 Motor:</span>
                 <span style={{ opacity: 0.75, marginLeft: 8 }}>Calidad:</span>
-                {[[true, '🧪 Prueba barata'], [false, '💎 Final']].map(([k, n]) => <button key={n} style={{ ...btn, background: !!mejoraPano.eco === k ? '#6b4fa0' : '#333' }} title={k ? 'Modelo rápido y 4K: para probar instrucciones y estilos gastando poco' : 'Modelo top y 6K: para la versión buena'} onClick={() => setMejoraPano(m => ({ ...m, eco: k }))}>{n}</button>)}
+                {[[true, '🧪 Prueba barata'], [false, '💎 Final']].map(([k, n]) => <button key={n} style={{ ...btn, background: !!mejoraPano.eco === k ? '#6b4fa0' : '#333' }} title={k ? 'Modelo rápido y 4K: prueba instrucciones gastando poco; cuando una te guste, pulsa ⬆️ Subir calidad de esta (no se rehace, se mejora)' : 'Modelo top y 6K directamente'} onClick={() => setMejoraPano(m => ({ ...m, eco: k }))}>{n}</button>)}
                 {[['gemini', 'Gemini Pro'], ['openai', 'ChatGPT'], ['ambos', 'Los dos']].map(([k, n]) => <button key={k} style={{ ...btn, background: (mejoraPano.motor || 'gemini') === k ? '#6b4fa0' : '#333' }} onClick={() => setMejoraPano(m => ({ ...m, motor: k }))}>{n}</button>)}
                 <button style={{ ...btn, background: '#6b4fa0', fontWeight: 700, marginLeft: 'auto' }} onClick={mejorarPanoCaras}>✨ {pano.versiones?.length ? 'Generar otra versión' : 'Mejorar el 360°'}{mejoraPano.refs.length ? ' · ' + mejoraPano.refs.length + ' de estilo' : ''}</button>
               </div>
