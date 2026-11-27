@@ -1488,13 +1488,15 @@ export function abrirVisor360(cont, url, ini) {
   const g = new THREE.SphereGeometry(500, 64, 40); g.scale(-1, 1, 1);
   sc.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: tex })));
   let lon = ini?.lon ?? Math.PI, lat = ini?.lat ?? 0, drag = null, vivo = true;
-  if (ini?.fov) { cam.fov = ini.fov; cam.updateProjectionMatrix(); }
+  // óptica como la del tour del cliente: 80° de ancho (antes 75° en vertical = ~107° de ancho en pantalla apaisada, se veía demasiado gran angular)
+  const fovFijo = () => { const asp = Math.max(0.3, cam.aspect || 1.6), v = 2 * Math.atan(Math.tan(40 * Math.PI / 180) / asp); return Math.max(45, Math.min(78, v * 180 / Math.PI)); };
+  let zoomMano = !!ini?.fov; cam.fov = ini?.fov || fovFijo(); cam.updateProjectionMatrix();
   const mira = () => { cam.lookAt(Math.cos(lat) * Math.cos(lon), Math.sin(lat), Math.cos(lat) * Math.sin(lon)); };
   const dn = e => { drag = [e.clientX, e.clientY]; }, mv = e => { if (!drag) return; lon -= (e.clientX - drag[0]) * 0.2 * (Math.PI / 180) * (cam.fov / 75); lat = Math.max(-1.45, Math.min(1.45, lat + (e.clientY - drag[1]) * 0.2 * (Math.PI / 180) * (cam.fov / 75))); drag = [e.clientX, e.clientY]; };
-  const up = () => { drag = null; }, wh = e => { e.preventDefault(); cam.fov = Math.max(25, Math.min(100, cam.fov + e.deltaY * 0.05)); cam.updateProjectionMatrix(); };
+  const up = () => { drag = null; }, wh = e => { e.preventDefault(); zoomMano = true; cam.fov = Math.max(25, Math.min(100, cam.fov + e.deltaY * 0.05)); cam.updateProjectionMatrix(); };
   r.domElement.style.touchAction = 'none'; r.domElement.addEventListener('pointerdown', dn); window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); r.domElement.addEventListener('wheel', wh, { passive: false });
   const bucle = () => { if (!vivo) return; requestAnimationFrame(bucle); mira(); r.render(sc, cam); }; bucle();
-  const ajusta = () => { const W = cont.clientWidth, H = cont.clientHeight; if (W && H) { r.setSize(W, H); cam.aspect = W / H; cam.updateProjectionMatrix(); } };
+  const ajusta = () => { const W = cont.clientWidth, H = cont.clientHeight; if (W && H) { r.setSize(W, H); cam.aspect = W / H; if (!zoomMano) cam.fov = fovFijo(); cam.updateProjectionMatrix(); } };
   window.addEventListener('resize', ajusta);
   const fin = () => { vivo = false; window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('resize', ajusta); r.dispose(); tex.dispose(); g.dispose(); if (r.domElement.parentNode) r.domElement.parentNode.removeChild(r.domElement); };
   fin.vista = () => ({ lon, lat, fov: cam.fov, aspecto: cam.aspect });
