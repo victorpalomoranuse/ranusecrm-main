@@ -2927,7 +2927,23 @@ function lumExtras(C,px,view,o){
       if(q.v!=='ilum'||q.s==='dem')return;
       var d=ptDef(q.k);if(!d)return;
       var u=px*1.9*ptSz(q),c=ptPos(q);
-      if(d.lin){var mi=ptMidInfo(q),a=mi.a,mo0=ptMont(q);h+=txt(C,px,mi.x+Math.sin(a)*12*px,mi.y-Math.cos(a)*12*px+4*px,(tg[q.id]||''),lumColor(mo0)||C.label,11,700)} /* en el plano solo la referencia; montaje y perfil están en la leyenda */
+      if(d.lin){var mi=ptMidInfo(q),a=mi.a,mo0=ptMont(q);h+=txt(C,px,mi.x+Math.sin(a)*12*px,mi.y-Math.cos(a)*12*px+4*px,(tg[q.id]||''),lumColor(mo0)||C.label,11,700);
+        if(showD&&!q.nd&&!ledVert(q))(function(){ /* tiras y lineales: distancia a la pared más cercana (en perpendicular) y desde su punta hasta la pared */
+          var ux=Math.cos(a),uy=Math.sin(a),nx2=-uy,ny2=ux,best=null;
+          /* tiras paralelas: en cadena. La del lado de la pared más cercana se acota a la pared y las demás, a la tira de al lado */
+          var par=st.v.pts.filter(function(o){if(o.v!=='ilum'||o.s==='dem'||ledVert(o))return false;var od=ptDef(o.k);if(!od||!od.lin)return false;var oa=ptMidInfo(o).a;return Math.abs(Math.sin(oa-a))<0.06}).map(function(o){var om=ptMidInfo(o);return {q:o,off:(om.x-mi.x)*nx2+(om.y-mi.y)*ny2,x:om.x,y:om.y}});
+          var cgx=0,cgy=0;par.forEach(function(o){cgx+=o.x;cgy+=o.y});cgx/=par.length;cgy/=par.length;
+          var dP=rayWalls(cgx,cgy,nx2,ny2,'ilum'),dN=rayWalls(cgx,cgy,-nx2,-ny2,'ilum'),sgC=(dP!=null&&(dN==null||dP<=dN))?1:-1;
+          var dW=rayWalls(mi.x,mi.y,nx2*sgC,ny2*sgC,'ilum');if(dW!=null&&dW>2)best={d:dW,dx:nx2*sgC,dy:ny2*sgC};
+          par.forEach(function(o){if(o.q===q)return;var dd=o.off*sgC;if(dd>1&&(!best||dd<best.d))best={d:dd,dx:nx2*sgC,dy:ny2*sgC}});
+          if(best)h+=dimLine(C,px,mi.x,mi.y,mi.x+best.dx*best.d,mi.y+best.dy*best.d,fmtU(best.d),CL,CLT,'l:'+q.id+':p');
+          var vs=ptVerts(q);if(vs.length<2)return;
+          var p0=vs[0],p1=vs[1],pn=vs[vs.length-1],pm=vs[vs.length-2],l0=Math.hypot(p1.x-p0.x,p1.y-p0.y)||1,l1=Math.hypot(pn.x-pm.x,pn.y-pm.y)||1;
+          var e0={o:p0,dx:(p0.x-p1.x)/l0,dy:(p0.y-p1.y)/l0},e1={o:pn,dx:(pn.x-pm.x)/l1,dy:(pn.y-pm.y)/l1},be=null;
+          [e0,e1].forEach(function(e){var dd=rayWalls(e.o.x,e.o.y,e.dx,e.dy,'ilum');if(dd!=null&&dd>2&&(!be||dd<be.d))be={d:dd,e:e}});
+          if(be)h+=dimLine(C,px,be.e.o.x,be.e.o.y,be.e.o.x+be.e.dx*be.d,be.e.o.y+be.e.dy*be.d,fmtU(be.d),CL,CLT,'l:'+q.id+':e');
+        })();
+      } /* en el plano, la referencia y sus distancias a pared; montaje y perfil están en la leyenda */
       else{
         var r=5.5*u;
         h+=txt(C,px,c.x+r+8*px,c.y-r*0.5,tg[q.id]||'',C.label,11,700);
