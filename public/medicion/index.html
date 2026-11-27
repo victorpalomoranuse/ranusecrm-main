@@ -1805,6 +1805,8 @@ function txUsed(){
   (st.v.zn||[]).forEach(function(z){if(z.mat)u[z.mat]=1});
   (st.v.fz||[]).forEach(function(z){if(z.mat)u[z.mat]=1});
   (st.v.sp||[]).forEach(function(z){if(z.mat)u[z.mat]=1});
+  (st.v.mm||[]).forEach(function(z){if(z.ac)u[z.ac]=1});
+  (st.v.rc||[]).forEach(function(z){if(z.ac)u[z.ac]=1});
   return TXLIB.filter(function(t){return u[t.id]});
 }
 /* colores propios de este plano (p. ej. dos pinturas lisas de distinto color): cada uno es un material con su propio código */
@@ -3006,6 +3008,17 @@ function elevHit(wp){
   for(var i=0;i<l.length;i++){var e=l[i];if(wp.x>=e.x&&wp.x<=e.x+e.L&&wp.y>=e.y&&wp.y<=e.y+e.H)return e}
   return null;
 }
+/* acabado visible de una pieza (obra a medida o recrecido): color sólido y su textura en el alzado */
+function acVisOpts(cur){
+  var bs=matsAc('acab').filter(function(m){return !m.base}),cp=matsAc('acab').filter(function(m){return !!m.base}),tx=TXLIB.filter(function(q){return q&&q.id&&q.uri});
+  var o=function(m){return '<option value="'+esc(m.id)+'"'+(m.id===cur?' selected':'')+'>'+esc(m.n)+'</option>'};
+  return '<option value="">Sin acabado (rayado / transparente)</option><optgroup label="Acabados">'+bs.map(o).join('')+'</optgroup>'+(cp.length?'<optgroup label="Colores de este plano">'+cp.map(o).join('')+'</optgroup>':'')+(tx.length?'<optgroup label="Texturas">'+tx.map(o).join('')+'</optgroup>':'');
+}
+function acVisSvg(id,x,y,w,hh,flat,px){
+  var m=matOf('acab',id);if(!m||w<=0||hh<=0)return '';
+  var c=/^#[0-9a-f]{6}$/i.test(m.c)?m.c:'#d9d0c6';
+  return '<g transform="translate('+f2(x)+' '+f2(y)+')"><rect x="0" y="0" width="'+f2(w)+'" height="'+f2(hh)+'" style="fill:'+(flat?hexMix(c,'#ffffff',0.08):c)+';stroke:none"/>'+(m.tx?txTiles(m.tx,w,hh,flat,px):texLines(m.id,w,hh,px,hexMix(c,'#000000',0.38)))+'</g>';
+}
 function texLines(id,L,H,px,col){
   var h='',lw=0.7*px,i,x,y;
   function ln2(x1,y1,x2,y2,w){return '<line x1="'+f2(x1)+'" y1="'+f2(y1)+'" x2="'+f2(x2)+'" y2="'+f2(y2)+'" style="fill:none;stroke:'+col+';stroke-width:'+f2(w||lw)+'"/>'}
@@ -3029,7 +3042,8 @@ function elevSvg(C,px,el,codes,flat){
     if(m.wall!==el.w.id||m.sd!==el.sd)return;
     var mx0=el.rev?el.L-m.s1:m.s0,mw=m.s1-m.s0,my=H-(m.y0||0)-m.h,slx=st.sel&&st.sel.t==='mm'&&st.sel.id===m.id;
     if(mw<=0)return;
-    h+='<rect x="'+f2(mx0)+'" y="'+f2(my)+'" width="'+f2(mw)+'" height="'+f2(m.h)+'" style="fill:'+(m.luz?C.warn:col)+';fill-opacity:'+(m.luz?.22:m.k==='pan'?.18:.07)+';stroke:'+(slx?C.accent:col)+';stroke-width:'+f2((slx?2.6:1.2)*px)+(m.k==='hor'?';stroke-dasharray:'+f2(5*px)+' '+f2(3*px):'')+'"/>';
+    if(m.ac)h+=acVisSvg(m.ac,mx0,my,mw,m.h,flat,px);
+    h+='<rect x="'+f2(mx0)+'" y="'+f2(my)+'" width="'+f2(mw)+'" height="'+f2(m.h)+'" style="fill:'+(m.luz?C.warn:col)+';fill-opacity:'+(m.ac?0:m.luz?.22:m.k==='pan'?.18:.07)+';stroke:'+(slx?C.accent:col)+';stroke-width:'+f2((slx?2.6:1.2)*px)+(m.k==='hor'?';stroke-dasharray:'+f2(5*px)+' '+f2(3*px):'')+'"/>';
     if(m.k==='mue'||m.k==='baj')h+=ln(mx0+mw/2,my,mx0+mw/2,my+m.h,col,0.8*px)+ln(mx0,my+m.h*0.5,mx0+mw,my+m.h*0.5,col,0.6*px);
     h+=txt(C,px,mx0+mw/2,my+Math.min(m.h/2,18*px)+4*px,mmCod(m)+' '+mmNombre(m),col,10,600);
   });
@@ -3050,6 +3064,7 @@ function elevSvg(C,px,el,codes,flat){
     var slr=st.sel&&st.sel.t==='rc'&&st.sel.id===rc.id,cr=slr?C.accent:col;
     rcTrozos(rc).forEach(function(tz){
       var x0=el.rev?L-tz.s1:tz.s0,x1=el.rev?L-tz.s0:tz.s1,y0=H-tz.z1,y1=H-tz.z0,paso=20,c;
+      if(rc.ac){h+=acVisSvg(rc.ac,x0,y0,x1-x0,y1-y0,flat,px)+'<rect x="'+f2(x0)+'" y="'+f2(y0)+'" width="'+f2(x1-x0)+'" height="'+f2(y1-y0)+'" style="fill:none;stroke:'+cr+';stroke-width:'+f2((slr?2.4:1.1)*px)+'"/>';return}
       h+='<rect x="'+f2(x0)+'" y="'+f2(y0)+'" width="'+f2(x1-x0)+'" height="'+f2(y1-y0)+'" style="fill:#f3f1ee;stroke:'+cr+';stroke-width:'+f2((slr?2.4:1.1)*px)+'"/>';
       for(c=x0-(y1-y0)+paso;c<x1;c+=paso){ /* líneas x - (y1 - y) = c, recortadas al rectángulo */
         var xa=Math.max(x0,c),xb=Math.min(x1,c+(y1-y0));if(xb-xa<0.5)continue;
@@ -7414,6 +7429,7 @@ function panelSel(focus){
     h+=fld('mm_s0','Desde el inicio del muro (cm)',mms.s0)+fld('mm_s1','Hasta (cm)',mms.s1)+fld('mm_d',mms.k==='hor'?'Profundidad en el muro (cm)':'Fondo (cm)',mms.d)+fld('mm_h','Alto (cm)',mms.h)+fld('mm_y0','Altura desde el suelo (cm)',mms.y0);
     h+='<label class="fld"><span>Lo ejecuta</span><select data-t="mm_of"><option value="obra"'+(mmOf(mms)==='obra'?' selected':'')+'>Albañil (obra) · sale en Implantación</option><option value="carp"'+(mmOf(mms)==='carp'?' selected':'')+'>Carpintero / otro oficio</option></select></label>';
     h+='<label class="fld chk"><input type="checkbox" data-t="mm_luz"'+(mms.luz?' checked':'')+'><span>Retroiluminado (LED)</span></label>';
+    h+='<label class="fld"><span>Acabado visible (alzado)</span><select data-t="mm_ac">'+acVisOpts(mms.ac||'')+'</select></label>';
     h+='<label class="fld"><span>Material / acabado</span><input data-t="mm_mat" value="'+esc(mms.mat||'')+'" placeholder="Lacado, roble, microcemento…" autocomplete="off"></label>';
     h+='<label class="fld"><span>Nota para obra</span><input data-t="mm_nota" value="'+esc(mms.nota||'')+'" placeholder="Con puertas push, cajón, iluminación…" autocomplete="off"></label>';
     h+='<div class="btns"><button class="danger" data-a="del">Borrar</button></div>';
@@ -7426,6 +7442,7 @@ function panelSel(focus){
     h+=fld('rc_ancho','Ancho, a lo largo del muro ('+UNL()+')',f2(rcs.s1-rcs.s0))+fld('rc_t','Fondo, hacia dentro de la sala ('+UNL()+')',rcs.t)+fld('rc_h','Alto desde el suelo ('+UNL()+')',rcAlto(rcs))+fld('rc_s0','Posición: desde el inicio del muro ('+UNL()+')',rcs.s0)+fld('rc_s1','Posición: hasta ('+UNL()+')',rcs.s1);
     h+='<p class="note" style="margin:0 0 6px">Las puertas y ventanas de este muro lo cortan solas: por debajo y por encima del hueco sigue el panel si llega.</p>';
     h+='<label class="fld"><span>Solución de trasdosado</span><select data-t="rc_sol"><option value="">Otra / a mano</option>'+TRDS.map(function(k){return '<option value="'+k+'"'+(rcs.sol===k?' selected':'')+'>'+esc(DLIB[k].n)+'</option>'}).join('')+'</select></label>'+cuandoHtml(rcs.sol);
+    h+='<label class="fld"><span>Acabado visible (alzado)</span><select data-t="rc_ac">'+acVisOpts(rcs.ac||'')+'</select></label>';
     h+='<label class="fld"><span>Material (opcional)</span><input data-t="rc_mat" value="'+esc(rcs.mat||'')+'" placeholder="Placa de yeso laminado, aislante…" autocomplete="off"></label>';
     h+='<div class="btns"><button class="danger" data-a="del">Borrar recrecido</button></div>';
   }else if(s.t==='sp'){
@@ -8293,10 +8310,12 @@ $('side').addEventListener('change',function(e){
     else if(t==='mm_luz')mq.luz=!!e.target.checked;
     else if(t==='mm_nm')mq.nm=e.target.value.trim();
     else if(t==='mm_mat')mq.mat=e.target.value.trim();
+    else if(t==='mm_ac'){if(e.target.value)mq.ac=e.target.value;else delete mq.ac}
     else if(t==='mm_nota')mq.nota=e.target.value.trim();
     commit(false);panelSel();return;
   }
   if(t==='esc_vis'&&st.sel&&st.sel.t==='eq'){var ev=by(st.v.eq,st.sel.id);if(ev&&ev.bl&&ev.bl.esc){snap();ev.vis=e.target.value||undefined;if(!ev.vis)delete ev.vis;ev.bl=escBl(ev.bl.esc,ev.rol||'sube',ev.vis);commit()}return}
+  if(t==='rc_ac'&&st.sel&&st.sel.t==='rc'){var rca=by(st.v.rc,st.sel.id);if(rca){snap();if(e.target.value)rca.ac=e.target.value;else delete rca.ac;commit(false)}return}
   if(t==='rc_mat'&&st.sel&&st.sel.t==='rc'){var rcm=by(st.v.rc,st.sel.id);if(rcm){snap();rcm.mat=e.target.value.trim();commit(false)}return}
   if((t==='eq_cat'||t==='eq_nom')&&st.sel&&st.sel.t==='eq'){
     var qeq=by(st.v.eq,st.sel.id),cq=qeq&&catById(qeq.cid),vl=e.target.value.trim();
