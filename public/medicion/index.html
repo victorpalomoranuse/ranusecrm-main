@@ -603,6 +603,7 @@ body.crm .top .brand{display:none}
           <button id="b-new">Nueva visita</button>
         </div>
       </section>
+      <section class="blk" id="alzselblk" data-en="alz"><h2>Alzados en la lámina</h2><p class="note">Marca los que quieres enseñar. Los que no, se ven apagados aquí y no salen en el PDF ni en la planta.</p><div id="alzsel"></div></section>
       <section class="blk" id="calblk" data-en="acab,suelos,techos,interv">
         <h2>Memoria de calidades</h2>
         <p class="note">Mecanismos, grifería, sanitarios, iluminación… elegidos del catálogo, sin dibujarlos en el plano. Salen en una lámina aparte y en las cantidades para el presupuesto.</p>
@@ -3094,9 +3095,9 @@ function texLines(id,L,H,px,col){
 function elevSvg(C,px,el,codes,flat){
   var alzLeds=[];
   var L=el.L,H=el.H,h='',m=el.mat?matOf('acab',el.mat):null,col=C.ink,i,c0=el.c0||0,c1=el.c1!=null?el.c1:el.L,Lv=c1-c0;
-  h+='<rect x="0" y="0" width="'+L+'" height="'+H+'" style="fill:'+(m?(flat?hexMix(m.c,'#ffffff',0.12):m.c):C.bg)+(m&&!flat&&!m.tx?';fill-opacity:.75':'')+';stroke:none"/>';
-  if(m&&m.tx)h+=txTiles(m.tx,L,H,flat,px);
-  else if(m)h+=texLines(m.id,L,H,px,hexMix(m.c,'#000000',0.38));
+  h+='<rect x="'+f2(c0)+'" y="0" width="'+f2(Lv)+'" height="'+H+'" style="fill:'+(m?(flat?hexMix(m.c,'#ffffff',0.12):m.c):C.bg)+(m&&!flat&&!m.tx?';fill-opacity:.75':'')+';stroke:none"/>';
+  if(m&&m.tx)h+='<g transform="translate('+f2(c0)+' 0)">'+txTiles(m.tx,Lv,H,flat,px)+'</g>';
+  else if(m)h+='<g transform="translate('+f2(c0)+' 0)">'+texLines(m.id,Lv,H,px,hexMix(m.c,'#000000',0.38))+'</g>';
   var llamZ=[]; /* llamadas de la derecha: trozos de acabado, recrecidos y piezas con acabado */
   (st&&st.v&&st.v.mm||[]).forEach(function(m){
     if(m.wall!==el.w.id||m.sd!==el.sd)return;
@@ -3196,7 +3197,7 @@ function elevSvg(C,px,el,codes,flat){
     if(q.w/px>30)h+=txt(C,px,q.x0+q.w/2,H/2+4*px,'Pilar a '+fmtU(q.gap),C.dim,9.5,500);
   });
   var clId='alzc'+el.id+(flat?'f':'s');
-  h='<clipPath id="'+clId+'"><rect x="'+f2(c0)+'" y="-1" width="'+f2(Lv)+'" height="'+f2(H+2)+'"/></clipPath><g clip-path="url(#'+clId+')">'+h+'</g>';
+  if(!flat)h='<clipPath id="'+clId+'"><rect x="'+f2(c0)+'" y="-1" width="'+f2(Lv)+'" height="'+f2(H+2)+'"/></clipPath><g clip-path="url(#'+clId+')">'+h+'</g>';
   h+='<rect x="'+f2(c0)+'" y="0" width="'+f2(Lv)+'" height="'+H+'" style="fill:none;stroke:'+col+';stroke-width:'+f2(1.6*px)+'"/>';
   h+=ln(c0-14*px,H,c1+14*px,H,col,2.6*px);
   /* cota superior en tramos (con las puertas, las ventanas y los pilares pegados al muro) */
@@ -3313,23 +3314,26 @@ function sceneAlz(C,k,o){
   var px=1/k,h='',list=elevLayout(elevList('alz')),codes=acabCodes('acab'),sel=o.sel;
   alzSync(list);
   list.forEach(function(e){
-    h+='<g transform="translate('+f2(e.x)+' '+f2(e.y)+')">'+elevSvg(C,px,e,codes,!!o.flat)+'</g>';
+    var enL=alzEnLamina(e);
+    h+='<g transform="translate('+f2(e.x)+' '+f2(e.y)+')"'+(enL?'':' style="opacity:.35"')+'>'+elevSvg(C,px,e,codes,!!o.flat)+'</g>';
+    if(!enL)h+=txt(C,px,e.x+((e.c0||0)+(e.c1!=null?e.c1:e.L))/2,e.y+e.H+34*px,'No sale en la lámina',C.dim,10,600);
     if(sel&&sel.t==='wall'&&sel.id===e.w.id)h+='<rect x="'+f2(e.x-4*px)+'" y="'+f2(e.y-4*px)+'" width="'+f2(e.L+8*px)+'" height="'+f2(e.H+8*px)+'" style="fill:none;stroke:'+C.accent+';stroke-width:'+f2(3*px)+';opacity:.7"/>';
   });
   if(!list.length)h+=txt(C,px,0,0,'Dibuja las paredes para ver los alzados',C.dim,13,500);
   h+=drSvg(C,px,'alz',sel,o);
   return h;
 }
+function alzEnLamina(e){return !(st.v.alzOc&&st.v.alzOc[alzClave(e)])}
 function alzPages(o){
-  var list=elevList('alz');if(!list.length)return {S:50,pages:[]};
+  var list=elevList('alz').filter(alzEnLamina);if(!list.length)return {S:50,pages:[]};
   var A3=o.paper!=='A4',PW=A3?420:297,PH=A3?297:210,Wc=A3?88:68,mg=10,cx=PW-mg-Wc,aw=cx-mg-28,ah=PH-2*mg-24-22,H=wallH(),maxL=0,TOP=18,i;
-  list.forEach(function(e){maxL=Math.max(maxL,e.L)});
+  list.forEach(function(e){maxL=Math.max(maxL,(e.c1!=null?e.c1:e.L)-(e.c0||0))});
   var S=SCALES[SCALES.length-1];
   if(o.scale&&o.scale!=='auto')S=+o.scale;
   else for(i=0;i<SCALES.length;i++){if(maxL*10/SCALES[i]<=aw&&H*10/SCALES[i]+TOP+6<=ah){S=SCALES[i];break}}
   var km=10/S,pages=[[]],x=0,y=0,rowH=H*km+TOP+12;
   list.forEach(function(e){
-    var w=e.L*km;
+    var w=((e.c1!=null?e.c1:e.L)-(e.c0||0))*km+30; /* +30 mm: las llamadas de la derecha */
     if(x>0&&x+w>aw){x=0;y+=rowH}
     if(y+rowH>ah&&pages[pages.length-1].length){pages.push([]);x=0;y=0}
     pages[pages.length-1].push({el:e,x:x,y:y+TOP});x+=w+16;
@@ -4267,7 +4271,7 @@ function gridSvg(C,k){
 function elevMarks(C,px){
   /* etiqueta discreta: círculo pequeño y suave con su letra y una flechita corta hacia el muro; se aparta del centro para no tapar las cotas */
   var out='',col=C.dim||C.ink;
-  try{elevList('alz').forEach(function(e){
+  try{elevList('alz').filter(alzEnLamina).forEach(function(e){
     var w=e.w,g=wg(w),sg=e.sd==='p'?1:-1,nx=-g.uy*sg,ny=g.ux*sg,r=7.5*px,d1=w.t/2+1.5*px,d2=w.t/2+19*px;
     var t=g.l>160?0.2:0.5,mx=g.a.x+g.ux*g.l*t,my=g.a.y+g.uy*g.l*t;
     var cx=mx+nx*d2,cy=my+ny*d2,bx=mx+nx*(d2-r),by0=my+ny*(d2-r),tx=mx+nx*d1,ty=my+ny*d1,qx=-ny*r*0.45,qy=nx*r*0.45;
@@ -4801,7 +4805,7 @@ function scene0(C,k,view,o){
   if(sel&&sel.t==='op'){var lo=opn(sel.id);if(lo&&opVis(lo,view)){var lq=og(lo);h+=txt(C,px,(lq.x1+lq.x2)/2+lq.nx*(lq.w.t/2+26*px),(lq.y1+lq.y2)/2+lq.ny*(lq.w.t/2+26*px)+4*px,fmtU(lo.w)+' × '+fmtU(lo.h),C.accent,12,600)}}
   if(o.nodes&&sel&&sel.t==='wall'){var swz=wl(sel.id);if(swz&&wallVis(swz,view))h+=selDims(C,px,swz,view)}
   h+=drSvg(C,px,view,sel,o,eqVista||drTemprano);
-  if(o.marks&&view==='acab')h+=elevMarks(C,px);
+  if(o.marks&&(view==='acab'||(st.v.alzMarcas&&view!=='alz')))h+=elevMarks(C,px);
   h+=zlab;
   if(o.flat&&!o.ante&&view!=='suelos'&&view!=='techos'&&view!=='alz'){var zet=zonaEtiquetas(view);if(zet.length>1)zet.forEach(function(e,iz){h+=adjK('s:'+iz,txt(C,px,e.f.cx,e.f.cy,e.tag,C.dim,9.5,600),e.f.cx,e.f.cy)})}
   if(o.nodes){
@@ -5449,7 +5453,7 @@ function render(){
   }
   fondoMenu();
   dimHits=[];cotaLineas=[];llamHits=[];colectaDim=true;
-  svg.innerHTML='<g id="vp" transform="translate('+f2(st.tx)+' '+f2(st.ty)+') scale('+st.k+')">'+gridSvg(CSS,st.k)+fondoSvg(st.view)+pisoFantasmaSvg(st.view)+scene(CSS,st.k,st.view,{sel:st.sel,nodes:true,dims:st.dims,limpio:true,adj:!!st.cotasAdj,adjSel:st.adjSel,marks:!!st.verMarcas})+multiSvg()+'<path id="prev" style="fill:none;stroke:var(--accent);stroke-width:'+f2(2.4/st.k)+';stroke-linecap:round;stroke-linejoin:round"/></g>';
+  svg.innerHTML='<g id="vp" transform="translate('+f2(st.tx)+' '+f2(st.ty)+') scale('+st.k+')">'+gridSvg(CSS,st.k)+fondoSvg(st.view)+pisoFantasmaSvg(st.view)+scene(CSS,st.k,st.view,{sel:st.sel,nodes:true,dims:st.dims,limpio:true,adj:!!st.cotasAdj,adjSel:st.adjSel,marks:!!st.verMarcas||!!st.v.alzMarcas})+multiSvg()+'<path id="prev" style="fill:none;stroke:var(--accent);stroke-width:'+f2(2.4/st.k)+';stroke-linecap:round;stroke-linejoin:round"/></g>';
   colectaDim=false;
 }
 var raf=0;
@@ -7191,7 +7195,19 @@ function hint(){
 }
 /* panel, barra de abajo y herramientas: en cada pestaña solo lo que se usa en ella */
 var HERR_OBRA=['pen','door','rc','win','pillar','diag'],HERR_OBRA_ID=['b-curve','b-libre'],VISTAS_OBRA=['actual','demol','interv','distrib','cotas'];
+function alzSelUi(){
+  var b=$('alzsel');if(!b||st.view!=='alz')return;
+  var l=elevList('alz');
+  b.innerHTML=(l.length?l.map(function(e){var k=alzClave(e),on=alzEnLamina(e);return '<label class="fld chk" style="margin:2px 0"><input type="checkbox" data-alzk="'+esc(k)+'"'+(on?' checked':'')+'><span>Alzado '+esc(e.id)+(e.room?' · '+esc(e.room):'')+' · '+fmtU((e.c1!=null?e.c1:e.L)-(e.c0||0))+' '+UNL()+'</span></label>'}).join(''):'<p class="note">Aún no hay alzados.</p>')+
+    '<label class="fld chk" style="margin-top:10px"><input type="checkbox" data-alzmarcas="1"'+(st.v.alzMarcas?' checked':'')+'><span>Marcar los alzados en todas las plantas (y en sus láminas)</span></label>';
+}
+$('alzsel').addEventListener('change',function(e){
+  var k=e.target.getAttribute('data-alzk');
+  if(k){snap();st.v.alzOc=st.v.alzOc||{};if(e.target.checked)delete st.v.alzOc[k];else st.v.alzOc[k]=1;commit(false);alzSelUi();return}
+  if(e.target.getAttribute('data-alzmarcas')){snap();if(e.target.checked)st.v.alzMarcas=true;else delete st.v.alzMarcas;commit(false);toast(st.v.alzMarcas?'Las marcas de los alzados salen en todas las plantas':'Las marcas de los alzados solo salen en Acabados')}
+});
 function panelVista(){
+  try{alzSelUi()}catch(e){}
   var vw=st.view,obra=VISTAS_OBRA.indexOf(vw)>=0,cm=capaEn(vw,'cmuros');
   var bl=document.querySelectorAll('#side .blk[data-en]');for(var i=0;i<bl.length;i++){var en=bl[i].getAttribute('data-en').split(',');bl[i].hidden=en.indexOf(vw)<0}
   HERR_OBRA.forEach(function(k){var b=document.querySelector('#tools button[data-tool="'+k+'"]');if(b)b.hidden=!obra});
@@ -10408,7 +10424,7 @@ function sheetPage(doc,view,idx,total,o){
     var kma=10/S,codesE=acabCodes('acab');
     var layA=elevLayout(elevList('alz'));alzSync(layA);
     o.alz.els.forEach(function(it){
-      p.svg('<g transform="translate('+f2(ax+it.x)+' '+f2(ay+it.y)+') scale('+kma+')">'+elevSvg(LIGHT,S/40,it.el,codesE,true)+'</g>',{hatchStep:1.75,dem:LIGHT.dem,demBg:LIGHT.demBg,txIdx:o.txIdx});
+      p.svg('<g transform="translate('+f2(ax+it.x-(it.el.c0||0)*kma)+' '+f2(ay+it.y)+') scale('+kma+')">'+elevSvg(LIGHT,S/40,it.el,codesE,true)+'</g>',{hatchStep:1.75,dem:LIGHT.dem,demBg:LIGHT.demBg,txIdx:o.txIdx});
       var dAl=(st.v.dr||[]).filter(function(q){return q.vw==='alz'&&q.an&&q.an.k===alzClave(it.el)}).map(function(q){return drItemSvg(LIGHT,S/40,q,false)}).join('');
       var leA=layA.filter(function(q){return alzClave(q)===alzClave(it.el)})[0];
       if(dAl&&leA)p.svg('<g transform="translate('+f2(ax+it.x)+' '+f2(ay+it.y)+') scale('+kma+')"><g transform="translate('+f2(-leA.x)+' '+f2(-leA.y)+')">'+dAl+'</g></g>',{hatchStep:1.75,dem:LIGHT.dem,demBg:LIGHT.demBg});
@@ -12203,7 +12219,7 @@ function escModal(editId){
 /* ══ Plantas dentro del mismo plano ══
    El plano que se está editando (st.v) siempre trae los datos de LA PLANTA ACTIVA, así todo el resto del código funciona igual.
    Las demás plantas esperan guardadas en st.v.pisos[i].b y se intercambian al cambiar de planta. */
-var PISO_KEYS=['nodes','walls','ops','pil','ctl','eq','eqa','pts','zn','rz','cn','fz','rc','dr','sp','mm','cal','oc','mv','co','cotx','acl','llam','capas','capasOc','fondo','altura'];
+var PISO_KEYS=['nodes','walls','ops','pil','ctl','eq','eqa','pts','zn','rz','cn','fz','rc','dr','sp','mm','cal','oc','mv','co','cotx','acl','llam','alzOc','capas','capasOc','fondo','altura'];
 function pisosOn(v){v=v||st.v;return !!(v&&v.pisos&&v.pisos.length>1)}
 function pisoIdx(v){v=v||st.v;if(!v.pisos)return -1;for(var i=0;i<v.pisos.length;i++)if(v.pisos[i].id===v.piso)return i;return -1}
 function pisosAsegura(v){
