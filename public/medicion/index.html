@@ -2991,7 +2991,7 @@ function elevList(view){
   return list;
 }
 function elevLayout(list){
-  var x=0,y=0,rowH=0,maxW=2600,gap=170;
+  var x=0,y=0,rowH=0,maxW=2600,gap=300; /* sitio a la derecha de cada alzado para sus llamadas (acabados y LED) */
   list.forEach(function(e){
     if(x>0&&x+e.L>maxW){x=0;y+=rowH+gap+60;rowH=0}
     e.x=x;e.y=y;x+=e.L+gap+60;rowH=Math.max(rowH,e.H);
@@ -3028,7 +3028,7 @@ function alzPick(wp){
     var x0=eh.rev?L-(o.p+o.w):o.p,y0=o.t==='win'?(o.sill||0):0;
     if(lx>=x0&&lx<=x0+o.w&&ly>=y0&&ly<=y0+o.h)res={k:'op',sel:{t:'op',id:o.id},o:o,p:o.p};
   });
-  if(!res)(st.v.eqa||[]).forEach(function(it){if(!res&&it.wall===eh.w.id&&it.sd===eh.sd&&lx>=it.x-it.w/2&&lx<=it.x+it.w/2&&ly>=0&&ly<=it.h)res={k:'eqa',sel:{t:'eqa',id:it.id},o:it,x:it.x}});
+  if(!res)(st.v.eqa||[]).forEach(function(it){if(!res&&it.wall===eh.w.id&&it.sd===eh.sd&&lx>=it.x-it.w/2&&lx<=it.x+it.w/2&&ly>=(+it.z||0)&&ly<=(+it.z||0)+it.h)res={k:'eqa',sel:{t:'eqa',id:it.id},o:it,x:it.x,z:+it.z||0}});
   if(!res)(st.v.mm||[]).forEach(function(m){if(res||m.wall!==eh.w.id||m.sd!==eh.sd)return;var x0=sAlz(eh.rev?m.s1:m.s0),y0=m.y0||0;if(lx>=x0&&lx<=x0+(m.s1-m.s0)&&ly>=y0&&ly<=y0+m.h)res={k:'mm',sel:{t:'mm',id:m.id},o:m,s0:m.s0,s1:m.s1,y0:m.y0||0}});
   if(!res)(st.v.rc||[]).forEach(function(rc){if(res||rc.wall!==eh.w.id||(rc.sd||'p')!==eh.sd||rc.s==='dem')return;rcTrozos(rc).forEach(function(tz){var x0=sAlz(eh.rev?tz.s1:tz.s0);if(!res&&lx>=x0&&lx<=x0+(tz.s1-tz.s0)&&ly>=tz.z0&&ly<=tz.z1)res={k:'rc',sel:{t:'rc',id:rc.id},o:rc,s0:rc.s0,s1:rc.s1}})});
   if(!res)(st.v.fz||[]).forEach(function(z){if(!res&&z.wall===eh.w.id&&z.sd===eh.sd&&lx>=z.x0&&lx<=z.x1&&ly>=z.y0&&ly<=z.y1)res={k:'fz',sel:{t:'fz',id:z.id},o:z,x0:z.x0,x1:z.x1,y0:z.y0,y1:z.y1}});
@@ -3044,7 +3044,7 @@ function alzMover(h,d){
   else if(h.k==='mec'){ds=cl(h.s+ds,0,g.l)-h.s;o.dx=f2(h.dx+g.ux*ds);o.dy=f2(h.dy+g.uy*ds);if(h.dz!=null)o.h=Math.round(cl(h.z+h.dz,0,h.eh.H))}
   else if(h.k==='mm'||h.k==='rc'){ds=cl(ds,-h.s0,g.l-h.s1);o.s0=f2(h.s0+ds);o.s1=f2(h.s1+ds);if(h.k==='mm'&&h.dz!=null)o.y0=f2(cl(h.y0+h.dz,0,Math.max(0,h.eh.H-(o.h||0))))}
   else if(h.k==='fz'){d=cl(d,-h.x0,L-h.x1);o.x0=f2(h.x0+d);o.x1=f2(h.x1+d);if(h.dz!=null){var dz=cl(h.dz,-h.y0,h.eh.H-h.y1);o.y0=f2(h.y0+dz);o.y1=f2(h.y1+dz)}}
-  else if(h.k==='eqa')o.x=f2(cl(h.x+d,o.w/2,L-o.w/2));
+  else if(h.k==='eqa'){o.x=f2(cl(h.x+d,o.w/2,L-o.w/2));if(h.dz!=null){var zn=Math.round(cl(h.z+h.dz,0,Math.max(0,h.eh.H-o.h)));if(zn>0)o.z=zn;else delete o.z}}
 }
 function elevHit(wp){
   var l=elevLayout(elevList('alz'));
@@ -3141,7 +3141,9 @@ function elevSvg(C,px,el,codes,flat){
     if(wpx>46)h+=txt(C,px,cx,y0+o.h/2+10*px,fmtU(o.w)+'×'+fmtU(o.h)+(o.t==='win'&&o.sill?' ↑'+fmtU(o.sill):''),C.label,9.5,500);
   });
   /* tiras LED verticales (de suelo a techo) pegadas a este muro y en este lado: las de Planos y las hechas en el modelador 3D */
+  var LED_ALZ='#e8590c',ledLl={};
   function ledV(c,lado,z0,alto,cl,tg,q){
+    cl=LED_ALZ;
     var g=wg(el.w),s=(c.x-g.a.x)*g.ux+(c.y-g.a.y)*g.uy,dn=(c.x-g.a.x)*(-g.uy)+(c.y-g.a.y)*g.ux;
     if(s<-5||s>g.l+5||Math.abs(dn)>el.w.t/2+25)return;
     if(((lado==null?dn:lado)>=0?'p':'m')!==el.sd)return;
@@ -3149,6 +3151,7 @@ function elevSvg(C,px,el,codes,flat){
     h+='<rect x="'+f2(x-3)+'" y="'+f2(y0)+'" width="6" height="'+f2(y1-y0)+'" style="fill:'+cl+';fill-opacity:'+(flat?'.25':'.18')+';stroke:none"/>'+ln(x,y0,x,y1,cl,2.2*px,'round');
     if(tg)h+=txt(C,px,x+8*px,y0+14*px,tg,cl,10,700);
     alzLeds.push({x:x,q:q||null});
+    var kL=tg||'LED';(ledLl[kL]=ledLl[kL]||{tag:kL,q:q||null,pts:[]}).pts.push({x:x,y:y0+Math.min(40,(y1-y0)*0.25)});
   }
   if(st&&st.v){
     st.v.pts.forEach(function(q){
@@ -3218,6 +3221,7 @@ function elevSvg(C,px,el,codes,flat){
   var yLl=H*0.22;
   if(m){h+=acabLlamada(C,px,L-Math.min(L*0.12,60),yLl,L+26*px,code,m);yLl+=62*px}
   llamZ.forEach(function(q){h+=acabLlamada(C,px,q.ax,q.ay,L+26*px,q.code,q.m,yLl);yLl+=62*px});
+  Object.keys(ledLl).forEach(function(k){h+=ledLlamada(C,px,ledLl[k],L+26*px,yLl);yLl+=70*px});
   return h+eqaSvg(C,px,el);
 }
 /* nombre del acabado sin el código de color (el NCS o RAL va en la leyenda) */
@@ -3225,6 +3229,17 @@ function acabNomLimpio(m){
   var n=String(m.n||'');if(m.cod)n=n.split(m.cod).join('');
   n=n.replace(/\s*(NCS\s*)?S\s?\d{4}-[A-Z0-9]+\s*$/i,'').replace(/\s*RAL\s*\d{4}\s*$/i,'').replace(/[\s·]+$/,'').trim();
   return n||String(m.n||'');
+}
+/* llamada de una tira LED en el alzado: líneas desde cada tira del mismo tipo, círculo naranja y debajo qué es (montaje, perfil, temperatura…) */
+function ledLlamada(C,px,g,bx,by){
+  var q=g.q,cat=q&&q.lid?lumById(q.lid):null,r=7*px,OR='#e8590c',h='',st0=function(s){return s.replace('text-anchor="middle"','text-anchor="start"')};
+  g.pts.forEach(function(p){h+=ln(p.x,p.y,bx-r,by,OR,0.7*px,'round')+'<circle cx="'+f2(p.x)+'" cy="'+f2(p.y)+'" r="'+f2(1.8*px)+'" style="fill:'+OR+'"/>'});
+  h+='<circle cx="'+f2(bx)+'" cy="'+f2(by)+'" r="'+f2(r)+'" style="fill:'+OR+';stroke:'+C.label+';stroke-width:'+f2(0.7*px)+'"/>'+ln(bx-r*0.45,by,bx+r*0.45,by,'#ffffff',1.4*px,'round');
+  var nom=(q&&q.nm)||(cat&&cat.n)||'Tira LED',pf=q?ptPerfil(q):'',kv=q&&q.kv>0?q.kv:(cat&&cat.k?cat.k:0),lm=q&&q.lm>0?q.lm:(cat&&cat.lm?cat.lm:0);
+  var lin=[[g.tag,C.label,10.5,700],[nom,C.label,9.5,500],[pf?PERFIL_CORTO[pf].replace(/^perfil /,'Perfil '):'Vertical, de suelo a techo',C.dim,9,400]];
+  var tec=[kv?kv+' K':'',lm?lm+' lm':''].filter(Boolean).join(' · ');if(tec)lin.push([tec,C.dim,9,400]);
+  var y=by+r+13*px,x=bx-r;lin.forEach(function(l){h+=st0(txt(C,px,x,y,l[0],l[1],l[2],l[3]));y+=11*px});
+  return h;
 }
 /* llamada decorativa: flechita desde la pared, círculo con el color y debajo qué es */
 function acabLlamada(C,px,ax,ay,bx,code,m,by){
@@ -3244,7 +3259,7 @@ function eqaSvg(C,px,el){
   var out='',sel=st&&st.sel;
   ((st&&st.v&&st.v.eqa)||[]).forEach(function(it){
     if(it.wall!==el.w.id||it.sd!==el.sd)return;
-    var B=bloquesFull[it.cid],frag=B&&B.svg&&B.svg[it.vista],x0=it.x-it.w/2,y0=el.H-it.h;
+    var B=bloquesFull[it.cid],frag=B&&B.svg&&B.svg[it.vista],x0=it.x-it.w/2,y0=el.H-it.h-(+it.z||0);
     if(!frag){out+='<rect x="'+f2(x0)+'" y="'+f2(y0)+'" width="'+f2(it.w)+'" height="'+f2(it.h)+'" style="fill:none;stroke:'+C.dim+';stroke-width:'+f2(px)+';stroke-dasharray:'+f2(4*px)+' '+f2(3*px)+'"/>'+txt(C,px,it.x,y0+it.h/2,it.nm,C.dim,10,500);return}
     var bw=it.vista==='alzado'?B.largo:B.fondo,sx=bw>0?it.w/bw:1,sy=B.alto>0?it.h/B.alto:1,k=Math.max(sx,sy)||1;
     var inner=frag.replace(/#000000/g,C.blk||C.ink).replace(/stroke-width="([\d.]+)"/g,function(m,v){return 'stroke-width="'+f2(BLW*px/k)+'"'});
@@ -6406,7 +6421,7 @@ function tap(w){
       st.v.eqa.forEach(function(it){
         if(it.wall!==ehS.w.id||it.sd!==ehS.sd)return;
         var lx=w.x-ehS.x,ly=w.y-ehS.y;
-        if(lx>=it.x-it.w/2&&lx<=it.x+it.w/2&&ly>=ehS.H-it.h&&ly<=ehS.H)hitA=it;
+        if(lx>=it.x-it.w/2&&lx<=it.x+it.w/2&&ly>=ehS.H-it.h-(+it.z||0)&&ly<=ehS.H-(+it.z||0))hitA=it;
       });
       if(hitA){st.sel={t:'eqa',id:hitA.id};render();panelSel();return}
       var hitZ=null;
@@ -7303,7 +7318,7 @@ function seg3(cur,act){
 }
 (function(){var u=document.getElementById('unidad');if(!u)return;u.value=UNIT;u.addEventListener('change',function(){UNIT=UNIDADES[u.value]?u.value:'cm';try{localStorage.setItem('ranuse-unidad',UNIT)}catch(e){}render();panelSel();toast('Unidad: '+UNIT+' (los datos se guardan igual; solo cambia cómo se escriben)')})})();
 function fld(key,label,val,ph){
-  var sin=/^(w_ang|pil_cnt|pil_rot|dr_fs|dr_wd|cl_j|cl_mg|eq_rot|pt_lm|pt_ap)$/.test(key);
+  var sin=/^(w_ang|pil_cnt|pil_rot|dr_fs|dr_wd|cl_j|cl_mg|eq_rot|pt_lm|pt_ap|pt_kv)$/.test(key);
   if(!sin)label=String(label).replace(/\bcm/g,UNL());
   return '<label class="fld"><span>'+label+'</span><input data-f="'+key+'" inputmode="decimal" autocomplete="off" value="'+(val==null?'':(sin?f2(val):toU(val)))+'"'+(ph!=null?' placeholder="'+(sin||isNaN(+ph)?ph:toU(+ph))+'"':'')+'></label>';
 }
@@ -7442,7 +7457,7 @@ function panelSel(focus){
   }else if(s&&s.t==='eqa'){
     var ea=by(st.v.eqa,s.id);
     h+='<div class="rowh"><strong>'+esc(ea.nm)+'</strong><span class="muted">'+(ea.vista==='alzado'?'vista de frente':'vista lateral')+'</span></div>';
-    h+=fld('eqa_x','Posición en la pared (cm)',ea.x)+fld('eqa_w','Ancho (cm)',ea.w)+fld('eqa_h','Alto (cm)',ea.h);
+    h+=fld('eqa_x','Posición en la pared (cm)',ea.x)+fld('eqa_z','Altura desde el suelo (cm)',+ea.z||0)+fld('eqa_w','Ancho (cm)',ea.w)+fld('eqa_h','Alto (cm)',ea.h);
     h+='<p class="note">Bloque colocado en el alzado: es solo de dibujo; la cantidad para el presupuesto sale de las máquinas colocadas en planta.</p>';
     h+='<div class="btns"><button class="danger" data-a="del">Borrar del alzado</button></div>';
   }else if(!s){
@@ -7650,7 +7665,7 @@ function panelSel(focus){
     if(!pd.lin&&pd.h!=null)h+=fld('pt_h','Altura sobre el suelo (cm)',q.h);
     if(q.v==='ilum'){
       var cl2=q.lid&&lumById(q.lid);
-      h+=fld('pt_lm','Lúmenes (lm)',q.lm>0?q.lm:null,cl2&&cl2.lm?cl2.lm+' (del catálogo)':'ej. 800')+fld('pt_ap','Ángulo de apertura (°)',q.ap>0?q.ap:null,'ej. 36 (estrecho) · 60 · 110 (amplio)')+(q.lm>=20000?'<p class="note" style="color:#d9774f">⚠ '+q.lm+' lm es muchísimo para una luminaria: puede ser el error de unidades de antes (se guardaba ×100). <button data-a="lmfix">Corregir: dividir entre 100 las que pasan de 20.000 lm</button></p>':'');
+      h+=fld('pt_lm','Lúmenes (lm)',q.lm>0?q.lm:null,cl2&&cl2.lm?cl2.lm+' (del catálogo)':'ej. 800')+fld('pt_ap','Ángulo de apertura (°)',q.ap>0?q.ap:null,'ej. 36 (estrecho) · 60 · 110 (amplio)')+fld('pt_kv','Temperatura de color (K)',q.kv>0?q.kv:null,cl2&&cl2.k?cl2.k+' (del catálogo)':'ej. 3000 (cálida) · 4000 (neutra)')+(q.lm>=20000?'<p class="note" style="color:#d9774f">⚠ '+q.lm+' lm es muchísimo para una luminaria: puede ser el error de unidades de antes (se guardaba ×100). <button data-a="lmfix">Corregir: dividir entre 100 las que pasan de 20.000 lm</button></p>':'');
     }
     if(!pd.lin&&!pd.rect){
       var etqDc=q.k==='cuadro'?'Ancho del símbolo en el plano (cm)':'Tamaño real del símbolo (cm)';
@@ -7823,7 +7838,7 @@ function girarMuro(w,ang){
 function applyField(key,val,adv,raw){
   var s=st.sel;if(!s)return;
   var n=num(val);
-  if(!raw&&!/^(w_ang|pil_cnt|pil_rot|dr_fs|dr_wd|cl_j|eq_rot|pt_lm|pt_ap)$/.test(key))n=fromU(n); /* lúmenes y ángulo de apertura no son longitudes: no se convierten con las unidades */
+  if(!raw&&!/^(w_ang|pil_cnt|pil_rot|dr_fs|dr_wd|cl_j|eq_rot|pt_lm|pt_ap|pt_kv)$/.test(key))n=fromU(n); /* lúmenes y ángulo de apertura no son longitudes: no se convierten con las unidades */
   if(/^cl_/.test(key)){applyCl(key,n);return}
   if(s.t==='wall'){
     var w=wl(s.id);if(!w)return;
@@ -7970,7 +7985,7 @@ function applyField(key,val,adv,raw){
   }else if(s.t==='eqa'){
     var qa=by(st.v.eqa||[],s.id);if(!qa)return;
     if(!(n>=0&&n<=3000)){toast('Escribe una medida válida');return}
-    snap();if(key==='eqa_x')qa.x=n;else if(key==='eqa_w')qa.w=Math.max(5,n);else qa.h=Math.max(5,n);commit(false);
+    snap();if(key==='eqa_x')qa.x=n;else if(key==='eqa_z'){if(n>0)qa.z=n;else delete qa.z}else if(key==='eqa_w')qa.w=Math.max(5,n);else qa.h=Math.max(5,n);commit(false);
   }else if(s.t==='zn'||(s.t==='sp'&&/^zn_/.test(key))){
     var zq=znDe(s.id);if(!zq)return;
     var RZ={zn_canw:[2,100,'ancho del canal'],zn_canp:[2,200,'altura del canal'],zn_ha:[100,2000,'altura'],zn_hc:[100,2000,'altura'],zn_vgs:[20,500,'separación'],zn_vgw:[2,60,'ancho'],zn_vgh:[4,100,'canto'],zn_crs:[30,500,'separación']};
@@ -8032,13 +8047,13 @@ function applyField(key,val,adv,raw){
       var kf=n/tl0,anc=st.ptAnc==='b'?vsl[vsl.length-1]:vsl[0];
       snap();ptSetVerts(qp,vsl.map(function(r){return {x:anc.x+(r.x-anc.x)*kf,y:anc.y+(r.y-anc.y)*kf}}));commit(false);panelSel();return;
     }
-    if(key==='pt_lm'||key==='pt_ap'){
-      var kk=key==='pt_lm'?'lm':'ap';
+    if(key==='pt_lm'||key==='pt_ap'||key==='pt_kv'){
+      var kk=key==='pt_lm'?'lm':key==='pt_kv'?'kv':'ap';
       /* el cambio llega a todas las luminarias iguales a esta (mismo tipo, montaje, nombre, lúmenes y apertura: las que llevan la misma etiqueta L1, L2…) */
       var dqL=ptDef(qp.k),kOldL=dqL?lumKey(qp,dqL,ptMontAny(qp)):null,grupoL=[qp];
       if(kOldL)(st.v.pts||[]).forEach(function(o2){if(o2!==qp&&o2.v==='ilum'&&o2.s!=='dem'){var d2=ptDef(o2.k);if(d2&&lumKey(o2,d2,ptMontAny(o2))===kOldL)grupoL.push(o2)}});
       if(String(val).trim()===''){snap();grupoL.forEach(function(o3){delete o3[kk]});commit(false);return}
-      if(!(n>=1&&n<=(kk==='lm'?100000:180))){toast(kk==='lm'?'Escribe unos lúmenes entre 1 y 100000':'Escribe un ángulo entre 1° y 180°');return}
+      if(kk==='kv'?!(n>=1500&&n<=10000):!(n>=1&&n<=(kk==='lm'?100000:180))){toast(kk==='kv'?'Escribe una temperatura entre 1500 y 10000 K':kk==='lm'?'Escribe unos lúmenes entre 1 y 100000':'Escribe un ángulo entre 1° y 180°');return}
       snap();grupoL.forEach(function(o3){o3[kk]=n});commit(false);
       if(grupoL.length>1)toast((kk==='lm'?'Lúmenes':'Apertura')+' cambiados en las '+grupoL.length+' luminarias iguales');
       return;
