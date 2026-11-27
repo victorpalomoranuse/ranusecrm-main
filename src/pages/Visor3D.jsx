@@ -4658,11 +4658,38 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
           let n = { x: -u.y, y: u.x };
           const medio = { x: A.x + u.x * L / 2 + n.x * 5, y: A.y + u.y * L / 2 + n.y * 5 };
           if (!dentro(medio, P)) n = { x: -n.x, y: -n.y };
+          // trasdosados (recrecidos) pegados a este lado: el rodapié va por delante de ellos (antes quedaba metido dentro y se veía cortado)
+          const rcs = (pl.recrecidos || []).filter(rc => Array.isArray(rc.pts) && rc.pts.length >= 3);
+          const fondo = t => { // cm desde el lado de la sala hasta la cara del trasdosado en ese punto (0 si no hay)
+            if (!rcs.length) return 0;
+            const px = A.x + u.x * t, py = A.y + u.y * t; let d = 0;
+            for (let k = 0; k < 200; k++) { const q = { x: px + n.x * (d + 0.25), y: py + n.y * (d + 0.25) }; if (!rcs.some(rc => dentro(q, rc.pts))) break; d += 0.5; }
+            return d;
+          };
+          const pieza = (len, cx, cy, ang) => {
+            const b = new THREE.Mesh(new THREE.BoxGeometry(len * CM, rodapie.alto * CM, rodapie.grosor * CM), mat);
+            b.position.set((cx + oxR) * CM, z0 + rodapie.alto * CM / 2, (cy + oyR) * CM); b.visible = !ocultas.includes('planta:' + ipR); b.rotation.y = -ang; b.castShadow = b.receiveShadow = true; g.add(b);
+          };
+          const angU = Math.atan2(u.y, u.x), angN = Math.atan2(n.y, n.x);
           tramos.forEach(([t0, t1]) => {
             if (t1 - t0 < 2) return;
-            const c = { x: A.x + u.x * (t0 + t1) / 2 + n.x * rodapie.grosor / 2, y: A.y + u.y * (t0 + t1) / 2 + n.y * rodapie.grosor / 2 };
-            const b = new THREE.Mesh(new THREE.BoxGeometry((t1 - t0) * CM, rodapie.alto * CM, rodapie.grosor * CM), mat);
-            b.position.set((c.x + oxR) * CM, z0 + rodapie.alto * CM / 2, (c.y + oyR) * CM); b.visible = !ocultas.includes('planta:' + ipR); b.rotation.y = -Math.atan2(u.y, u.x); b.castShadow = b.receiveShadow = true; g.add(b);
+            // se parte el tramo donde cambia el fondo del trasdosado
+            const paso = 2, seg = []; let ini = t0, dIni = fondo(t0 + Math.min(1, (t1 - t0) / 2));
+            for (let t = t0 + paso; t < t1 + paso; t += paso) {
+              const tt = Math.min(t, t1), d = tt >= t1 ? null : fondo(tt);
+              if (d === null || Math.abs(d - dIni) > 0.6) { seg.push([ini, tt, dIni]); ini = tt; if (d !== null) dIni = d; }
+              if (tt >= t1) break;
+            }
+            seg.forEach(([s0, s1, d], k) => {
+              if (s1 - s0 < 0.5) return;
+              const off = d + rodapie.grosor / 2;
+              pieza(s1 - s0, A.x + u.x * (s0 + s1) / 2 + n.x * off, A.y + u.y * (s0 + s1) / 2 + n.y * off, angU);
+              // remate en el canto del trasdosado: rodapié a lo largo del lateral, hasta el siguiente tramo
+              const sig = seg[k + 1]; if (!sig || Math.abs(sig[2] - d) < 0.6) return;
+              const dMin = Math.min(d, sig[2]), dMax = Math.max(d, sig[2]), lado = sig[2] > d ? -1 : 1; // la pieza va en la cara que mira al tramo menos profundo
+              const tb = s1 + lado * rodapie.grosor / 2, dm = (dMin + dMax) / 2 + rodapie.grosor / 2;
+              pieza(dMax - dMin + rodapie.grosor, A.x + u.x * tb + n.x * dm, A.y + u.y * tb + n.y * dm, angN);
+            });
           });
         }
       });
