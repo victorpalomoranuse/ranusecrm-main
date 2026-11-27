@@ -2981,7 +2981,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
       const a0 = api3d.current;
       { const lpz = api3d.current.luzPool; if (lpz && ahora - lpz.t > 250) { lpz.t = ahora; if (lpz.ult.distanceToSquared(cam.position) > 0.25) { lpz.ult.copy(cam.position); lpz.asigna(cam.position); } } }
       if (!movi && ahora - ultSombra > 500) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
-      if (espejoSucio && ahora - (a0.ultEsp || 0) > 250) { espejoSucio = false; a0.ultEsp = ahora; aplicaEspejos(scene, modoRenderRef.current || cliente); try { planosEspejo(a0, scene, (modoRenderRef.current || cliente) && !!a0.composer && !GL_SOFTWARE); } catch (er) { console.warn('espejos planos', er); } }
+      if (espejoSucio && ahora - (a0.ultEsp || 0) > 250) { espejoSucio = false; a0.ultEsp = ahora; aplicaEspejos(scene, modoRenderRef.current || cliente); try { const conFx = (modoRenderRef.current || cliente) && !!a0.composer; planosEspejo(a0, scene, !GL_SOFTWARE, !conFx); } catch (er) { console.warn('espejos planos', er); } }
       if (ctrl.update()) { a0.despierta = ahora + 400; }
       const quieta = !(movi || ahora < (a0.despierta || 0));
       const refinar = quieta && modoRenderRef.current && a0.composer && !a0.reposo && !GL_SOFTWARE;

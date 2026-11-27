@@ -11,6 +11,9 @@ const SHADER_ESPEJO = {
   fragmentShader: 'uniform vec3 color; uniform sampler2D tDiffuse; varying vec4 vUv; void main() { vec4 b = texture2DProj( tDiffuse, vUv ); gl_FragColor = vec4( b.rgb * color, 1.0 ); }',
 };
 
+// En la vista de Modelar (sin efectos) no hay pase final: el propio espejo aplica el tono y el color de pantalla
+const SHADER_DIRECTO = { ...SHADER_ESPEJO, name: 'EspejoRanuseDirecto', fragmentShader: 'uniform vec3 color; uniform sampler2D tDiffuse; varying vec4 vUv; void main() { vec4 b = texture2DProj( tDiffuse, vUv ); gl_FragColor = vec4( b.rgb * color, 1.0 );\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}' };
+
 const esEspejo = o => o.isMesh && o.visible && o.geometry && (o.userData.espejoDeco || (o.material && !Array.isArray(o.material) && o.material.map && o.material.map.userData && o.material.map.userData.espejo));
 
 // La cara plana del espejo: el espesor es la dimensión más pequeña; se elige la cara que mira hacia el interior de la sala
@@ -41,7 +44,7 @@ function caraPlana(mesh, centroSala) {
 }
 
 // Pone (o quita) los reflejos planos. Se llama cuando cambian los materiales o el modo; es idempotente.
-export function planosEspejo(a, scene, activo) {
+export function planosEspejo(a, scene, activo, directo = false) {
   (a.planosEsp || []).forEach(({ reflector, mesh, antes }) => {
     scene.remove(reflector); reflector.geometry.dispose(); reflector.material.dispose(); if (reflector.getRenderTarget) reflector.getRenderTarget().dispose();
     if (mesh.material && antes) { mesh.material.colorWrite = antes.cw; mesh.material.depthWrite = antes.dw; mesh.material.needsUpdate = true; }
@@ -50,7 +53,7 @@ export function planosEspejo(a, scene, activo) {
   if (!activo) return;
   const centro = a.centro ? a.centro.clone() : new THREE.Vector3(0, 1.2, 0);
   const lista = []; scene.traverse(o => { if (esEspejo(o) && !o.userData.esReflejo) lista.push(o); });
-  for (const mesh of lista.slice(0, 4)) {
+  for (const mesh of lista.slice(0, directo ? 2 : 4)) {
     const cara = caraPlana(mesh, centro); if (!cara) continue;
     // si la cara del espejo queda metida detrás de la superficie del muro (p. ej. un recrecido delante), el reflejo se pone en la superficie:
     // si no, se veían los cantos de ese hueco como un rectángulo opaco a un lado del espejo
@@ -71,7 +74,7 @@ export function planosEspejo(a, scene, activo) {
       });
       if (sale > 0) cara.p = cara.p.clone().addScaledVector(cara.n, sale);
     } catch { /* sin cambio */ }
-    const refl = new Reflector(new THREE.PlaneGeometry(cara.an, cara.al), { textureWidth: 1024, textureHeight: Math.max(256, Math.round(1024 * cara.al / Math.max(0.01, cara.an))), clipBias: 0.003, color: new THREE.Color(0.92, 0.92, 0.92), multisample: 0, shader: SHADER_ESPEJO });
+    const refl = new Reflector(new THREE.PlaneGeometry(cara.an, cara.al), { textureWidth: 1024, textureHeight: Math.max(256, Math.round(1024 * cara.al / Math.max(0.01, cara.an))), clipBias: 0.003, color: new THREE.Color(0.92, 0.92, 0.92), multisample: 0, shader: directo ? SHADER_DIRECTO : SHADER_ESPEJO });
     refl.matrixAutoUpdate = false;
     refl.matrix.makeBasis(cara.u, cara.v, cara.n); refl.matrix.setPosition(cara.p.clone().addScaledVector(cara.n, 0.003));
     refl.matrixWorld.copy(refl.matrix); refl.matrixWorldNeedsUpdate = false;
