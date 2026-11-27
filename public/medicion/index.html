@@ -3802,6 +3802,8 @@ function adjK(key,svg,cx,cy,sinHit){
   if(dx||dy)out='<g transform="translate('+f2(dx)+' '+f2(dy)+')">'+out+'</g>';
   if(A.adj){
     if(!sinHit&&cx!=null)A.hits.push({k:key,x:cx+dx,y:cy+dy,hid:hid});
+  }else if(A.scr&&!sinHit&&cx!=null)A.hits.push({k:key,x:cx+dx,y:cy+dy,hid:false}); /* en pantalla también: doble clic en una cota para editarla */
+  if(A.adj){
     if(hid)out='<g style="opacity:.28">'+out+'</g>';
     if(!sinHit&&A.sel===key&&cx!=null)out+='<circle cx="'+f2(cx+dx)+'" cy="'+f2(cy+dy)+'" r="'+f2(16*A.px)+'" style="fill:rgba(43,124,255,.10);stroke:#2b7cff;stroke-width:'+f2(1.6*A.px)+'px;stroke-dasharray:'+f2(4*A.px)+' '+f2(3*A.px)+'"/>';
   }
@@ -3851,7 +3853,7 @@ function ajustePanel(){
     h+='<div class="note" style="margin:8px 0;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.05)"><b>'+esc(descCota(k))+'</b>'+(mv[k]?'<br>Movida de su sitio.':'')+(hid&&!propio?'<br>Está oculta porque se ocultó la cota entera o su categoría (abajo).':'')+'</div>';
     var txm=(st.v.cotx&&st.v.cotx[view])||{},mueve=/^[lm]:/.test(k)&&k.split(':').length===3;
     h+='<div class="lab" style="margin-top:6px">'+(mueve?'Escribe la medida (mueve la '+(k.charAt(0)==='l'?'luz':'pieza')+') o un texto':'Texto de la cota')+'</div><div class="rowh"><input id="cotaTxt" value="'+esc(txm[k]||'')+'" placeholder="'+(mueve?'Medida en '+UNL()+' o texto':'Déjalo vacío para la medida real')+'" style="flex:1" onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.nextElementSibling.click()}"><button class="pri" data-a="cota:texto">Poner</button></div>'+(txm[k]?'<div class="btns"><button data-a="cota:txreset">Volver a la medida real</button></div>':'');
-    h+='<div class="btns">'+(propio?'<button data-a="cota:mostrar">Volver a mostrar</button>':'<button class="danger" data-a="cota:ocultar">Ocultar</button>')+(mv[k]?'<button data-a="cota:reset">Volver a su sitio</button>':'')+(k.charAt(0)==='w'&&k.split(':').length>2?'<button data-a="cota:cadena">Ocultar toda la cota de este muro</button>':'')+'</div>';
+    h+='<div class="btns">'+(propio?'<button data-a="cota:mostrar">Volver a mostrar</button>':'<button class="danger" data-a="cota:ocultar" title="También con la tecla Supr">🗑 Quitar esta cota</button>')+(mv[k]?'<button data-a="cota:reset">Volver a su sitio</button>':'')+(k.charAt(0)==='w'&&k.split(':').length>2?'<button data-a="cota:cadena">Ocultar toda la cota de este muro</button>':'')+'</div>';
   }
   h+='<div class="lab" style="margin-top:12px">Qué se enseña en esta lámina</div><div class="btns">'+Object.keys(CAT_COTA).filter(function(c){return !CAT_VISTA[c]||CAT_VISTA[c].indexOf(view)>=0}).map(function(c){return '<button data-a="cota:cat:'+c+'" aria-pressed="'+(!oc['*'+c])+'">'+CAT_COTA[c]+'</button>'}).join('')+'</div>';
   var ocultas=Object.keys(oc).filter(function(q){return q.charAt(0)!=='*'});
@@ -4183,10 +4185,10 @@ function canalSvg(C,px,view,o){
   return h;
 }
 function scene(C,k,view,o){
-  var prev=ADJ,zprev=ZOOMF,zsprev=ZSYM;ADJ={view:view,adj:!!o.adj&&!o.flat,hits:[],sel:o.adjSel||null,px:1/k};
+  var prev=ADJ,zprev=ZOOMF,zsprev=ZSYM;ADJ={view:view,adj:!!o.adj&&!o.flat,scr:!!o.limpio&&!o.flat,hits:[],sel:o.adjSel||null,px:1/k};
   ZOOMF=1; /* los textos y etiquetas no cambian de tamaño con el zoom */
   ZSYM=1; /* ni los símbolos */
-  try{var r=scene0(C,k,view,o);if(ADJ.adj)adjHits=ADJ.hits;return r}finally{ADJ=prev;ZOOMF=zprev;ZSYM=zsprev}
+  try{var r=scene0(C,k,view,o);if(ADJ.adj||ADJ.scr)adjHits=ADJ.hits;return r}finally{ADJ=prev;ZOOMF=zprev;ZSYM=zsprev}
 }
 function scene0(C,k,view,o){
   if(view==='alz')return sceneAlz(C,k,o);
@@ -5914,6 +5916,8 @@ svg.addEventListener('pointerup',endPtr);
 svg.addEventListener('pointercancel',endPtr);
 svg.addEventListener('contextmenu',function(e){e.preventDefault();try{drMenu(e)}catch(er){}});
 svg.addEventListener('dblclick',function(e){
+  if(st.tool==='select'&&!st.cotasAdj){var hc=nearAdj(toW(loc(e)));if(hc){ /* doble clic en una cota: se edita (quitar, ocultar, mover o escribir) */
+    e.preventDefault();try{ctxCierra()}catch(er){}closeDimEd();st.cotasAdj=true;st.adjSel=hc.k;st.sel=null;st.multi=[];closeQE();toolbar();panelSel();render();hint();toast('Cota seleccionada: pulsa Supr para quitarla, arrástrala para moverla o escribe su texto en el panel');return}}
   var h=pickDr(toW(loc(e)),Math.max(16/st.k,6),st.view);
   if(h&&(st.tool==='select'||st.tool==='draw')){e.preventDefault();ctxCierra();drEditar(h)}
 });
@@ -7576,6 +7580,10 @@ $('a-side').addEventListener('click',function(e){var b=e.target.closest('button'
 $('a-qe').addEventListener('click',function(){if(st.sel&&st.sel.t==='wall')openQE(st.sel.id)});
 $('a-del').addEventListener('click',function(){if(st.sel){closeQE();doAction('del',$('a-del'))}});
 document.addEventListener('keydown',function(e){
+  if((e.key==='Delete'||e.key==='Backspace')&&st.cotasAdj&&st.adjSel){ /* editando cotas: Supr quita la cota tocada (se puede volver a poner desde el panel) */
+    var ta=e.target&&e.target.tagName;if(ta==='INPUT'||ta==='TEXTAREA'||ta==='SELECT')return;
+    e.preventDefault();doAction('cota:ocultar');toast('Cota quitada de esta lámina. Para recuperarla: «Mostrar» en el panel');return;
+  }
   if((e.key==='Delete'||e.key==='Backspace')&&st.sel){
     var t=e.target&&e.target.tagName;if(t==='INPUT'||t==='TEXTAREA'||t==='SELECT')return;
     e.preventDefault();closeQE();doAction('del',$('a-del'));
