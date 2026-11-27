@@ -61,8 +61,12 @@ export function planosEspejo(a, scene, activo) {
       scene.traverse(o => {
         if (!o.isMesh || o === mesh || !o.visible || o.userData.esReflejo || o.userData.luzId || !o.geometry) return;
         if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
-        const bb = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld); if (!bb.containsPoint(q)) return;
-        let t = Infinity; ['x', 'y', 'z'].forEach(k => { const nk = cara.n[k]; if (Math.abs(nk) > 1e-6) t = Math.min(t, ((nk > 0 ? bb.max[k] : bb.min[k]) - cara.p[k]) / nk); });
+        // caja GIRADA con la pieza (no la caja alineada con los ejes del mundo): con un muro un poco inclinado, la caja recta es más gorda
+        // y el reflejo se adelantaba varios cm, quedando por delante de las tiras LED pegadas a la pared
+        const bb = o.geometry.boundingBox, inv = o.matrixWorld.clone().invert();
+        const qL = q.clone().applyMatrix4(inv); if (!bb.containsPoint(qL)) return;
+        const pL = cara.p.clone().applyMatrix4(inv), dL = cara.p.clone().add(cara.n).applyMatrix4(inv).sub(pL);
+        let t = Infinity; ['x', 'y', 'z'].forEach(k => { const nk = dL[k]; if (Math.abs(nk) > 1e-6) t = Math.min(t, ((nk > 0 ? bb.max[k] : bb.min[k]) - pL[k]) / nk); });
         if (t > 0.004 && t < 0.15 && t > sale) sale = t;
       });
       if (sale > 0) cara.p = cara.p.clone().addScaledVector(cara.n, sale);
