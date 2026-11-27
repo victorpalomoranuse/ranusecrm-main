@@ -6336,7 +6336,9 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
     setTimeout(() => {
       try {
         const dir = new THREE.Vector3(); a.cam.getWorldDirection(dir);
-        const pos = a.cam.position.clone();
+        let pos = a.cam.position.clone();
+        // cámara fuera o por encima (vista de maqueta): el 360° se saca desde el punto al que mira, a la altura de los ojos
+        if (pos.y > 2.4 && a.ctrl?.target) { pos = a.ctrl.target.clone(); pos.y = 1.6; }
         let url = null;
         for (const t of [4096, 2048, 1024]) { try { url = capturarEquirect(a.renderer, a.scene, pos, 0, t, [a.gizmoG, a.cotasG, a.nodoG, a.guiaG], t >= 4096 ? 0.88 : 0.92); break; } catch (e) { if (t === 1024) throw e; } }
         setPano({ url, guardado: false, meta: metaActual(), origen: { pos: [pos.x, pos.y, pos.z] }, vista: { lon: Math.PI + Math.atan2(dir.x, dir.z), lat: 0 } }); setAviso('');
