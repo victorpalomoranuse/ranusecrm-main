@@ -233,6 +233,20 @@ async function modeloEdicionGemini(clave) {
   } catch { /* se usa el de siempre */ }
   return edicionGemini || modelo();
 }
+// Modo «prueba barata»: el modelo de imagen rápido (flash) más nuevo, sin el «pro»; cuesta varias veces menos
+let edicionGeminiEco = null;
+async function modeloEcoGemini(clave) {
+  if (process.env.GEMINI_EDIT_MODEL_ECO) return process.env.GEMINI_EDIT_MODEL_ECO;
+  if (edicionGeminiEco) return edicionGeminiEco;
+  try {
+    const r = await fetch(`${API}/models?pageSize=200`, { headers: { 'x-goog-api-key': clave } });
+    const j = await r.json().catch(() => ({}));
+    const ids = (j.models || []).map(m => String(m.name || '').replace(/^models\//, '')).filter(n => /flash/i.test(n) && /image/i.test(n) && !/pro|lite|imagen|embed|tts|veo/i.test(n));
+    const orden = (a, b) => { const pv = (/preview|exp/i.test(a) ? 1 : 0) - (/preview|exp/i.test(b) ? 1 : 0); if (pv) return pv; const va = versionDe(a), vb = versionDe(b); for (let i = 0; i < Math.max(va.length, vb.length); i++) { const d = (vb[i] || 0) - (va[i] || 0); if (d) return d; } return a.localeCompare(b); };
+    edicionGeminiEco = ids.sort(orden)[0] || null;
+  } catch { /* se usa el normal */ }
+  return edicionGeminiEco || modeloEdicionGemini(clave);
+}
 const PROPORCIONES = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
 const proporcionGemini = r => PROPORCIONES.map(p => { const [a, b] = p.split(':').map(Number); return { p, d: Math.abs(Math.log(a / b / r)) }; }).sort((x, y) => x.d - y.d)[0].p;
 router.post('/editar', async (req, res) => {
@@ -241,6 +255,7 @@ router.post('/editar', async (req, res) => {
   if (!clave) return res.status(503).json({ error: motor === 'gemini' ? 'Falta la clave de Google en el servidor (variable GEMINI_API_KEY en Railway).' : 'Falta la clave de OpenAI en el servidor (variable OPENAI_API_KEY en Railway).' });
   try {
     const { imagen, mascara, instruccion, referencias, calidad: soloCalidad, altaResolucion, coherencia } = req.body || {};
+    const eco = req.body?.economico === true;
     const m = DATA_IMG.exec(String(imagen || ''));
     if (!m) return res.status(400).json({ error: 'Falta la imagen (png, jpg o webp)' });
     const texto = String(instruccion || '').trim().slice(0, 1500);
@@ -273,7 +288,7 @@ router.post('/editar', async (req, res) => {
     let modeloO = alta ? 'gpt-image-2' : process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2';
     let b64g = null;
     if (motor === 'gemini') {
-      modeloO = await modeloEdicionGemini(clave);
+      modeloO = eco ? await modeloEcoGemini(clave) : await modeloEdicionGemini(clave);
       const meta0 = await sharp(Buffer.from(m[2], 'base64')).metadata();
       const prop = proporcionGemini(meta0.width / meta0.height);
       // la zona marcada se le enseña como una imagen en blanco y negro (blanco = lo que se cambia); después, fuera de ella se vuelve a poner el original
@@ -286,7 +301,7 @@ router.post('/editar', async (req, res) => {
         const rg = await fetch(`${API}/models/${modeloO}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': clave }, body: JSON.stringify({ contents: [{ parts: partes }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'], ...(cfg ? { imageConfig: cfg } : {}) } }) });
         return { rg, jg: await rg.json().catch(() => ({})) };
       };
-      let { rg, jg } = await llamarG({ aspectRatio: prop, imageSize: alta ? '4K' : '2K' });
+      let { rg, jg } = await llamarG({ aspectRatio: prop, imageSize: alta ? '4K' : eco ? '1K' : '2K' });
       if (!rg.ok && /imageConfig|imageSize|aspect|unknown name|invalid/i.test(JSON.stringify(jg?.error || {}))) ({ rg, jg } = await llamarG({ aspectRatio: prop }));
       if (!rg.ok && /imageConfig|aspect|unknown name|invalid/i.test(JSON.stringify(jg?.error || {}))) ({ rg, jg } = await llamarG(null));
       if (!rg.ok) { console.error('render-ia editar Gemini', rg.status, jg?.error?.message); edicionGemini = null; return res.status(502).json({ error: 'Gemini no ha podido editar la imagen' + (jg?.error?.message ? ': ' + String(jg.error.message).slice(0, 220) : '') }); }
@@ -296,7 +311,7 @@ router.post('/editar', async (req, res) => {
     }
     const llamar = async ({ fidelidad = true, conRefs = true } = {}) => {
       const fd = new FormData();
-      fd.append('model', modeloO); fd.append('prompt', prompt); fd.append('size', tamSalida); fd.append('quality', alta ? 'high' : process.env.OPENAI_IMAGE_QUALITY || 'high'); fd.append('n', '1');
+      fd.append('model', modeloO); fd.append('prompt', prompt); fd.append('size', tamSalida); fd.append('quality', alta ? 'high' : eco ? 'medium' : process.env.OPENAI_IMAGE_QUALITY || 'high'); fd.append('n', '1');
       if (fidelidad && modeloO !== 'gpt-image-2') fd.append('input_fidelity', 'high');
       const usa = conRefs && (refs.length || coh.length);
       fd.append(usa ? 'image[]' : 'image', new Blob([Buffer.from(m[2], 'base64')], { type: m[1] }), 'render.' + (m[1] === 'image/png' ? 'png' : 'jpg'));

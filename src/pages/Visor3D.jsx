@@ -6166,7 +6166,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
     const carga = u => new Promise((ok, ko) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = u; });
     const peque = async u => { const im = await carga(u), c = document.createElement('canvas'); c.width = 768; c.height = 768; c.getContext('2d').drawImage(im, 0, 0, 768, 768); return c.toDataURL('image/jpeg', 0.88); };
     const ia = async (i, coherencia) => {
-      try { const r = await api.post('/render-ia/editar', { imagen: caras[i], instruccion: textoC, referencias: [], calidad: false, coherencia: coherencia.slice(0, 3), motor: motorC }, { timeout: 300000 }); return r.data.imagen; }
+      try { const r = await api.post('/render-ia/editar', { imagen: caras[i], instruccion: textoC, referencias: [], calidad: false, coherencia: coherencia.slice(0, 3), motor: motorC, economico: !!opc.eco }, { timeout: 300000 }); return r.data.imagen; }
       catch (e) { throw new Error('IA en la cara ' + (i + 1) + ': ' + (e.response?.data?.error || e.message)); }
     };
     const sal = new Array(6);
@@ -6180,7 +6180,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
     await Promise.all([4, 5].map(async i => { sal[i] = await ia(i, [delante, lado, ...vistas].slice(0, 3)); }));
     avisa('uniendo las 6 caras');
     const imgs = await Promise.all(sal.map(carga));
-    for (const ancho of [6144, 4096]) { try { return unirCaras(a.renderer, imgs, yaw, ancho); } catch (e) { if (ancho === 4096) throw e; } }
+    for (const ancho of opc.eco ? [4096] : [6144, 4096]) { try { return unirCaras(a.renderer, imgs, yaw, ancho); } catch (e) { if (ancho === 4096) throw e; } }
   };
   const tourAuto = async (elegidas, usarIA, refsIds = [], proy = false, cal = 2048, porCaras = false) => {
     const a = api3d.current, m = a.modelo; if (!m || generandoParada) return;
@@ -6396,7 +6396,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
   const [mejoraPano, setMejoraPano] = useState(null); // { refs: [], trabajando, texto }
   const mejorarPanoCaras = async () => {
     const P = pano; if (!P?.origen || mejoraPano?.trabajando) return;
-    if (!window.confirm('Se mejora el 360° entero con IA (' + ({ gemini: 'Gemini Pro', openai: 'ChatGPT', ambos: 'Gemini y ChatGPT a la vez' }[mejoraPano?.motor || 'gemini']) + '): 6 imágenes por motor, unos 1–3 min y alrededor de 1 € por motor.' + (mejoraPano?.refs?.length ? ' Usará ' + mejoraPano.refs.length + ' de tus imágenes como estilo.' : ' Sin imágenes de estilo.') + ' ¿Seguir?')) return;
+    if (!window.confirm('Se mejora el 360° entero con IA (' + ({ gemini: 'Gemini Pro', openai: 'ChatGPT', ambos: 'Gemini y ChatGPT a la vez' }[mejoraPano?.motor || 'gemini']) + '): 6 imágenes por motor, unos 1–3 min y ' + (mejoraPano?.eco ? 'unos 0,20–0,30 € por motor (PRUEBA BARATA: modelo rápido, 4K).' : 'unos 0,70–1,50 € por motor (FINAL: modelo top, 6K).') + (mejoraPano?.refs?.length ? ' Usará ' + mejoraPano.refs.length + ' de tus imágenes como estilo.' : ' Sin imágenes de estilo.') + ' ¿Seguir?')) return;
     setMejoraPano(m => ({ ...(m || {}), trabajando: true, texto: 'preparando' }));
     try {
       const vistas = await Promise.all(renders.filter(r => (mejoraPano?.refs || []).includes(r.id)).slice(0, 3).map(async r => {
@@ -6409,13 +6409,13 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
         } finally { URL.revokeObjectURL(obj); }
       }));
       const motores = (mejoraPano?.motor || 'gemini') === 'ambos' ? ['gemini', 'openai'] : [mejoraPano?.motor || 'gemini'], NOMBRE = { gemini: 'Gemini', openai: 'ChatGPT' };
-      const res = await Promise.allSettled(motores.map(mo => panoPorCaras(new THREE.Vector3(...P.origen.pos), 0, vistas, t => setMejoraPano(m => ({ ...(m || {}), texto: (motores.length > 1 ? NOMBRE[mo] + ': ' : '') + t })), { motor: mo, extra: (mejoraPano?.extra || '').trim() })));
-      const nuevas = res.map((r, i) => (r.status === 'fulfilled' ? { url: r.value, nombre: NOMBRE[motores[i]] + ((mejoraPano?.extra || '').trim() ? ' · ' + mejoraPano.extra.trim().slice(0, 40) : '') } : null)).filter(Boolean);
+      const res = await Promise.allSettled(motores.map(mo => panoPorCaras(new THREE.Vector3(...P.origen.pos), 0, vistas, t => setMejoraPano(m => ({ ...(m || {}), texto: (motores.length > 1 ? NOMBRE[mo] + ': ' : '') + t })), { motor: mo, extra: (mejoraPano?.extra || '').trim(), eco: !!mejoraPano?.eco })));
+      const nuevas = res.map((r, i) => (r.status === 'fulfilled' ? { url: r.value, nombre: NOMBRE[motores[i]] + (mejoraPano?.eco ? ' (prueba)' : '') + ((mejoraPano?.extra || '').trim() ? ' · ' + mejoraPano.extra.trim().slice(0, 40) : '') } : null)).filter(Boolean);
       if (!nuevas.length) throw new Error(res.find(r => r.status === 'rejected')?.reason?.message || 'sin resultado');
       const vista = panoFin.current?.vista?.();
       const versiones = [...(P.versiones || [{ url: P.sinIA || P.url, nombre: 'Sin IA' }]), ...nuevas];
       setPano({ ...P, url: nuevas[0].url, guardado: false, id: undefined, sinIA: P.sinIA || P.url, versiones, vista: vista ? { lon: vista.lon, lat: vista.lat, fov: vista.fov } : P.vista });
-      setMejoraPano(m => ({ refs: m?.refs || [], motor: m?.motor, extra: '' })); setAviso('360° mejorado con IA' + (res.some(r => r.status === 'rejected') ? ' (uno de los motores ha fallado: ' + (res.find(r => r.status === 'rejected').reason?.message || '') + ')' : '') + '. Revísalo, compara versiones y pulsa ⭐ Guardar en la galería.');
+      setMejoraPano(m => ({ refs: m?.refs || [], motor: m?.motor, eco: m?.eco, extra: '' })); setAviso('360° mejorado con IA' + (res.some(r => r.status === 'rejected') ? ' (uno de los motores ha fallado: ' + (res.find(r => r.status === 'rejected').reason?.message || '') + ')' : '') + '. Revísalo, compara versiones y pulsa ⭐ Guardar en la galería.');
     } catch (e) { setMejoraPano(m => ({ ...(m || {}), trabajando: false, texto: '' })); setAviso('No se ha podido mejorar el 360°: ' + (e.message || 'error')); }
   };
   const hacer360 = () => {
@@ -8270,6 +8270,8 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
               <textarea value={mejoraPano.extra || ''} onChange={e => setMejoraPano(m => ({ ...m, extra: e.target.value }))} rows={2} placeholder="Qué quieres cambiar o mejorar (opcional). Ej.: suelo de caucho negro, pared del fondo en microcemento gris, luz más cálida…" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginTop: 6, fontFamily: 'inherit', resize: 'vertical' }} />
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
                 <span style={{ opacity: 0.75 }}>🤖 Motor:</span>
+                <span style={{ opacity: 0.75, marginLeft: 8 }}>Calidad:</span>
+                {[[true, '🧪 Prueba barata'], [false, '💎 Final']].map(([k, n]) => <button key={n} style={{ ...btn, background: !!mejoraPano.eco === k ? '#6b4fa0' : '#333' }} title={k ? 'Modelo rápido y 4K: para probar instrucciones y estilos gastando poco' : 'Modelo top y 6K: para la versión buena'} onClick={() => setMejoraPano(m => ({ ...m, eco: k }))}>{n}</button>)}
                 {[['gemini', 'Gemini Pro'], ['openai', 'ChatGPT'], ['ambos', 'Los dos']].map(([k, n]) => <button key={k} style={{ ...btn, background: (mejoraPano.motor || 'gemini') === k ? '#6b4fa0' : '#333' }} onClick={() => setMejoraPano(m => ({ ...m, motor: k }))}>{n}</button>)}
                 <button style={{ ...btn, background: '#6b4fa0', fontWeight: 700, marginLeft: 'auto' }} onClick={mejorarPanoCaras}>✨ {pano.versiones?.length ? 'Generar otra versión' : 'Mejorar el 360°'}{mejoraPano.refs.length ? ' · ' + mejoraPano.refs.length + ' de estilo' : ''}</button>
               </div>
