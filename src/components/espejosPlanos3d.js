@@ -77,14 +77,26 @@ export function planosEspejo(a, scene, activo) {
     refl.matrixWorld.copy(refl.matrix); refl.matrixWorldNeedsUpdate = false;
     refl.userData.esReflejo = true; refl.raycast = () => {}; refl.renderOrder = 1; refl.frustumCulled = true;
     refl.material.polygonOffset = true; refl.material.polygonOffsetFactor = -2; refl.material.polygonOffsetUnits = -2;
+    // tiras LED pegadas al espejo (en su borde o a pocos cm de su plano): no se reflejan, si no se veían dobles justo al lado
+    let pegadas = [], tPeg = 0;
+    const buscaPegadas = () => { pegadas = []; scene.traverse(o => {
+      if (!o.isMesh || !o.userData.luzId || !o.material?.userData?.ledBloomBase || !o.geometry) return;
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      const bb = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld), c = bb.getCenter(new THREE.Vector3()), r = bb.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+      const d = c.clone().sub(cara.p), ex = e => Math.abs(r.x * e.x) + Math.abs(r.y * e.y) + Math.abs(r.z * e.z); // medio tamaño de la tira en cada eje del espejo
+      if (ex(cara.n) < 0.03 && Math.abs(d.dot(cara.n)) < 0.06 && Math.abs(d.dot(cara.u)) - ex(cara.u) < cara.an / 2 + 0.1 && Math.abs(d.dot(cara.v)) - ex(cara.v) < cara.al / 2 + 0.1) pegadas.push(o);
+    }); };
     // no se reflejan a sí mismos ni se pintan en los pases auxiliares (sombras de contacto…)
     const orig = refl.onBeforeRender; refl.onBeforeRender = function (r, s, c, ...resto) {
       if (s.overrideMaterial) return;
       // Reflector restores only the target; cube captures also need the face and mip level.
       const target = r.getRenderTarget(), face = r.getActiveCubeFace(), mip = r.getActiveMipmapLevel();
       const xr = r.xr.enabled, shadows = r.shadowMap.autoUpdate, visible = this.visible;
+      const ahora = performance.now(); if (ahora - tPeg > 1500) { tPeg = ahora; buscaPegadas(); } // las luces se rehacen al editarlas
+      const visLed = pegadas.map(o => o.visible); pegadas.forEach(o => { o.visible = false; });
       try { orig.call(this, r, s, c, ...resto); }
       finally {
+        pegadas.forEach((o, i) => { o.visible = visLed[i]; });
         r.setRenderTarget(target, face, mip);
         r.xr.enabled = xr; r.shadowMap.autoUpdate = shadows; this.visible = visible;
       }
