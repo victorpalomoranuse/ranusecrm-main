@@ -5667,6 +5667,12 @@ svg.addEventListener('pointerdown',function(e){
     gesture={type:'drdraw',id:e.pointerId,k:st.drK||'line',p0:wd0,p1:wd0,moved:false};
     return;
   }
+  if(st.tool==='select'&&!pan&&!st.cotasAdj){ /* arrastrar el número de cualquier cota la mueve; un clic sin arrastrar abre Quitar / Editar */
+    var wdc=toW(p),dNum=null;dimHits.forEach(function(hh){var dx=(wdc.x-hh.x)*st.k,dy=(wdc.y-hh.y)*st.k;if((hh.rot||hh.ux===0)?(Math.abs(dx)<14&&Math.abs(dy)<26):(Math.abs(dx)<24&&Math.abs(dy)<11))dNum=hh});
+    var tapD=(dNum&&dNum.k&&dNum.k.charAt(0)!=='w')?dNum:null; /* cotas que se escriben tocándolas (máquinas, pilares, zonas): arrastrar las mueve, un clic las escribe */
+    var hcd=tapD?{k:tapD.k,x:tapD.x,y:tapD.y}:(dNum?null:cotaCerca(wdc,11));
+    if(hcd){var mc0=mvVista(st.view)[hcd.k];snap();gesture={type:'dragCota',id:e.pointerId,k:hcd.k,w0:wdc,dx0:mc0?mc0.dx:0,dy0:mc0?mc0.dy:0,moved:false,sx:p.x,sy:p.y,menu:tapD?null:hcd,tapDim:tapD};return}
+  }
   if(st.view==='alz'&&st.tool==='select'&&!pan&&!st.cotasAdj){
     var wl0=toW(p),lh=null,lhd=1e9;
     llamHits.forEach(function(hh){var dd=Math.hypot(hh.x-wl0.x,hh.y-wl0.y)*st.k;if(dd<(hh.part==='c'?13:9)&&dd<lhd){lhd=dd;lh=hh}});
@@ -6202,7 +6208,7 @@ function endPtr(e){
   }
   else if(g.type==='dragCota'&&g.id===e.pointerId){
     gesture=null;
-    if(!g.moved){hist.pop();panelSel();render();return}
+    if(!g.moved){hist.pop();if(g.tapDim)openDimEd(g.tapDim);else if(g.menu)cotaMenu(g.menu);else{panelSel();render()}return}
     commit();panelSel();
   }
   else if(g.type==='dragCotaOff'&&g.id===e.pointerId){
