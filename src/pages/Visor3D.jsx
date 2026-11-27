@@ -45,6 +45,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import apiReal from '../services/api';
 import { crearModelador, geometriaExtr, dimsExtr } from '../components/modelar3d';
 import { planosEspejo } from '../components/espejosPlanos3d';
+import { vistaDePano, pegaEnPano } from '../utils/editarPano';
 // En modo cliente (enlace público del recorrido) el visor solo lee: el plano sale del enlace firmado y cualquier escritura se rechaza
 let api = apiReal;
 const crearApiCliente = (id, firma) => {
@@ -1479,14 +1480,15 @@ export function unirCaras(renderer, imgs, yaw, ancho, signoX = -1, calidadJpeg =
 }
 if (typeof window !== 'undefined') window.__panoCaras = { capturarCaras, unirCaras, capturarEquirect: (...x) => capturarEquirect(...x) };
 // Visor 360 sencillo: arrastrar para mirar alrededor, rueda para acercar (también con el dedo en el móvil)
-export function abrirVisor360(cont, url) {
+export function abrirVisor360(cont, url, ini) {
   const w = cont.clientWidth || 800, h = cont.clientHeight || 450;
   const r = new THREE.WebGLRenderer({ antialias: true }); r.setSize(w, h); r.setPixelRatio(Math.min(window.devicePixelRatio, 2)); cont.appendChild(r.domElement);
   const sc = new THREE.Scene(), cam = new THREE.PerspectiveCamera(75, w / h, 0.1, 1100);
   const tex = new THREE.TextureLoader().load(url); tex.colorSpace = THREE.SRGBColorSpace;
   const g = new THREE.SphereGeometry(500, 64, 40); g.scale(-1, 1, 1);
   sc.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: tex })));
-  let lon = Math.PI, lat = 0, drag = null, vivo = true;
+  let lon = ini?.lon ?? Math.PI, lat = ini?.lat ?? 0, drag = null, vivo = true;
+  if (ini?.fov) { cam.fov = ini.fov; cam.updateProjectionMatrix(); }
   const mira = () => { cam.lookAt(Math.cos(lat) * Math.cos(lon), Math.sin(lat), Math.cos(lat) * Math.sin(lon)); };
   const dn = e => { drag = [e.clientX, e.clientY]; }, mv = e => { if (!drag) return; lon -= (e.clientX - drag[0]) * 0.2 * (Math.PI / 180) * (cam.fov / 75); lat = Math.max(-1.45, Math.min(1.45, lat + (e.clientY - drag[1]) * 0.2 * (Math.PI / 180) * (cam.fov / 75))); drag = [e.clientX, e.clientY]; };
   const up = () => { drag = null; }, wh = e => { e.preventDefault(); cam.fov = Math.max(25, Math.min(100, cam.fov + e.deltaY * 0.05)); cam.updateProjectionMatrix(); };
@@ -1494,7 +1496,9 @@ export function abrirVisor360(cont, url) {
   const bucle = () => { if (!vivo) return; requestAnimationFrame(bucle); mira(); r.render(sc, cam); }; bucle();
   const ajusta = () => { const W = cont.clientWidth, H = cont.clientHeight; if (W && H) { r.setSize(W, H); cam.aspect = W / H; cam.updateProjectionMatrix(); } };
   window.addEventListener('resize', ajusta);
-  return () => { vivo = false; window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('resize', ajusta); r.dispose(); tex.dispose(); g.dispose(); if (r.domElement.parentNode) r.domElement.parentNode.removeChild(r.domElement); };
+  const fin = () => { vivo = false; window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('resize', ajusta); r.dispose(); tex.dispose(); g.dispose(); if (r.domElement.parentNode) r.domElement.parentNode.removeChild(r.domElement); };
+  fin.vista = () => ({ lon, lat, fov: cam.fov, aspecto: cam.aspect });
+  return fin;
 }
 
 // ── Alzados y plantas de detalle: vista casi ortogonal de una parte (un muro, un suelo o un techo) con cotas automáticas
@@ -2318,8 +2322,8 @@ export function planta(m, z0) {
   (m.zonasPared || []).forEach(z => {
     const dx = z.b[0] - z.a[0], dz = z.b[1] - z.a[1], L = Math.hypot(dx, dz), H = z.z1 - z.z0;
     if (!(L >= 2 && H >= 2)) return;
-    const x = new THREE.Mesh(new THREE.BoxGeometry(L * CM, H * CM, 0.006), new THREE.MeshStandardMaterial({ color: '#dfe6ea', roughness: 0.04, metalness: 1, envMapIntensity: 1.6 }));
-    x.position.set(((z.a[0] + z.b[0]) / 2 + z.n[0] * 0.35) * CM, (z.z0 + H / 2) * CM, ((z.a[1] + z.b[1]) / 2 + z.n[1] * 0.35) * CM);
+    const x = new THREE.Mesh(new THREE.BoxGeometry(L * CM, H * CM, 0.003), new THREE.MeshStandardMaterial({ color: '#dfe6ea', roughness: 0.04, metalness: 1, envMapIntensity: 1.6 }));
+    x.position.set(((z.a[0] + z.b[0]) / 2 + z.n[0] * 0.17) * CM, (z.z0 + H / 2) * CM, ((z.a[1] + z.b[1]) / 2 + z.n[1] * 0.17) * CM);
     x.rotation.y = -Math.atan2(dz, dx); x.receiveShadow = true;
     x.userData = { capa: 'muros', zonaParedId: z.id, espejoDeco: true }; g.add(x);
   });
@@ -2782,6 +2786,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
   const [pano, setPano] = useState(null);                  // { url, guardado, meta } visor 360 abierto
   const [generando360, setGenerando360] = useState(false);
   const panoCont = useRef(null);
+  const panoFin = useRef(null);                            // visor 360 abierto: sirve para leer hacia dónde se mira
   const [pubDlg, setPubDlg] = useState(null);                // cuadro «Publicar en la historia del cliente»
   const abrirPublicar = async rd => {
     setPubDlg({ rd, cargando: true, capitulos: [], capId: '', titulo: rd.nombre || 'Render', texto: '', principal: false, mostrar: false, enviando: false, error: '' });
@@ -3995,7 +4000,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
       // tira LED vertical en la pared (de suelo a techo): el 2º punto marca hacia dónde da la luz
       if (vertical) {
         const p = l.vs[0], q = l.vs[l.vs.length - 1], dl = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1, nx = (q[0] - p[0]) / dl, nz = (q[1] - p[1]) / dl;
-        const H = Math.max(0.05, longitud), x = p[0] * CM + nx * 0.004, z = p[1] * CM + nz * 0.004;
+        const H = Math.max(0.05, longitud), x = p[0] * CM + nx * 0.009, z = p[1] * CM + nz * 0.009;
         const m = new THREE.Mesh(new THREE.BoxGeometry(0.012, H, 0.012), matBrillo());
         m.position.set(x, H / 2, z); m.rotation.y = -Math.atan2(nz, nx); m.traverse(o => { o.userData.luzId = l.id; }); g.add(m);
         luzArea(g, new THREE.Vector3(x + nx * 0.02, H / 2, z + nz * 0.02), new THREE.Vector3(nx, 0, nz), 0.04, H, col, luminanciaArea(lm * H, H, 0.04), presupL);
@@ -6302,6 +6307,28 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
       try { await navigator.clipboard.writeText(u); setAviso('Enlace de la maqueta copiado: ' + u); } catch { window.prompt('Copia el enlace de la maqueta:', u); }
     } catch { setAviso('No se pudo crear el enlace de la maqueta'); }
   };
+  const [preparandoVista, setPreparandoVista] = useState(false);
+  const editarVistaPano = async () => {
+    const v = panoFin.current?.vista?.(); if (!v || !pano) return;
+    const fov = Math.max(35, Math.min(80, v.fov)), asp = Math.max(1, Math.min(16 / 9, v.aspecto || 1.5)), W = 1536, H = Math.round(W / asp / 2) * 2;
+    setPreparandoVista(true);
+    try {
+      const url = await vistaDePano(pano.url, v.lon, v.lat, fov, W, H);
+      const rd = pano.id ? renders.find(x => x.id === pano.id) : null;
+      setEditorRender({ id: 'nuevo', tipo: 'vista360', url, nombre: (rd?.nombre || 'Panorama') + ' (editado)', meta: pano.meta || {}, pano: { url: pano.url, lon: v.lon, lat: v.lat, fov, W, H, orig: url, fovVisor: v.fov } });
+    } catch (e) { setAviso('No se ha podido sacar la vista del panorama: ' + (e.message || 'error')); }
+    setPreparandoVista(false);
+  };
+  // la foto editada vuelve al panorama y se guarda como panorama nuevo (el original no se toca)
+  const guardarVistaPano = async (u, n) => {
+    const P = editorRender.pano;
+    try {
+      const nuevo = await pegaEnPano(P.url, P.orig, u, P.lon, P.lat, P.fov, P.W, P.H);
+      const r = await guardarRender('360', nuevo, editorRender.meta, n);
+      if (r) setPano({ url: r.url || nuevo, guardado: true, id: r.id, meta: r.meta || editorRender.meta, vista: { lon: P.lon, lat: P.lat, fov: P.fovVisor } });
+      return r || false;
+    } catch (e) { setAviso('No se ha podido meter el cambio en el panorama: ' + (e.message || 'error')); return false; }
+  };
   const hacer360 = () => {
     const a = api3d.current; setGenerando360(true);
     setTimeout(() => {
@@ -6332,7 +6359,8 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
   };
   useEffect(() => {
     if (!pano || !panoCont.current) return;
-    return abrirVisor360(panoCont.current, pano.url);
+    const fin = abrirVisor360(panoCont.current, pano.url, pano.vista); panoFin.current = fin;
+    return () => { panoFin.current = null; fin(); };
   }, [pano?.url]); // eslint-disable-line react-hooks/exhaustive-deps
   // Cámara: altura, inclinación, focal y desplazamiento de lente (para verticales rectas), con valores en vivo
   const camLee = () => {
@@ -8137,6 +8165,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
             <b style={{ flex: 1 }}>🌐 Panorama 360° <span style={{ fontWeight: 400, opacity: 0.6, fontSize: 12 }}>arrastra para mirar alrededor · rueda para acercar</span></b>
             {!pano.guardado && !pano.id && <button style={{ ...btn, background: '#8c8076' }} onClick={async () => { const r = await guardarRender('360', pano.url, pano.meta); if (r) setPano(p => ({ ...p, guardado: true })); }}>⭐ Guardar en la galería</button>}
             {pano.guardado && <span style={{ color: '#7bd88f' }}>Guardado ✓</span>}
+            <button style={{ ...btn, background: '#8c8076' }} disabled={preparandoVista} onClick={editarVistaPano} title="Saca como foto lo que estás mirando, la editas con IA como cualquier render y el cambio vuelve a meterse en el panorama. Se guarda como panorama nuevo: el original no se toca">{preparandoVista ? 'Preparando…' : '✏️ Editar esta vista con IA'}</button>
             <a style={{ ...btn, textDecoration: 'none' }} href={pano.url} download={(titulo || 'plano') + '-panorama-360.jpg'}>Descargar</a>
             <button style={btn} onClick={() => setPano(null)}>Cerrar</button>
           </div>
@@ -8256,7 +8285,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
           </div>
         </div>
       )}
-      {editorRender && <EditorRender key={editorRender.id} src={editorRender.url} nombre={editorRender.nombre} galeria={renders.filter(r => r.tipo !== '360')} onCerrar={() => setEditorRender(null)} onElegir={rd => setEditorRender(rd)} onBorrar={rd => api.delete('/medicion/' + id + '/render/' + rd.id).then(() => setRenders(x => x.filter(y => y.id !== rd.id)))} renderInicial={editorRender.id !== 'nuevo' ? editorRender : null} onPublicar={rd => abrirPublicar(rd)} onGuardar={async (u, n) => (await guardarRender(editorRender.tipo === '360' ? '360' : 'ia', u, editorRender.meta, n)) || false} />}
+      {editorRender && <EditorRender key={editorRender.id} src={editorRender.url} nombre={editorRender.nombre} galeria={renders.filter(r => r.tipo !== '360')} onCerrar={() => setEditorRender(null)} onElegir={rd => setEditorRender(rd)} onBorrar={rd => api.delete('/medicion/' + id + '/render/' + rd.id).then(() => setRenders(x => x.filter(y => y.id !== rd.id)))} renderInicial={editorRender.id !== 'nuevo' ? editorRender : null} onPublicar={rd => abrirPublicar(rd)} onGuardar={async (u, n) => (editorRender.tipo === 'vista360' ? guardarVistaPano(u, n) : (await guardarRender(editorRender.tipo === '360' ? '360' : 'ia', u, editorRender.meta, n)) || false)} />}
       {verRender && (
         <div onClick={() => setVerRender(null)} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 10, display: 'grid', placeItems: 'center', padding: 16, cursor: 'zoom-out' }}>
           <img src={verRender.url} alt={verRender.nombre} style={{ maxWidth: '94vw', maxHeight: '90vh', borderRadius: 6 }} />
