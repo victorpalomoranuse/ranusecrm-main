@@ -1678,7 +1678,23 @@ const DOOR_TIPS = ['Abatible', 'Doble hoja', 'Corredera', 'Corredera 2 hojas', '
 const WIN_TIPS = ['Practicable', 'Doble hoja', 'Oscilobatiente', 'Corredera', 'Fija'];
 const VIDRIOS = ['Vidrio templado', 'Vidrio satinado', 'Vidrio ahumado', 'Vidrio azulado', 'Vidrio espejo'];
 const DOOR_MATS = ['Madera maciza', ...VIDRIOS, 'Chapa lacada', 'Panel sándwich', 'Lama de aluminio'];
+// Divisiones del cristal: el hueco se parte en N hojas (montantes verticales) y cada hoja lleva M travesaños horizontales
 export function construirHoja(o, mu, cfg, valHoja, texturas, valCristal) {
+  const g = construirHojaBase(o, mu, cfg, valHoja, texturas, valCristal);
+  const nH = Math.max(1, Math.min(8, Math.round(cfg.hojas || 1))), nT = Math.max(0, Math.min(6, Math.round(cfg.travesanos || 0)));
+  const esPuerta = (o.tipo || o.t) === 'door', tip = String(o.tip || '').toLowerCase();
+  if ((nH < 2 && nT < 1) || tip === 'hueco' || (esPuerta && (cfg.abierta || 0) > 0)) return g;
+  const fr = 0.05, x0 = o.p * CM, x1 = (o.p + o.w) * CM, y0 = (o.sill || 0) * CM, y1 = y0 + o.h * CM;
+  const ix0 = x0 + fr, ix1 = x1 - fr, iy0 = esPuerta ? y0 : y0 + fr, iy1 = y1 - fr, iw = ix1 - ix0, ih = iy1 - iy0;
+  let mat = null, info = null; g.traverse(x => { if (!mat && x.isMesh && x.userData.zona === 'hoja') mat = x.material; if (!info && x.userData?.hueco) info = x.userData.hueco; });
+  if (!mat) { mat = new THREE.MeshStandardMaterial({ color: 0x3a3c40, roughness: 0.5, metalness: 0.3 }); aplicarValorMat(mat, valHoja, texturas, o); }
+  const ancho = Math.min(0.05, iw / (nH * 6)), fondo = 0.05;
+  const barra = (w, h, px, py) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, fondo), mat); b.position.set(px, py, 0); b.castShadow = true; b.receiveShadow = true; b.userData = { capa: 'huecos', hueco: info, zona: 'hoja' }; g.add(b); };
+  for (let k = 1; k < nH; k++) barra(ancho, ih, ix0 + (iw * k) / nH, (iy0 + iy1) / 2);
+  for (let k = 0; k < nH; k++) for (let j = 1; j <= nT; j++) barra(iw / nH, ancho * 0.8, ix0 + (iw * (k + 0.5)) / nH, iy0 + (ih * j) / (nT + 1));
+  return g;
+}
+function construirHojaBase(o, mu, cfg, valHoja, texturas, valCristal) {
   const g = new THREE.Group(), esPuerta = (o.tipo || o.t) === 'door', tip = String(o.tip || (esPuerta ? 'Abatible' : 'Practicable')).toLowerCase(), mat = String(o.mat || '');
   const t = (mu.t || 12) * CM, fr = 0.05, x0 = o.p * CM, x1 = (o.p + o.w) * CM, y0 = (o.sill || 0) * CM, y1 = y0 + o.h * CM;
   const ix0 = x0 + fr, ix1 = x1 - fr, iy0 = esPuerta ? y0 : y0 + fr, iy1 = y1 - fr, iw = ix1 - ix0, ih = iy1 - iy0, cx = (ix0 + ix1) / 2, cy = (iy0 + iy1) / 2;
@@ -8972,6 +8988,10 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
                     <select value={c.manilla || 'palanca'} onChange={e => set({ manilla: e.target.value })} style={{ ...btn, flex: 1, minWidth: 0 }}><option value="palanca">Palanca con roseta</option><option value="barra">Tirador de barra</option><option value="pomo">Pomo</option><option value="ninguna">Sin manilla</option></select>
                     {(c.manilla || 'palanca') !== 'ninguna' && <select value={c.manillaColor || 'inox'} onChange={e => set({ manillaColor: e.target.value })} style={{ ...btn, marginLeft: 76, flex: 1, minWidth: 0 }} title="Color de la manilla"><option value="inox">Inox</option><option value="negro">Negro</option><option value="laton">Latón</option><option value="blanco">Blanco</option><option value="cobre">Cobre</option></select>}</label>
                 </>}
+                {tip !== 'Hueco' && (!esP || /vidrio|cristal/i.test(selHueco.nuevo.mat || selHueco.mat || '')) && <div style={{ display: 'flex', gap: 10, marginBottom: 6, flexWrap: 'wrap' }} title="Parte el cristal en varias hojas (montantes) y añade travesaños horizontales en cada una">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 70, opacity: 0.7 }}>Hojas</span><input type="number" min="1" max="8" value={c.hojas || 1} onChange={e => set({ hojas: Math.max(1, Math.min(8, parseInt(e.target.value, 10) || 1)) })} style={{ ...btn, width: 54 }} /></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ opacity: 0.7 }}>Travesaños por hoja</span><input type="number" min="0" max="6" value={c.travesanos || 0} onChange={e => set({ travesanos: Math.max(0, Math.min(6, parseInt(e.target.value, 10) || 0)) })} style={{ ...btn, width: 54 }} /></label>
+                </div>}
                 {[['hoja', esP ? 'Color hoja' : 'Color marco hoja'], ['marco', 'Color marco']].map(([zona, et]) => {
                   const kA = key, val = acab.huecos?.[kA]?.[zona] || '', pone = v => setAcab(a => ({ ...a, huecos: { ...(a.huecos || {}), [kA]: { ...((a.huecos || {})[kA] || {}), [zona]: v || null } } }));
                   return (
