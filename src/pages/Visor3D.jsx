@@ -6212,6 +6212,15 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
   // de referencia para que todas tengan el mismo acabado) → se unen en un 360° de 6K. Unas 4 veces más detalle que mandar el 360° entero.
   const TEXTO_CARA = 'Convierte este render 3D en una fotografía real de interiorismo de alta gama: materiales realistas, texturas finas y nítidas, reflejos naturales y acabados limpios. Es una vista gran angular de 110 grados (una cara de un panorama 360): conserva EXACTAMENTE la geometría, la perspectiva, el encuadre y la posición de cada elemento hasta los mismos bordes de la imagen; no corrijas la distorsión del gran angular, no recortes ni amplíes. No añadas ni quites objetos y no cambies máquinas, muebles ni rótulos. Respeta EXACTAMENTE el color y el material de cada cosa: marcos y carpinterías (si son negros u oscuros, siguen negros; no los hagas plateados), puertas, paredes, suelo y techo. Los cristales siguen siendo cristales transparentes con lo que hay detrás; no los conviertas en espejos ni en paredes. No muevas ni dupliques nada.';
   const panoPorCaras = async (pos, yaw, vistas = [], avisa = () => {}, opc = {}) => {
+    if (opc.motor === 'fiel') {
+      const a0 = api3d.current, carasF = capturarCaras(a0.renderer, a0.scene, pos, yaw, 1024, [a0.gizmoG, a0.cotasG, a0.nodoG, a0.guiaG]); let hechasF = 0;
+      avisa('mejorando las 6 fotos (motor Fiel)');
+      const salF = await Promise.all(carasF.map(async (c, i) => { try { const r = await api.post('/render-ia/fiel', { imagen: c, instruccion: opc.extraEn || '', creatividad: opc.creatividad || 'baja', escala: 2 }, { timeout: 300000 }); hechasF++; avisa('motor Fiel: ' + hechasF + '/6 fotos'); return r.data.imagen; } catch (e) { throw new Error('Motor Fiel, foto ' + (i + 1) + ': ' + (e.response?.data?.error || e.message)); } }));
+      opc.alCaras?.(salF.slice());
+      const cargaF = u => new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = u; });
+      const imgsF = await Promise.all(salF.map(cargaF));
+      for (const ancho of [6144, 4096]) { try { return unirCaras(a0.renderer, imgsF, yaw, ancho); } catch (e) { if (ancho === 4096) throw e; } }
+    }
     const motorC = opc.motor === 'openai' ? 'openai' : 'gemini', textoC = TEXTO_CARA + (opc.ficha ? ' ' + opc.ficha : '') + (opc.extra ? ' Además, en toda la sala: ' + opc.extra + '. Aplícalo de forma coherente en todas las vistas.' : '');
     const a = api3d.current, ocultar = [a.gizmoG, a.cotasG, a.nodoG, a.guiaG];
     const caras = capturarCaras(a.renderer, a.scene, pos, yaw, 1024, ocultar);
@@ -6456,7 +6465,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
   const [mejoraPano, setMejoraPano] = useState(null); // { refs: [], trabajando, texto }
   const mejorarPanoCaras = async () => {
     const P = pano; if (!P?.origen || mejoraPano?.trabajando) return;
-    if (!window.confirm('Se mejora el 360° entero con IA (' + ({ gemini: 'Gemini Pro', openai: 'ChatGPT', ambos: 'Gemini y ChatGPT a la vez' }[mejoraPano?.motor || 'gemini']) + '): 6 imágenes por motor, unos 1–3 min y ' + (mejoraPano?.eco ? 'unos 0,20–0,30 € por motor (PRUEBA BARATA: modelo rápido, 4K).' : 'unos 0,70–1,50 € por motor (FINAL: modelo top, 6K).') + (mejoraPano?.refs?.length ? ' Usará ' + mejoraPano.refs.length + ' de tus imágenes como estilo.' : ' Sin imágenes de estilo.') + ' ¿Seguir?')) return;
+    if (!window.confirm(mejoraPano?.motor === 'fiel' ? 'Motor Fiel (sin inventar): mejora texturas, luz y nitidez de las 6 fotos sin redibujarlas. Unos 1–3 min y unos 0,20–0,50 € en total (Replicate). ¿Seguir?' : 'Se mejora el 360° entero con IA (' + ({ gemini: 'Gemini Pro', openai: 'ChatGPT', ambos: 'Gemini y ChatGPT a la vez' }[mejoraPano?.motor || 'gemini']) + '): 6 imágenes por motor, unos 1–3 min y ' + (mejoraPano?.eco ? 'unos 0,20–0,30 € por motor (PRUEBA BARATA: modelo rápido, 4K).' : 'unos 0,70–1,50 € por motor (FINAL: modelo top, 6K).') + (mejoraPano?.refs?.length ? ' Usará ' + mejoraPano.refs.length + ' de tus imágenes como estilo.' : ' Sin imágenes de estilo.') + ' ¿Seguir?')) return;
     setMejoraPano(m => ({ ...(m || {}), trabajando: true, texto: 'preparando' }));
     try {
       const vistas = await Promise.all(renders.filter(r => (mejoraPano?.refs || []).includes(r.id)).slice(0, 3).map(async r => {
@@ -6468,7 +6477,7 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
           return c.toDataURL('image/jpeg', 0.85);
         } finally { URL.revokeObjectURL(obj); }
       }));
-      const motores = (mejoraPano?.motor || 'gemini') === 'ambos' ? ['gemini', 'openai'] : [mejoraPano?.motor || 'gemini'], NOMBRE = { gemini: 'Gemini', openai: 'ChatGPT' };
+      const motores = (mejoraPano?.motor || 'gemini') === 'ambos' ? ['gemini', 'openai'] : [mejoraPano?.motor || 'gemini'], NOMBRE = { gemini: 'Gemini', openai: 'ChatGPT', fiel: 'Fiel' };
       const carasDe = {}, extraTxt = (mejoraPano?.extra || '').trim(), posM = new THREE.Vector3(...P.origen.pos);
       setMejoraPano(m => ({ ...(m || {}), texto: 'preparando la ficha del espacio' }));
       const ficha = fichaEspacio(posM), planta = plantaArriba(posM), peque = await panoPeque(P.sinIA || P.url);
@@ -6483,8 +6492,8 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
         const W2 = Math.max(2048, Math.min(8192, sal.naturalWidth)), c2 = document.createElement('canvas'); c2.width = W2; c2.height = W2 / 2; c2.getContext('2d').drawImage(sal, 0, 0, W2, W2 / 2);
         return c2.toDataURL('image/jpeg', 0.9);
       };
-      const entero = mejoraPano?.metodo === 'entero';
-      const res = await Promise.allSettled(motores.map(mo => entero ? panoEntero(mo, t => setMejoraPano(m => ({ ...(m || {}), texto: t }))) : panoPorCaras(new THREE.Vector3(...P.origen.pos), 0, vistas, t => setMejoraPano(m => ({ ...(m || {}), texto: (motores.length > 1 ? NOMBRE[mo] + ': ' : '') + t })), { motor: mo, extra: (mejoraPano?.extra || '').trim(), eco: !!mejoraPano?.eco, ficha, contexto: [planta, peque], alCaras: c => { carasDe[mo] = c; } })));
+      const entero = mejoraPano?.metodo === 'entero' && mejoraPano?.motor !== 'fiel';
+      const res = await Promise.allSettled(motores.map(mo => entero ? panoEntero(mo, t => setMejoraPano(m => ({ ...(m || {}), texto: t }))) : panoPorCaras(new THREE.Vector3(...P.origen.pos), 0, vistas, t => setMejoraPano(m => ({ ...(m || {}), texto: (motores.length > 1 ? NOMBRE[mo] + ': ' : '') + t })), { motor: mo, extra: mo === 'fiel' ? '' : (mejoraPano?.extra || '').trim(), extraEn: mejoraPano?.fielTxt || '', creatividad: mejoraPano?.creatividad || 'baja', eco: !!mejoraPano?.eco, ficha, contexto: [planta, peque], alCaras: c => { carasDe[mo] = c; } })));
       const nuevas = res.map((r, i) => (r.status === 'fulfilled' ? { url: r.value, caras: carasDe[motores[i]], motor: motores[i], eco: !!mejoraPano?.eco && !entero, nombre: NOMBRE[motores[i]] + (entero ? ' · entero' : '') + (mejoraPano?.eco ? ' (prueba)' : '') + ((mejoraPano?.extra || '').trim() ? ' · ' + mejoraPano.extra.trim().slice(0, 40) : '') } : null)).filter(Boolean);
       if (!nuevas.length) throw new Error(res.find(r => r.status === 'rejected')?.reason?.message || 'sin resultado');
       const vista = panoFin.current?.vista?.();
@@ -8444,7 +8453,8 @@ export default function Visor3D({ cliente = false, zonasPub = false, maquetaPub 
                 {[['caras', 'Por caras'], ['entero', 'Panorama entero']].map(([k, n]) => <button key={k} style={{ ...btn, background: (mejoraPano.metodo || 'caras') === k ? '#6b4fa0' : '#333' }} title={k === 'entero' ? 'El 360° va de una vez a la IA: menos cortes, pero menos resolución (4K) y puede enderezar líneas. Experimental' : '6 fotos a 2K que se continúan entre sí: más detalle (6K)'} onClick={() => setMejoraPano(m => ({ ...m, metodo: k }))}>{n}</button>)}
                 <span style={{ opacity: 0.75, marginLeft: 8 }}>Calidad:</span>
                 {[[true, '🧪 Prueba barata'], [false, '💎 Final']].map(([k, n]) => <button key={n} style={{ ...btn, background: !!mejoraPano.eco === k ? '#6b4fa0' : '#333' }} title={k ? 'Modelo rápido y 4K: prueba instrucciones gastando poco; cuando una te guste, pulsa ⬆️ Subir calidad de esta (no se rehace, se mejora)' : 'Modelo top y 6K directamente'} onClick={() => setMejoraPano(m => ({ ...m, eco: k }))}>{n}</button>)}
-                {[['gemini', 'Gemini Pro'], ['openai', 'ChatGPT'], ['ambos', 'Los dos']].map(([k, n]) => <button key={k} style={{ ...btn, background: (mejoraPano.motor || 'gemini') === k ? '#6b4fa0' : '#333' }} onClick={() => setMejoraPano(m => ({ ...m, motor: k }))}>{n}</button>)}
+                {[['fiel', '🎯 Fiel (sin inventar)'], ['gemini', 'Gemini Pro'], ['openai', 'ChatGPT'], ['ambos', 'Los dos']].map(([k, n]) => <button key={k} style={{ ...btn, background: (mejoraPano.motor || 'gemini') === k ? '#6b4fa0' : '#333' }} onClick={() => setMejoraPano(m => ({ ...m, motor: k }))}>{n}</button>)}
+                {mejoraPano.motor === 'fiel' && <><span style={{ opacity: 0.75, marginLeft: 8 }}>Creatividad:</span>{[['baja', 'Baja'], ['media', 'Media'], ['alta', 'Alta']].map(([k, n]) => <button key={k} style={{ ...btn, background: (mejoraPano.creatividad || 'baja') === k ? '#2f6b3a' : '#333' }} title={k === 'baja' ? 'Casi no cambia nada: más nitidez y texturas reales' : k === 'media' ? 'Más realismo; puede retocar algún detalle pequeño' : 'Mucho realismo; puede cambiar detalles'} onClick={() => setMejoraPano(m => ({ ...m, creatividad: k }))}>{n}</button>)}</>}
                 <button style={{ ...btn, background: '#6b4fa0', fontWeight: 700, marginLeft: 'auto' }} onClick={mejorarPanoCaras}>✨ {pano.versiones?.length ? 'Generar otra versión' : 'Mejorar el 360°'}{mejoraPano.refs.length ? ' · ' + mejoraPano.refs.length + ' de estilo' : ''}</button>
               </div>
               <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>Cada versión parte del 360° sin IA (no se va manchando). Para retocar una zona concreta usa ✏️ Editar esta vista con IA.</div>

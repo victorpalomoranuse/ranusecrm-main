@@ -363,4 +363,58 @@ router.post('/editar', async (req, res) => {
   }
 });
 
+// ── Motor «Fiel»: mejorador con control de creatividad (Replicate, clarity-upscaler). No vuelve a dibujar la imagen:
+// mejora texturas, luz y nitidez sobre los mismos píxeles (sigue los bordes del render), así no se inventa objetos.
+let versionFiel = null;
+const MODELO_FIEL = process.env.REPLICATE_FIEL_MODEL || 'philz1337x/clarity-upscaler';
+async function versionModeloFiel(token) {
+  if (process.env.REPLICATE_FIEL_VERSION) return process.env.REPLICATE_FIEL_VERSION;
+  if (versionFiel) return versionFiel;
+  const r = await fetch('https://api.replicate.com/v1/models/' + MODELO_FIEL, { headers: { Authorization: 'Bearer ' + token } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.latest_version?.id) throw new Error('Replicate no encuentra el modelo ' + MODELO_FIEL + (j.detail ? ': ' + j.detail : ''));
+  return (versionFiel = j.latest_version.id);
+}
+const CREATIVIDAD = { baja: { creativity: 0.2, resemblance: 1.2 }, media: { creativity: 0.35, resemblance: 0.85 }, alta: { creativity: 0.5, resemblance: 0.6 } };
+router.post('/fiel', async (req, res) => {
+  const token = process.env.REPLICATE_API_TOKEN;
+  if (!token) return res.status(503).json({ error: 'Falta la clave de Replicate en el servidor (variable REPLICATE_API_TOKEN en Railway).' });
+  try {
+    const { imagen, instruccion, creatividad, escala } = req.body || {};
+    const m = DATA_IMG.exec(String(imagen || ''));
+    if (!m) return res.status(400).json({ error: 'Falta la imagen (png, jpg o webp)' });
+    // la imagen se manda en JPEG de buena calidad (más ligera); como mucho 2048 px de lado
+    const buf = await sharp(Buffer.from(m[2], 'base64')).resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 92 }).toBuffer();
+    const cfg = CREATIVIDAD[creatividad] || CREATIVIDAD.baja;
+    const extra = String(instruccion || '').trim().slice(0, 600);
+    const input = {
+      image: 'data:image/jpeg;base64,' + buf.toString('base64'),
+      prompt: 'masterpiece, best quality, highres, photorealistic interior photography, realistic materials, fine detailed textures, natural soft light, sharp focus' + (extra ? ', ' + extra : ''),
+      negative_prompt: '(worst quality, low quality, normal quality:2), cartoon, painting, illustration, blurry, deformed, extra objects, text, watermark',
+      scale_factor: Math.max(1, Math.min(4, Number(escala) || 2)),
+      dynamic: 5, sharpen: 0, output_format: 'jpg', num_inference_steps: 18,
+      ...cfg,
+    };
+    const version = await versionModeloFiel(token);
+    let r = await fetch('https://api.replicate.com/v1/predictions', { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Prefer: 'wait=60' }, body: JSON.stringify({ version, input }) });
+    let p = await r.json().catch(() => ({}));
+    if (!r.ok) { versionFiel = null; return res.status(502).json({ error: 'Replicate: ' + String(p.detail || p.error || r.status).slice(0, 220) }); }
+    const t0 = Date.now();
+    while (p.status && !['succeeded', 'failed', 'canceled'].includes(p.status) && Date.now() - t0 < 280000) {
+      await new Promise(ok => setTimeout(ok, 2500));
+      r = await fetch(p.urls?.get || ('https://api.replicate.com/v1/predictions/' + p.id), { headers: { Authorization: 'Bearer ' + token } });
+      p = await r.json().catch(() => ({}));
+    }
+    if (p.status !== 'succeeded') return res.status(502).json({ error: 'El motor Fiel no ha terminado: ' + String(p.error || p.status || 'tiempo agotado').slice(0, 220) });
+    const url = Array.isArray(p.output) ? p.output[0] : p.output;
+    if (!url) return res.status(502).json({ error: 'El motor Fiel no ha devuelto imagen' });
+    const img = Buffer.from(await (await fetch(url)).arrayBuffer());
+    const out = await sharp(img).jpeg({ quality: 92 }).toBuffer();
+    res.json({ imagen: 'data:image/jpeg;base64,' + out.toString('base64'), segundos: p.metrics?.predict_time || null });
+  } catch (e) {
+    console.error('render-ia fiel', e);
+    res.status(500).json({ error: 'No se pudo mejorar con el motor Fiel: ' + String(e.message || e).slice(0, 200) });
+  }
+});
+
 export default router;
